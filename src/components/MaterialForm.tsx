@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Material } from "../types/material";
 
 import {
@@ -11,37 +11,46 @@ import {
 } from "@mui/material";
 
 interface Props {
+  material?: Material | null;
   onSave: (material: Material) => Promise<void>;
   onCancel: () => void;
 }
 
+const emptyMaterial: Material = {
+  material_code: "",
+  short_description: "",
+  uom: "",
+  current_quantity: 0,
+  hsn_code: "",
+  material_group: "",
+  is_active: true,
+};
+
 export default function MaterialForm({
+  material,
   onSave,
   onCancel,
 }: Props) {
+  const [formData, setFormData] = useState<Material>(emptyMaterial);
 
-  const [material, setMaterial] = useState<Material>({
-    material_code: "",
-    short_description: "",
-    uom: "",
-    current_quantity: 0,
-    hsn_code: "",
-    material_group: "",
-    is_active: true,
-  });
+  useEffect(() => {
+    if (material) {
+      setFormData(material);
+    } else {
+      setFormData(emptyMaterial);
+    }
+  }, [material]);
 
   function updateField(
     field: keyof Material,
     value: string | number
   ) {
-    setMaterial((prev) => {
-
+    setFormData((prev) => {
       const updated = {
         ...prev,
         [field]: value,
       };
 
-      // Auto-generate Material Group
       if (
         field === "material_code" &&
         typeof value === "string"
@@ -50,68 +59,50 @@ export default function MaterialForm({
       }
 
       return updated;
-
     });
   }
 
   async function handleSave() {
+    if (!formData.material_code.trim()) {
+      alert("Material Code is required.");
+      return;
+    }
 
-    if (material.material_code.length !== 10) {
+    if (!/^\d{10}$/.test(formData.material_code)) {
       alert("Material Code must be exactly 10 digits.");
       return;
     }
 
-    if (!/^\d+$/.test(material.material_code)) {
-      alert("Material Code must contain numbers only.");
-      return;
-    }
-
-    if (!material.short_description.trim()) {
+    if (!formData.short_description.trim()) {
       alert("Short Description is required.");
       return;
     }
 
-    if (!material.uom.trim()) {
+    if (!formData.uom.trim()) {
       alert("Unit of Measurement is required.");
       return;
     }
 
-    await onSave(material);
-
+    await onSave(formData);
   }
 
   return (
+    <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
 
-    <Paper
-      elevation={3}
-      sx={{
-        p: 3,
-        mb: 3,
-      }}
-    >
-
-      <Typography
-        variant="h5"
-        gutterBottom
-      >
-        Add Material
+      <Typography variant="h5" gutterBottom>
+        {material ? "Edit Material" : "Add Material"}
       </Typography>
 
-      <Grid
-        container
-        spacing={2}
-      >
+      <Grid container spacing={2}>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <TextField
             fullWidth
             label="Material Code"
-            value={material.material_code}
+            value={formData.material_code}
+            disabled={!!material}
             onChange={(e) =>
-              updateField(
-                "material_code",
-                e.target.value
-              )
+              updateField("material_code", e.target.value)
             }
           />
         </Grid>
@@ -120,7 +111,7 @@ export default function MaterialForm({
           <TextField
             fullWidth
             label="Short Description"
-            value={material.short_description}
+            value={formData.short_description}
             onChange={(e) =>
               updateField(
                 "short_description",
@@ -134,12 +125,9 @@ export default function MaterialForm({
           <TextField
             fullWidth
             label="Unit of Measurement"
-            value={material.uom}
+            value={formData.uom}
             onChange={(e) =>
-              updateField(
-                "uom",
-                e.target.value
-              )
+              updateField("uom", e.target.value)
             }
           />
         </Grid>
@@ -149,7 +137,7 @@ export default function MaterialForm({
             fullWidth
             type="number"
             label="Quantity"
-            value={material.current_quantity}
+            value={formData.current_quantity}
             onChange={(e) =>
               updateField(
                 "current_quantity",
@@ -163,7 +151,7 @@ export default function MaterialForm({
           <TextField
             fullWidth
             label="HSN Code"
-            value={material.hsn_code}
+            value={formData.hsn_code}
             onChange={(e) =>
               updateField(
                 "hsn_code",
@@ -177,7 +165,7 @@ export default function MaterialForm({
           <TextField
             fullWidth
             label="Material Group"
-            value={material.material_group}
+            value={formData.material_group}
             slotProps={{
               input: {
                 readOnly: true,
@@ -190,17 +178,16 @@ export default function MaterialForm({
 
       <Box
         sx={{
-          mt: 3,
           display: "flex",
           gap: 2,
+          mt: 3,
         }}
       >
-
         <Button
           variant="contained"
           onClick={handleSave}
         >
-          Save
+          {material ? "Update" : "Save"}
         </Button>
 
         <Button
@@ -209,11 +196,8 @@ export default function MaterialForm({
         >
           Cancel
         </Button>
-
       </Box>
 
     </Paper>
-
   );
-
 }

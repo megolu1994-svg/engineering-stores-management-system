@@ -3,6 +3,11 @@ import {
   Alert,
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Snackbar,
   TextField,
   Typography,
@@ -13,7 +18,9 @@ import MaterialTable from "../components/MaterialTable";
 
 import {
   addMaterial,
+  deleteMaterial,
   getMaterials,
+  updateMaterial,
 } from "../services/materialService";
 
 import type { Material } from "../types/material";
@@ -26,8 +33,16 @@ export default function MaterialMaster() {
 
   const [showForm, setShowForm] = useState(false);
 
+  const [selectedMaterial, setSelectedMaterial] =
+    useState<Material | null>(null);
+
+  const [deleteMaterialData, setDeleteMaterialData] =
+    useState<Material | null>(null);
+
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+
   const [snackbarMessage, setSnackbarMessage] = useState("");
+
   const [snackbarSeverity, setSnackbarSeverity] = useState<
     "success" | "error"
   >("success");
@@ -58,14 +73,23 @@ export default function MaterialMaster() {
 
   async function handleSave(material: Material) {
     try {
-      await addMaterial(material);
+      if (selectedMaterial) {
+        await updateMaterial(material);
+
+        setSnackbarSeverity("success");
+        setSnackbarMessage("Material updated successfully.");
+      } else {
+        await addMaterial(material);
+
+        setSnackbarSeverity("success");
+        setSnackbarMessage("Material saved successfully.");
+      }
 
       await loadMaterials();
 
       setShowForm(false);
+      setSelectedMaterial(null);
 
-      setSnackbarSeverity("success");
-      setSnackbarMessage("Material saved successfully.");
       setSnackbarOpen(true);
     } catch (error: any) {
       setSnackbarSeverity("error");
@@ -74,14 +98,39 @@ export default function MaterialMaster() {
     }
   }
 
+  function handleEdit(material: Material) {
+    setSelectedMaterial(material);
+    setShowForm(true);
+  }
+
+  function handleAdd() {
+    setSelectedMaterial(null);
+    setShowForm(true);
+  }
+
+  async function confirmDelete() {
+    if (!deleteMaterialData) return;
+
+    try {
+      await deleteMaterial(deleteMaterialData.material_code);
+
+      await loadMaterials();
+
+      setSnackbarSeverity("success");
+      setSnackbarMessage("Material deleted successfully.");
+    } catch (error: any) {
+      setSnackbarSeverity("error");
+      setSnackbarMessage(error.message);
+    }
+
+    setDeleteMaterialData(null);
+    setSnackbarOpen(true);
+  }
+
   return (
     <Box>
 
-      <Typography
-        variant="h4"
-        fontWeight="bold"
-        mb={3}
-      >
+      <Typography variant="h4" fontWeight="bold" mb={3}>
         Material Master
       </Typography>
 
@@ -101,7 +150,7 @@ export default function MaterialMaster() {
 
         <Button
           variant="contained"
-          onClick={() => setShowForm(true)}
+          onClick={handleAdd}
         >
           Add Material
         </Button>
@@ -109,12 +158,55 @@ export default function MaterialMaster() {
 
       {showForm && (
         <MaterialForm
+          material={selectedMaterial}
           onSave={handleSave}
-          onCancel={() => setShowForm(false)}
+          onCancel={() => {
+            setShowForm(false);
+            setSelectedMaterial(null);
+          }}
         />
       )}
 
-      <MaterialTable materials={filteredMaterials} />
+      <MaterialTable
+        materials={filteredMaterials}
+        onEdit={handleEdit}
+        onDelete={(material) =>
+          setDeleteMaterialData(material)
+        }
+      />
+
+      <Dialog
+        open={!!deleteMaterialData}
+        onClose={() => setDeleteMaterialData(null)}
+      >
+        <DialogTitle>
+          Delete Material
+        </DialogTitle>
+
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this material?
+          </DialogContentText>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={() =>
+              setDeleteMaterialData(null)
+            }
+          >
+            Cancel
+          </Button>
+
+          <Button
+            color="error"
+            variant="contained"
+            onClick={confirmDelete}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbarOpen}
