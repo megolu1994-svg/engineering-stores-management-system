@@ -12,42 +12,43 @@ import Settings from "./pages/Settings";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<AppLayout />}>
+      <Routes>
+            <Route path="/" element={<AppLayout />}>
 
-        <Route index element={<Dashboard />} />
+                    <Route index element={<Dashboard />} />
 
-        <Route
-          path="materials"
-          element={<MaterialMaster />}
-        />
+                            <Route
+                                      path="materials"
+                                                element={<MaterialMaster />}
+                                                        />
 
-        <Route
-          path="locations"
-          element={<LocationMaster />}
-        />
+                                                                <Route
+                                                                          path="locations"
+                                                                                    element={<LocationMaster />}
+                                                                                            />
 
-        <Route
-          path="allocation"
-          element={<MaterialAllocation />}
-        />
+                                                                                                    <Route
+                                                                                                              path="allocation"
+                                                                                                                        element={<MaterialAllocation />}
+                                                                                                                                />
 
-        <Route
-          path="reports"
-          element={<Reports />}
-        />
+                                                                                                                                        <Route
+                                                                                                                                                  path="reports"
+                                                                                                                                                            element={<Reports />}
+                                                                                                                                                                    />
 
-        <Route
-          path="import-export"
-          element={<ImportExport />}
-        />
+                                                                                                                                                                            <Route
+                                                                                                                                                                                      path="import-export"
+                                                                                                                                                                                                element={<ImportExport />}
+                                                                                                                                                                                                        />
 
-        <Route
-          path="settings"
-          element={<Settings />}
-        />
+                                                                                                                                                                                                                <Route
+                                                                                                                                                                                                                          path="settings"
+                                                                                                                                                                                                                                    element={<Settings />}
+                                                                                                                                                                                                                                            />
 
-      </Route>
-    </Routes>
-  );
-}
+                                                                                                                                                                                                                                                  </Route>
+                                                                                                                                                                                                                                                      </Routes>
+                                                                                                                                                                                                                                                        );
+                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                        

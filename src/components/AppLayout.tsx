@@ -1,134 +1,205 @@
+import { useState } from "react";
+
 import {
   AppBar,
-  Box,
-  CssBaseline,
-  Drawer,
-  List,
-  ListItemButton,
-  ListItemText,
-  Toolbar,
-  Typography,
-} from "@mui/material";
+    Box,
+      CssBaseline,
+        Divider,
+          Drawer,
+            IconButton,
+              List,
+                ListItemButton,
+                  ListItemText,
+                    Toolbar,
+                      Typography,
+                        useMediaQuery,
+                        } from "@mui/material";
 
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+                        import MenuIcon from "@mui/icons-material/Menu";
 
-const drawerWidth = 240;
+                        import { useTheme } from "@mui/material/styles";
 
-const menuItems = [
-  {
-    text: "Dashboard",
-    path: "/",
-  },
-  {
-    text: "Material Master",
-    path: "/materials",
-  },
-  {
-    text: "Location Master",
-    path: "/locations",
-  },
-  {
-    text: "Material Allocation",
-    path: "/allocation",
-  },
-  {
-    text: "Reports",
-    path: "/reports",
-  },
-  {
-    text: "Import / Export",
-    path: "/import-export",
-  },
-  {
-    text: "Settings",
-    path: "/settings",
-  },
-];
+                        import {
+                          Outlet,
+                            useLocation,
+                              useNavigate,
+                              } from "react-router-dom";
 
-export default function AppLayout() {
+                              const drawerWidth = 240;
 
-  const navigate = useNavigate();
+                              const APP_TITLE = "Engineering Stores Management System";
 
-  const location = useLocation();
+                              const menuItems = [
+                                { text: "Dashboard", path: "/" },
+                                  { text: "Material Master", path: "/materials" },
+                                    { text: "Location Master", path: "/locations" },
+                                      { text: "Material Allocation", path: "/allocation" },
+                                        { text: "Reports", path: "/reports" },
+                                          { text: "Import / Export", path: "/import-export" },
+                                            { text: "Settings", path: "/settings" },
+                                            ];
 
-  return (
+                                            const TOOLBAR_HEIGHT = { xs: 48, sm: 52 };
 
-    <Box sx={{ display: "flex" }}>
+                                            export default function AppLayout() {
 
-      <CssBaseline />
+                                              const navigate = useNavigate();
+                                                const location = useLocation();
 
-      <AppBar
-        position="fixed"
-        sx={{
-          zIndex: 1300,
-        }}
-      >
-        <Toolbar>
+                                                  const theme = useTheme();
 
-          <Typography
-            variant="h6"
-            component="div"
-          >
-            Engineering Stores Management System
-          </Typography>
+                                                    const mobile = useMediaQuery(theme.breakpoints.down("md"));
 
-        </Toolbar>
-      </AppBar>
+                                                      const [mobileOpen, setMobileOpen] = useState(false);
 
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          "& .MuiDrawer-paper": {
-            width: drawerWidth,
-            boxSizing: "border-box",
-          },
-        }}
-      >
+                                                        function handleNavigate(path: string) {
+                                                            navigate(path);
 
-        <Toolbar />
+                                                                if (mobile) {
+                                                                      setMobileOpen(false);
+                                                                          }
+                                                                            }
 
-        <List>
+                                                                              const isDashboard = location.pathname === "/";
 
-          {menuItems.map((item) => (
+                                                                                const currentPageTitle =
+                                                                                    menuItems.find((item) => item.path === location.pathname)?.text ?? "";
 
-            <ListItemButton
-              key={item.text}
-              selected={location.pathname === item.path}
-              onClick={() => navigate(item.path)}
-            >
+                                                                                      const appBarTitle = isDashboard ? APP_TITLE : currentPageTitle;
 
-              <ListItemText
-                primary={item.text}
-              />
+                                                                                        const drawer = (
+                                                                                            <>
+                                                                                                  <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT }} />
 
-            </ListItemButton>
+                                                                                                        <Divider />
 
-          ))}
+                                                                                                              <List>
 
-        </List>
+                                                                                                                      {menuItems.map((item) => (
 
-      </Drawer>
+                                                                                                                                <ListItemButton
+                                                                                                                                            key={item.text}
+                                                                                                                                                        selected={location.pathname === item.path}
+                                                                                                                                                                    onClick={() => handleNavigate(item.path)}
+                                                                                                                                                                              >
 
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          bgcolor: "#f4f6f8",
-          minHeight: "100vh",
-          p: 3,
-        }}
-      >
+                                                                                                                                                                                          <ListItemText primary={item.text} />
 
-        <Toolbar />
+                                                                                                                                                                                                    </ListItemButton>
 
-        <Outlet />
+                                                                                                                                                                                                            ))}
 
-      </Box>
+                                                                                                                                                                                                                  </List>
+                                                                                                                                                                                                                      </>
+                                                                                                                                                                                                                        );
 
-    </Box>
+                                                                                                                                                                                                                          return (
 
-  );
+                                                                                                                                                                                                                              <Box sx={{ display: "flex" }}>
 
-}
+                                                                                                                                                                                                                                    <CssBaseline />
+
+                                                                                                                                                                                                                                          <AppBar
+                                                                                                                                                                                                                                                  position="fixed"
+                                                                                                                                                                                                                                                          color={isDashboard ? "primary" : "default"}
+                                                                                                                                                                                                                                                                  elevation={isDashboard ? 4 : 1}
+                                                                                                                                                                                                                                                                          sx={{
+                                                                                                                                                                                                                                                                                    zIndex: theme.zIndex.drawer + 1,
+                                                                                                                                                                                                                                                                                            }}
+                                                                                                                                                                                                                                                                                                  >
+
+                                                                                                                                                                                                                                                                                                          <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT }}>
+
+                                                                                                                                                                                                                                                                                                                    {mobile && (
+
+                                                                                                                                                                                                                                                                                                                                <IconButton
+                                                                                                                                                                                                                                                                                                                                              color="inherit"
+                                                                                                                                                                                                                                                                                                                                                            edge="start"
+                                                                                                                                                                                                                                                                                                                                                                          onClick={() => setMobileOpen(true)}
+                                                                                                                                                                                                                                                                                                                                                                                        sx={{ mr: 2 }}
+                                                                                                                                                                                                                                                                                                                                                                                                    >
+
+                                                                                                                                                                                                                                                                                                                                                                                                                  <MenuIcon />
+
+                                                                                                                                                                                                                                                                                                                                                                                                                              </IconButton>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                        )}
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                  <Typography
+                                                                                                                                                                                                                                                                                                                                                                                                                                                              variant="subtitle1"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          fontWeight="bold"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      noWrap
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  component="div"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            >
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        {appBarTitle}
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  </Typography>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          </Toolbar>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </AppBar>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      {mobile ? (
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              <Drawer
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        open={mobileOpen}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  onClose={() => setMobileOpen(false)}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          >
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    <Box
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                sx={{ width: drawerWidth }}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          >
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      {drawer}
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                </Box>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </Drawer>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              ) : (
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <Drawer
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                variant="permanent"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          sx={{
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      width: drawerWidth,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  flexShrink: 0,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              "& .MuiDrawer-paper": {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            width: drawerWidth,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          boxSizing: "border-box",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      },
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        >
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  {drawer}
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          </Drawer>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                )}
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <Box
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              component="main"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      sx={{
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                flexGrow: 1,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          bgcolor: "#f4f6f8",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    minHeight: "100vh",
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              p: {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          xs: 2,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      md: 3,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                },
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              >
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT }} />
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              <Outlet />
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    </Box>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </Box>
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          );
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
