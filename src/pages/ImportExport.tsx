@@ -11,6 +11,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Collapse,
   IconButton,
   LinearProgress,
   Snackbar,
@@ -22,10 +23,10 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
-import CloudSyncIcon from "@mui/icons-material/CloudSync";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -50,7 +51,6 @@ const IMPORT_BATCH_SIZE = 500;
 const PREVIEW_ROW_LIMIT = 20;
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
-type MaterialImportMode = "sap" | "esms" | null;
 
 async function readExcelFile(
   file: File
@@ -81,7 +81,8 @@ function isDuplicateError(errors: string[]) {
 
 const cardSx = {
   borderRadius: 4,
-  boxShadow: "0 4px 20px rgba(15, 23, 42, 0.08)",
+  boxShadow: "0 4px 20px rgba(15, 23, 42, 0.07)",
+  overflow: "hidden",
 };
 
 const primaryButtonSx = {
@@ -93,12 +94,18 @@ const primaryButtonSx = {
   px: 2.5,
 };
 
-const columnStackSx = {
+const panelButtonSx = {
+  minHeight: 52,
+  borderRadius: 2.5,
+  fontWeight: 700,
+};
+
+const columnFlexSx = {
   display: "flex",
   flexDirection: "column",
 };
 
-const rowStackSx = {
+const rowFlexSx = {
   display: "flex",
   flexDirection: "row",
 };
@@ -115,7 +122,7 @@ export default function ImportExport() {
   }
 
   // ---------------- Material Master ----------------
-  const [materialMode, setMaterialMode] = useState<MaterialImportMode>(null);
+  const [materialImportOpen, setMaterialImportOpen] = useState(false);
 
   const materialInputRef = useRef<HTMLInputElement | null>(null);
   const [materialFile, setMaterialFile] = useState<File | null>(null);
@@ -128,8 +135,8 @@ export default function ImportExport() {
   const [materialSummary, setMaterialSummary] =
     useState<MaterialImportSummary | null>(null);
 
-  function openMaterialImport(mode: "sap" | "esms") {
-    setMaterialMode(mode);
+  function openMaterialImport() {
+    setMaterialImportOpen(true);
     setMaterialFile(null);
     setMaterialValidation(null);
     setMaterialSummary(null);
@@ -137,7 +144,7 @@ export default function ImportExport() {
   }
 
   function closeMaterialImport() {
-    setMaterialMode(null);
+    setMaterialImportOpen(false);
     setMaterialFile(null);
     setMaterialValidation(null);
     setMaterialSummary(null);
@@ -433,73 +440,76 @@ export default function ImportExport() {
       <Typography
         variant="body2"
         color="text.secondary"
-        sx={{ mb: 3, mt: 0.5 }}
+        sx={{ mb: 2.5, mt: 0.5 }}
       >
         Download templates and import Material or Location data in bulk.
       </Typography>
 
-      <Box sx={{ ...columnStackSx, gap: 3 }}>
+      <Box sx={{ ...columnFlexSx, gap: 2.5 }}>
 
         {/* ============ MATERIAL MASTER ============ */}
         <Card elevation={0} sx={cardSx}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1.5, mb: 2.5 }}>
-              <Avatar sx={{ bgcolor: "primary.main", width: 44, height: 44 }}>
+            <Box sx={{ ...rowFlexSx, alignItems: "center", gap: 1.5, mb: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                  color: "primary.main",
+                  width: 46,
+                  height: 46,
+                  borderRadius: 2.5,
+                }}
+                variant="rounded"
+              >
                 <Inventory2Icon />
               </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                   Material Master
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Download the template or import material data
+                  Template download and bulk import
                 </Typography>
               </Box>
             </Box>
 
-            <Box sx={{ ...columnStackSx, gap: 1.5 }}>
+            <Box sx={{ ...columnFlexSx, gap: 1.25 }}>
               <Button
                 variant="outlined"
+                color="inherit"
                 fullWidth
                 startIcon={<DownloadIcon />}
                 onClick={handleDownloadMaterialTemplate}
-                sx={primaryButtonSx}
+                sx={{
+                  ...primaryButtonSx,
+                  borderColor: "divider",
+                  color: "text.primary",
+                }}
               >
-                Download ESMS Material Template
+                Download Material Template
               </Button>
 
               <Button
                 variant="contained"
-                fullWidth
-                startIcon={<CloudSyncIcon />}
-                onClick={() => openMaterialImport("sap")}
-                sx={primaryButtonSx}
-              >
-                Import SAP Material Excel
-              </Button>
-
-              <Button
-                variant="contained"
-                color="secondary"
                 fullWidth
                 startIcon={<CloudUploadIcon />}
-                onClick={() => openMaterialImport("esms")}
+                onClick={openMaterialImport}
                 sx={primaryButtonSx}
               >
-                Import ESMS Material Template
+                Import Material Excel
               </Button>
             </Box>
 
-            {materialMode && (
+            <Collapse in={materialImportOpen} timeout="auto" unmountOnExit>
               <Box
                 sx={{
-                  mt: 3,
+                  mt: 2.5,
                   p: { xs: 2, sm: 2.5 },
                   borderRadius: 3,
                   bgcolor: "grey.50",
                 }}
               >
-                <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1, mb: 1.5 }}>
+                <Box sx={{ ...rowFlexSx, alignItems: "center", gap: 1, mb: 1.25 }}>
                   <IconButton
                     onClick={closeMaterialImport}
                     size="small"
@@ -509,19 +519,16 @@ export default function ImportExport() {
                     <ArrowBackIcon fontSize="small" />
                   </IconButton>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    {materialMode === "sap"
-                      ? "Import SAP Material Excel"
-                      : "Import ESMS Material Template"}
+                    Import Material Excel
                   </Typography>
                 </Box>
 
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  {materialMode === "sap"
-                    ? "Upload the raw Excel export from SAP. Columns such as Material, Material Description, EUn, Qty in UnE and HSN Code (if present) are mapped automatically."
-                    : "Upload a file using the ESMS template columns: Material Code, Description, UoM, Quantity, HSN Code."}
+                  Supports both SAP-exported Excel files and the ESMS material
+                  template. Columns are mapped automatically.
                 </Typography>
 
-                <Box sx={{ ...columnStackSx, gap: 2 }}>
+                <Box sx={{ ...columnFlexSx, gap: 1.75 }}>
                   <input
                     ref={materialInputRef}
                     type="file"
@@ -536,7 +543,7 @@ export default function ImportExport() {
                     fullWidth
                     startIcon={<UploadFileIcon />}
                     onClick={() => materialInputRef.current?.click()}
-                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 600 }}
+                    sx={{ ...panelButtonSx, fontWeight: 600 }}
                   >
                     Choose Excel File
                   </Button>
@@ -558,13 +565,13 @@ export default function ImportExport() {
                     }
                     onClick={handleMaterialPreview}
                     disabled={!materialFile || materialPreviewLoading}
-                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+                    sx={panelButtonSx}
                   >
                     Preview
                   </Button>
 
                   {materialValidation && (
-                    <Box sx={{ ...rowStackSx, flexWrap: "wrap", gap: 1 }}>
+                    <Box sx={{ ...rowFlexSx, flexWrap: "wrap", gap: 1 }}>
                       <Chip
                         label={`Total Rows: ${materialValidation.totalRecords}`}
                       />
@@ -639,7 +646,7 @@ export default function ImportExport() {
                       materialValidation.validRows.length === 0 ||
                       materialImporting
                     }
-                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+                    sx={panelButtonSx}
                   >
                     Import
                   </Button>
@@ -673,36 +680,50 @@ export default function ImportExport() {
                   )}
                 </Box>
               </Box>
-            )}
+            </Collapse>
           </CardContent>
         </Card>
 
         {/* ============ LOCATION MASTER ============ */}
         <Card elevation={0} sx={cardSx}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1.5, mb: 2.5 }}>
-              <Avatar sx={{ bgcolor: "secondary.main", width: 44, height: 44 }}>
+            <Box sx={{ ...rowFlexSx, alignItems: "center", gap: 1.5, mb: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: (theme) => alpha(theme.palette.secondary.main, 0.12),
+                  color: "secondary.main",
+                  width: 46,
+                  height: 46,
+                  borderRadius: 2.5,
+                }}
+                variant="rounded"
+              >
                 <PlaceIcon />
               </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                   Location Master
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Download the template or import location data
+                  Template download and bulk import
                 </Typography>
               </Box>
             </Box>
 
-            <Box sx={{ ...columnStackSx, gap: 1.5 }}>
+            <Box sx={{ ...columnFlexSx, gap: 1.25 }}>
               <Button
                 variant="outlined"
+                color="inherit"
                 fullWidth
                 startIcon={<DownloadIcon />}
                 onClick={handleDownloadLocationTemplate}
-                sx={primaryButtonSx}
+                sx={{
+                  ...primaryButtonSx,
+                  borderColor: "divider",
+                  color: "text.primary",
+                }}
               >
-                Download ESMS Location Template
+                Download Location Template
               </Button>
 
               <Button
@@ -716,16 +737,16 @@ export default function ImportExport() {
               </Button>
             </Box>
 
-            {locationImportOpen && (
+            <Collapse in={locationImportOpen} timeout="auto" unmountOnExit>
               <Box
                 sx={{
-                  mt: 3,
+                  mt: 2.5,
                   p: { xs: 2, sm: 2.5 },
                   borderRadius: 3,
                   bgcolor: "grey.50",
                 }}
               >
-                <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1, mb: 1.5 }}>
+                <Box sx={{ ...rowFlexSx, alignItems: "center", gap: 1, mb: 1.25 }}>
                   <IconButton
                     onClick={closeLocationImport}
                     size="small"
@@ -743,7 +764,7 @@ export default function ImportExport() {
                   Upload a file using the columns: Location Code, Description.
                 </Typography>
 
-                <Box sx={{ ...columnStackSx, gap: 2 }}>
+                <Box sx={{ ...columnFlexSx, gap: 1.75 }}>
                   <input
                     ref={locationInputRef}
                     type="file"
@@ -758,7 +779,7 @@ export default function ImportExport() {
                     fullWidth
                     startIcon={<UploadFileIcon />}
                     onClick={() => locationInputRef.current?.click()}
-                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 600 }}
+                    sx={{ ...panelButtonSx, fontWeight: 600 }}
                   >
                     Choose Excel File
                   </Button>
@@ -780,13 +801,13 @@ export default function ImportExport() {
                     }
                     onClick={handleLocationPreview}
                     disabled={!locationFile || locationPreviewLoading}
-                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+                    sx={panelButtonSx}
                   >
                     Preview
                   </Button>
 
                   {locationValidation && (
-                    <Box sx={{ ...rowStackSx, flexWrap: "wrap", gap: 1 }}>
+                    <Box sx={{ ...rowFlexSx, flexWrap: "wrap", gap: 1 }}>
                       <Chip
                         label={`Total Rows: ${locationValidation.totalRecords}`}
                       />
@@ -855,7 +876,7 @@ export default function ImportExport() {
                       locationValidation.validRows.length === 0 ||
                       locationImporting
                     }
-                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+                    sx={panelButtonSx}
                   >
                     Import
                   </Button>
@@ -889,7 +910,7 @@ export default function ImportExport() {
                   )}
                 </Box>
               </Box>
-            )}
+            </Collapse>
           </CardContent>
         </Card>
 
