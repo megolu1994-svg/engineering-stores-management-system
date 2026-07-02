@@ -11,16 +11,26 @@ import {
   DialogContentText,
   DialogTitle,
   Snackbar,
+  Tab,
+  Tabs,
   TextField,
   Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
+import TuneIcon from "@mui/icons-material/Tune";
+
 import MaterialSearch from "../components/MaterialSearch";
 import AllocationSummary from "../components/AllocationSummary";
 import AllocationTable from "../components/AllocationTable";
 import AllocationForm from "../components/AllocationForm";
+import CurrentStockTab from "../components/CurrentStockTab";
+import OpeningStockTab from "../components/OpeningStockTab";
+import AdjustmentTab from "../components/AdjustmentTab";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation as MaterialAllocationType } from "../types/materialAllocation";
@@ -45,9 +55,17 @@ interface DeleteDialogState {
   id: number | null;
 }
 
+const TAB_CURRENT_STOCK = 0;
+const TAB_ALLOCATION = 1;
+const TAB_OPENING_STOCK = 2;
+const TAB_ADJUSTMENT = 3;
+
 export default function MaterialAllocation() {
   const theme = useTheme();
   const fullScreenDialogs = useMediaQuery(theme.breakpoints.down("sm"));
+  const mobileTabs = useMediaQuery(theme.breakpoints.down("sm"));
+
+  const [activeTab, setActiveTab] = useState(TAB_ALLOCATION);
 
   const [material, setMaterial] = useState<Material | null>(null);
 
@@ -302,149 +320,198 @@ export default function MaterialAllocation() {
           fontSize: { xs: "1.25rem", sm: "1.5rem", md: "2rem" },
         }}
       >
-        Stock Allocation
+        Material Allocation
       </Typography>
 
-      <Box sx={{ mb: 2 }}>
-        <MaterialSearch value={material} onChange={setMaterial} />
-      </Box>
+      <Tabs
+        value={activeTab}
+        onChange={(_, value) => setActiveTab(value)}
+        variant={mobileTabs ? "scrollable" : "standard"}
+        scrollButtons={mobileTabs ? "auto" : false}
+        allowScrollButtonsMobile
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          mb: 3,
+          "& .MuiTab-root": {
+            fontWeight: 700,
+            textTransform: "none",
+            minHeight: 52,
+          },
+        }}
+      >
+        <Tab
+          icon={<Inventory2Icon fontSize="small" />}
+          iconPosition="start"
+          label="Current Stock"
+        />
+        <Tab
+          icon={<SwapHorizIcon fontSize="small" />}
+          iconPosition="start"
+          label="Allocation"
+        />
+        <Tab
+          icon={<PlaylistAddIcon fontSize="small" />}
+          iconPosition="start"
+          label="Opening Stock"
+        />
+        <Tab
+          icon={<TuneIcon fontSize="small" />}
+          iconPosition="start"
+          label="Adjustment"
+        />
+      </Tabs>
 
-      <AllocationSummary material={material} allocatedQty={allocatedQty} />
+      {activeTab === TAB_CURRENT_STOCK && <CurrentStockTab />}
 
-      {material ? (
-        <AllocationForm onAllocate={handleAllocate} />
-      ) : (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Please select a material to allocate stock.
-        </Alert>
+      {activeTab === TAB_ALLOCATION && (
+        <>
+          <Box sx={{ mb: 2 }}>
+            <MaterialSearch value={material} onChange={setMaterial} />
+          </Box>
+
+          <AllocationSummary material={material} allocatedQty={allocatedQty} />
+
+          {material ? (
+            <AllocationForm onAllocate={handleAllocate} />
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Please select a material to allocate stock.
+            </Alert>
+          )}
+
+          <Box ref={allocationsRef}>
+            <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1.5 }}>
+              Current Allocations
+            </Typography>
+
+            {loadingAllocations ? (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <AllocationTable
+                allocations={allocations}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            )}
+          </Box>
+
+          {/* Edit Allocation Dialog */}
+          <Dialog
+            open={editDialog.open}
+            onClose={closeEditDialog}
+            fullWidth
+            maxWidth="xs"
+            fullScreen={fullScreenDialogs}
+          >
+            <DialogTitle>Edit Allocation</DialogTitle>
+
+            <DialogContent>
+              <DialogContentText sx={{ mb: 2 }}>
+                Location: <strong>{editDialog.allocation?.location_code}</strong>
+              </DialogContentText>
+
+              <TextField
+                label="Quantity"
+                type="number"
+                fullWidth
+                value={editDialog.quantity}
+                onChange={(e) =>
+                  setEditDialog((prev) => ({
+                    ...prev,
+                    quantity: e.target.value,
+                  }))
+                }
+                slotProps={{
+                  htmlInput: {
+                    inputMode: "numeric",
+                  },
+                }}
+              />
+            </DialogContent>
+
+            <DialogActions sx={{ p: 2 }}>
+              <Button
+                onClick={closeEditDialog}
+                disabled={savingAllocation}
+                fullWidth={fullScreenDialogs}
+                sx={{ minHeight: 48 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleEditSave}
+                disabled={savingAllocation}
+                fullWidth={fullScreenDialogs}
+                sx={{ minHeight: 48 }}
+              >
+                Save
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Delete Confirmation Dialog */}
+          <Dialog
+            open={deleteDialog.open}
+            onClose={closeDeleteDialog}
+            fullWidth
+            maxWidth="xs"
+            fullScreen={fullScreenDialogs}
+          >
+            <DialogTitle>Delete Allocation</DialogTitle>
+
+            <DialogContent>
+              <DialogContentText>
+                Are you sure you want to delete this allocation? This action
+                cannot be undone.
+              </DialogContentText>
+            </DialogContent>
+
+            <DialogActions sx={{ p: 2 }}>
+              <Button
+                onClick={closeDeleteDialog}
+                disabled={savingAllocation}
+                fullWidth={fullScreenDialogs}
+                sx={{ minHeight: 48 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                color="error"
+                variant="contained"
+                onClick={handleDeleteConfirm}
+                disabled={savingAllocation}
+                fullWidth={fullScreenDialogs}
+                sx={{ minHeight: 48 }}
+              >
+                Delete
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Snackbar
+            open={snackbarOpen}
+            autoHideDuration={3000}
+            onClose={() => setSnackbarOpen(false)}
+            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          >
+            <Alert
+              severity={snackbarSeverity}
+              variant="filled"
+              onClose={() => setSnackbarOpen(false)}
+            >
+              {snackbarMessage}
+            </Alert>
+          </Snackbar>
+        </>
       )}
 
-      <Box ref={allocationsRef}>
-        <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1.5 }}>
-          Current Allocations
-        </Typography>
+      {activeTab === TAB_OPENING_STOCK && <OpeningStockTab />}
 
-        {loadingAllocations ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <AllocationTable
-            allocations={allocations}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
-        )}
-      </Box>
-
-      {/* Edit Allocation Dialog */}
-      <Dialog
-        open={editDialog.open}
-        onClose={closeEditDialog}
-        fullWidth
-        maxWidth="xs"
-        fullScreen={fullScreenDialogs}
-      >
-        <DialogTitle>Edit Allocation</DialogTitle>
-
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Location: <strong>{editDialog.allocation?.location_code}</strong>
-          </DialogContentText>
-
-          <TextField
-            label="Quantity"
-            type="number"
-            fullWidth
-            value={editDialog.quantity}
-            onChange={(e) =>
-              setEditDialog((prev) => ({
-                ...prev,
-                quantity: e.target.value,
-              }))
-            }
-            slotProps={{
-              htmlInput: {
-                inputMode: "numeric",
-              },
-            }}
-          />
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2 }}>
-          <Button
-            onClick={closeEditDialog}
-            disabled={savingAllocation}
-            fullWidth={fullScreenDialogs}
-            sx={{ minHeight: 48 }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleEditSave}
-            disabled={savingAllocation}
-            fullWidth={fullScreenDialogs}
-            sx={{ minHeight: 48 }}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialog.open}
-        onClose={closeDeleteDialog}
-        fullWidth
-        maxWidth="xs"
-        fullScreen={fullScreenDialogs}
-      >
-        <DialogTitle>Delete Allocation</DialogTitle>
-
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete this allocation? This action
-            cannot be undone.
-          </DialogContentText>
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2 }}>
-          <Button
-            onClick={closeDeleteDialog}
-            disabled={savingAllocation}
-            fullWidth={fullScreenDialogs}
-            sx={{ minHeight: 48 }}
-          >
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={handleDeleteConfirm}
-            disabled={savingAllocation}
-            fullWidth={fullScreenDialogs}
-            sx={{ minHeight: 48 }}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackbarOpen(false)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity={snackbarSeverity}
-          variant="filled"
-          onClose={() => setSnackbarOpen(false)}
-        >
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
+      {activeTab === TAB_ADJUSTMENT && <AdjustmentTab />}
     </Box>
   );
 }
