@@ -181,14 +181,73 @@ export function extractMaterialFields(
   };
 }
 
+/**
+ * Parses a quantity string that may contain thousand separators and/or
+ * decimal places (e.g. "10", "10.00", "1,250", "1,250.50") into a number.
+ * A blank value resolves to 0. A value that cannot be parsed resolves to NaN
+ * so the caller can flag it as invalid.
+ */
+function parseQuantity(raw: string): number {
+  const cleaned = raw.replace(/,/g, "").trim();
+
+  if (!cleaned) {
+    return 0;
+  }
+
+  return Number(cleaned);
+}
+
+/**
+ * Returns the Material Group to use for a row. If a Material Group is
+ * already provided it is kept as-is. If it is blank, it is automatically
+ * derived from the first two characters of the Material Code.
+ */
+function deriveMaterialGroup(
+  materialCode: string,
+  materialGroup: string
+): string {
+  if (materialGroup) {
+    return materialGroup;
+  }
+
+  return materialCode.substring(0, 2);
+}
+
+interface StagedRow {
+  rowNumber: number;
+  fields: MaterialPreviewFields;
+  quantity: number;
+}
+
+/**
+ * Returns true if the given field (read via `getter`) has more than one
+ * distinct non-blank value across the group of staged rows. Blank values
+ * are ignored, since a duplicate row that simply omits a field is not
+ * considered a conflict.
+ */
+function hasFieldConflict(
+  rows: StagedRow[],
+  getter: (row: StagedRow) => string
+): boolean {
+  const values = new Set(
+    rows
+      .map(getter)
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+  );
+
+  return values.size > 1;
+}
+
 export function parseMaterialExcelRows(
   rawRows: Record<string, unknown>[]
 ): MaterialValidationResult {
-  const validRows: MaterialImportRow[] = [];
   const invalidRows: MaterialInvalidRow[] = [];
-  const seenCodes = new Set<string>();
 
   let totalRecords = 0;
+
+  // ---- Pass 1: per-row validation (required fields + quantity format) ----
+  const staged: StagedRow[] = [];
 
   rawRows.forEach((row, index) => {
     if (isRowBlank(row)) {
@@ -214,19 +273,9 @@ export function parseMaterialExcelRows(
       errors.push("UoM is required.");
     }
 
-    if (fields.material_code) {
-      const key = fields.material_code.toUpperCase();
+    const quantity = parseQuantity(fields.current_quantity);
 
-      if (seenCodes.has(key)) {
-        errors.push("Duplicate Material Code within file.");
-      } else {
-        seenCodes.add(key);
-      }
-    }
-
-    const currentQuantity = Number(fields.current_quantity);
-
-    if (fields.current_quantity && Number.isNaN(currentQuantity)) {
+    if (fields.current_quantity && Number.isNaN(quantity)) {
       errors.push("Current Quantity must be a number.");
     }
 
@@ -235,14 +284,69 @@ export function parseMaterialExcelRows(
       return;
     }
 
-    validRows.push({
+    staged.push({
       rowNumber,
-      material_code: fields.material_code,
-      short_description: fields.short_description,
-      uom: fields.uom,
-      current_quantity: fields.current_quantity ? currentQuantity : 0,
-      hsn_code: fields.hsn_code,
-      material_group: fields.material_group,
+      fields,
+      quantity: Number.isNaN(quantity) ? 0 : quantity,
+    });
+  });
+
+  // ---- Pass 2: group by Material Code (duplicates are valid and merged) ----
+  const groups = new Map<string, StagedRow[]>();
+  const groupOrder: string[] = [];
+
+  staged.forEach((stagedRow) => {
+    const key = stagedRow.fields.material_code.toUpperCase();
+
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      groupOrder.push(key);
+    }
+
+    groups.get(key)!.push(stagedRow);
+  });
+
+  const validRows: MaterialImportRow[] = [];
+
+  groupOrder.forEach((key) => {
+    const groupRows = groups.get(key)!;
+    const first = groupRows[0];
+
+    const hasConflict =
+      hasFieldConflict(groupRows, (r) => r.fields.short_description) ||
+      hasFieldConflict(groupRows, (r) => r.fields.uom) ||
+      hasFieldConflict(groupRows, (r) => r.fields.hsn_code) ||
+      hasFieldConflict(groupRows, (r) => r.fields.material_group);
+
+    if (hasConflict) {
+      invalidRows.push({
+        rowNumber: first.rowNumber,
+        fields: first.fields,
+        errors: [
+          `Conflicting master data found for Material Code ${first.fields.material_code}.`,
+        ],
+      });
+      return;
+    }
+
+    const totalQuantity = groupRows.reduce(
+      (sum, r) => sum + r.quantity,
+      0
+    );
+
+    const materialGroup = deriveMaterialGroup(
+      first.fields.material_code,
+      first.fields.material_group
+    );
+
+    validRows.push({
+      rowNumber: first.rowNumber,
+      material_code: first.fields.material_code,
+      short_description: first.fields.short_description,
+      uom: first.fields.uom,
+      current_quantity: totalQuantity,
+      hsn_code: first.fields.hsn_code,
+      material_group: materialGroup,
     });
   });
 
