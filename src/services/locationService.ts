@@ -13,6 +13,60 @@ export async function getLocations(): Promise<Location[]> {
   return data as Location[];
 }
 
+const LOCATION_SEARCH_COLUMNS = "location_code, location_description, is_active";
+
+/**
+ * Escapes PostgREST `ilike` wildcard characters (% and _) in user-provided
+ * search text so they are treated as literal characters rather than
+ * wildcards.
+ */
+function escapeIlikeValue(value: string): string {
+  return value.replace(/[%_]/g, (match) => `\\${match}`);
+}
+
+/**
+ * Single, reusable server-side location search. Searches location_code
+ * and location_description directly in Supabase, returns only the columns
+ * the UI needs, and is paginated via `.range()` so it stays fast even
+ * with very large location tables.
+ *
+ * - `query` empty -> returns the first page of active locations (ordered
+ *   by location_code), useful for an initial/browse view.
+ * - `query` non-empty -> returns up to `pageSize` active locations whose
+ *   location_code or location_description contains the query (case
+ *   insensitive).
+ */
+export async function searchLocations(
+  query: string,
+  page: number = 0,
+  pageSize: number = 20
+): Promise<Location[]> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  let request = supabase
+    .from("location_master")
+    .select(LOCATION_SEARCH_COLUMNS)
+    .eq("is_active", true)
+    .order("location_code")
+    .range(from, to);
+
+  const trimmed = query.trim();
+
+  if (trimmed) {
+    const safe = escapeIlikeValue(trimmed);
+    request = request.or(
+      `location_code.ilike.%${safe}%,location_description.ilike.%${safe}%`
+    );
+  }
+
+  const { data, error } = await request;
+
+  if (error) throw error;
+
+  return (data ?? []) as Location[];
+}
+
 export async function locationExists(
   locationCode: string
 ): Promise<boolean> {

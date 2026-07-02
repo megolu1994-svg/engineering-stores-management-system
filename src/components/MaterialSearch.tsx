@@ -13,6 +13,7 @@ interface Props {
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_PAGE_SIZE = 20;
+const MIN_SEARCH_LENGTH = 2;
 
 export default function MaterialSearch({
   value,
@@ -28,6 +29,15 @@ export default function MaterialSearch({
   useEffect(() => {
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
+    }
+
+    // Require at least 2 characters before querying Supabase, so we never
+    // fire a search request (or load unnecessary data) for a blank or
+    // single-character input.
+    if (inputValue.trim().length < MIN_SEARCH_LENGTH) {
+      requestId.current += 1;
+      setOptions([]);
+      return;
     }
 
     debounceTimer.current = setTimeout(() => {

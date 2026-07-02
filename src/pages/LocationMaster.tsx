@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -19,15 +19,19 @@ import LocationTable from "../components/LocationTable";
 import {
   addLocation,
   deleteLocation,
-  getLocations,
+  searchLocations,
   updateLocation,
 } from "../services/locationService";
 
 import type { Location } from "../types/location";
 
+const SEARCH_DEBOUNCE_MS = 300;
+const BROWSE_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 20;
+const MIN_SEARCH_LENGTH = 2;
+
 export default function LocationMaster() {
   const [locations, setLocations] = useState<Location[]>([]);
-  const [filteredLocations, setFilteredLocations] = useState<Location[]>([]);
 
   const [search, setSearch] = useState("");
 
@@ -47,57 +51,78 @@ export default function LocationMaster() {
     "success" | "error"
   >("success");
 
-  async function loadLocations() {
-    const data = await getLocations();
+  const requestId = useRef(0);
 
-    setLocations(data);
-    setFilteredLocations(data);
-  }
+  // Loads whatever is currently "in view": either the first browse page
+  // (no search text) or the current search results (>= 2 characters).
+  // This never loads the entire location_master table into memory.
+  const loadCurrentView = useCallback(async (query: string) => {
+    const trimmed = query.trim();
 
-  useEffect(() => {
-    loadLocations();
+    // Below the minimum search length, keep whatever is currently shown
+    // rather than firing an unnecessary request (avoids a query per
+    // keystroke for 0-1 character input).
+    if (trimmed.length > 0 && trimmed.length < MIN_SEARCH_LENGTH) {
+      return;
+    }
+
+    const currentRequestId = ++requestId.current;
+
+    const pageSize = trimmed ? SEARCH_PAGE_SIZE : BROWSE_PAGE_SIZE;
+
+    const data = await searchLocations(query, 0, pageSize);
+
+    if (currentRequestId === requestId.current) {
+      setLocations(data);
+    }
   }, []);
 
+  // Initial browse page on mount.
   useEffect(() => {
-    const value = search.toLowerCase().trim();
+    loadCurrentView("");
+  }, [loadCurrentView]);
 
-    const filtered = locations.filter((l) => {
-      return (
-        l.location_code.toLowerCase().includes(value) ||
-        l.location_description.toLowerCase().includes(value)
-      );
-    });
+  // Debounced server-side search as the user types.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadCurrentView(search);
+    }, SEARCH_DEBOUNCE_MS);
 
-    setFilteredLocations(filtered);
-  }, [search, locations]);
+    return () => clearTimeout(timer);
+  }, [search, loadCurrentView]);
 
-  async function handleSave(location: Location) {
-    try {
-      if (selectedLocation) {
-        await updateLocation(location);
+  const handleSave = useCallback(
+    async (location: Location) => {
+      try {
+        if (selectedLocation) {
+          await updateLocation(location);
 
-        setSnackbarSeverity("success");
-        setSnackbarMessage("Location updated successfully.");
-      } else {
-        await addLocation(location);
+          setSnackbarSeverity("success");
+          setSnackbarMessage("Location updated successfully.");
+        } else {
+          await addLocation(location);
 
-        setSnackbarSeverity("success");
-        setSnackbarMessage("Location saved successfully.");
+          setSnackbarSeverity("success");
+          setSnackbarMessage("Location saved successfully.");
+        }
+
+        // Refresh only the current (small) view instead of reloading the
+        // entire location_master table.
+        await loadCurrentView(search);
+
+        setShowForm(false);
+        setSelectedLocation(null);
+
+        setSnackbarOpen(true);
+      } catch (error: any) {
+        setSnackbarSeverity("error");
+        setSnackbarMessage(error.message);
+
+        setSnackbarOpen(true);
       }
-
-      await loadLocations();
-
-      setShowForm(false);
-      setSelectedLocation(null);
-
-      setSnackbarOpen(true);
-    } catch (error: any) {
-      setSnackbarSeverity("error");
-      setSnackbarMessage(error.message);
-
-      setSnackbarOpen(true);
-    }
-  }
+    },
+    [selectedLocation, search, loadCurrentView]
+  );
 
   function handleAdd() {
     setSelectedLocation(null);
@@ -109,13 +134,15 @@ export default function LocationMaster() {
     setShowForm(true);
   }
 
-  async function confirmDelete() {
+  const confirmDelete = useCallback(async () => {
     if (!deleteLocationData) return;
 
     try {
       await deleteLocation(deleteLocationData.location_code);
 
-      await loadLocations();
+      // Refresh only the current (small) view instead of reloading the
+      // entire location_master table.
+      await loadCurrentView(search);
 
       setSnackbarSeverity("success");
       setSnackbarMessage("Location deleted successfully.");
@@ -126,7 +153,7 @@ export default function LocationMaster() {
 
     setDeleteLocationData(null);
     setSnackbarOpen(true);
-  }
+  }, [deleteLocationData, search, loadCurrentView]);
 
   return (
     <Box>
@@ -187,7 +214,7 @@ export default function LocationMaster() {
       )}
 
       <LocationTable
-        locations={filteredLocations}
+        locations={locations}
         onEdit={handleEdit}
         onDelete={(location) =>
           setDeleteLocationData(location)

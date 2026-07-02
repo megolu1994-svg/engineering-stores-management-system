@@ -48,15 +48,15 @@ function escapeIlikeValue(value: string): string {
 /**
  * Single, reusable server-side material search used by both Material
  * Master and Material Allocation (via MaterialSearch). Searches
- * material_code and short_description directly in Supabase, returns only
- * the columns the UI needs, and is paginated via `.range()` so it stays
- * fast even with 100,000+ materials.
+ * material_code, short_description, and material_group directly in
+ * Supabase, returns only the columns the UI needs, and is paginated via
+ * `.range()` so it stays fast even with 100,000+ materials.
  *
  * - `query` empty -> returns the first page of active materials
  *   (ordered by material_code), useful for an initial/browse view.
  * - `query` non-empty -> returns up to `pageSize` active materials whose
- *   material_code or short_description contains the query (case
- *   insensitive).
+ *   material_code, short_description, or material_group contains the
+ *   query (case insensitive).
  */
 export async function searchMaterials(
   query: string,
@@ -78,7 +78,7 @@ export async function searchMaterials(
   if (trimmed) {
     const safe = escapeIlikeValue(trimmed);
     request = request.or(
-      `material_code.ilike.%${safe}%,short_description.ilike.%${safe}%`
+      `material_code.ilike.%${safe}%,short_description.ilike.%${safe}%,material_group.ilike.%${safe}%`
     );
   }
 
