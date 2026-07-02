@@ -11,11 +11,9 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Divider,
   IconButton,
   LinearProgress,
   Snackbar,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -93,6 +91,16 @@ const primaryButtonSx = {
   borderRadius: 3,
   justifyContent: "flex-start",
   px: 2.5,
+};
+
+const columnStackSx = {
+  display: "flex",
+  flexDirection: "column",
+};
+
+const rowStackSx = {
+  display: "flex",
+  flexDirection: "row",
 };
 
 export default function ImportExport() {
@@ -430,12 +438,12 @@ export default function ImportExport() {
         Download templates and import Material or Location data in bulk.
       </Typography>
 
-      <Stack spacing={3}>
+      <Box sx={{ ...columnStackSx, gap: 3 }}>
 
         {/* ============ MATERIAL MASTER ============ */}
         <Card elevation={0} sx={cardSx}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
+            <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1.5, mb: 2.5 }}>
               <Avatar sx={{ bgcolor: "primary.main", width: 44, height: 44 }}>
                 <Inventory2Icon />
               </Avatar>
@@ -447,9 +455,9 @@ export default function ImportExport() {
                   Download the template or import material data
                 </Typography>
               </Box>
-            </Stack>
+            </Box>
 
-            <Stack spacing={1.5}>
+            <Box sx={{ ...columnStackSx, gap: 1.5 }}>
               <Button
                 variant="outlined"
                 fullWidth
@@ -480,7 +488,7 @@ export default function ImportExport() {
               >
                 Import ESMS Material Template
               </Button>
-            </Stack>
+            </Box>
 
             {materialMode && (
               <Box
@@ -491,7 +499,7 @@ export default function ImportExport() {
                   bgcolor: "grey.50",
                 }}
               >
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1, mb: 1.5 }}>
                   <IconButton
                     onClick={closeMaterialImport}
                     size="small"
@@ -505,7 +513,7 @@ export default function ImportExport() {
                       ? "Import SAP Material Excel"
                       : "Import ESMS Material Template"}
                   </Typography>
-                </Stack>
+                </Box>
 
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   {materialMode === "sap"
@@ -513,7 +521,7 @@ export default function ImportExport() {
                     : "Upload a file using the ESMS template columns: Material Code, Description, UoM, Quantity, HSN Code."}
                 </Typography>
 
-                <Stack spacing={2}>
+                <Box sx={{ ...columnStackSx, gap: 2 }}>
                   <input
                     ref={materialInputRef}
                     type="file"
@@ -556,7 +564,7 @@ export default function ImportExport() {
                   </Button>
 
                   {materialValidation && (
-                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }} useFlexGap>
+                    <Box sx={{ ...rowStackSx, flexWrap: "wrap", gap: 1 }}>
                       <Chip
                         label={`Total Rows: ${materialValidation.totalRecords}`}
                       />
@@ -572,7 +580,7 @@ export default function ImportExport() {
                         label={`Invalid Rows: ${materialInvalidOnlyCount}`}
                         color="error"
                       />
-                    </Stack>
+                    </Box>
                   )}
 
                   {materialValidation && materialPreviewRows.length > 0 && (
@@ -663,7 +671,7 @@ export default function ImportExport() {
                       {materialSummary.failed}
                     </Alert>
                   )}
-                </Stack>
+                </Box>
               </Box>
             )}
           </CardContent>
@@ -672,7 +680,7 @@ export default function ImportExport() {
         {/* ============ LOCATION MASTER ============ */}
         <Card elevation={0} sx={cardSx}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
+            <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1.5, mb: 2.5 }}>
               <Avatar sx={{ bgcolor: "secondary.main", width: 44, height: 44 }}>
                 <PlaceIcon />
               </Avatar>
@@ -684,9 +692,9 @@ export default function ImportExport() {
                   Download the template or import location data
                 </Typography>
               </Box>
-            </Stack>
+            </Box>
 
-            <Stack spacing={1.5}>
+            <Box sx={{ ...columnStackSx, gap: 1.5 }}>
               <Button
                 variant="outlined"
                 fullWidth
@@ -706,7 +714,7 @@ export default function ImportExport() {
               >
                 Import Location Excel
               </Button>
-            </Stack>
+            </Box>
 
             {locationImportOpen && (
               <Box
@@ -717,7 +725,7 @@ export default function ImportExport() {
                   bgcolor: "grey.50",
                 }}
               >
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                <Box sx={{ ...rowStackSx, alignItems: "center", gap: 1, mb: 1.5 }}>
                   <IconButton
                     onClick={closeLocationImport}
                     size="small"
@@ -729,13 +737,13 @@ export default function ImportExport() {
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                     Import Location Excel
                   </Typography>
-                </Stack>
+                </Box>
 
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   Upload a file using the columns: Location Code, Description.
                 </Typography>
 
-                <Stack spacing={2}>
+                <Box sx={{ ...columnStackSx, gap: 2 }}>
                   <input
                     ref={locationInputRef}
                     type="file"
@@ -778,7 +786,7 @@ export default function ImportExport() {
                   </Button>
 
                   {locationValidation && (
-                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }} useFlexGap>
+                    <Box sx={{ ...rowStackSx, flexWrap: "wrap", gap: 1 }}>
                       <Chip
                         label={`Total Rows: ${locationValidation.totalRecords}`}
                       />
@@ -794,7 +802,7 @@ export default function ImportExport() {
                         label={`Invalid Rows: ${locationInvalidOnlyCount}`}
                         color="error"
                       />
-                    </Stack>
+                    </Box>
                   )}
 
                   {locationValidation && locationPreviewRows.length > 0 && (
@@ -879,13 +887,13 @@ export default function ImportExport() {
                       {locationSummary.failed}
                     </Alert>
                   )}
-                </Stack>
+                </Box>
               </Box>
             )}
           </CardContent>
         </Card>
 
-      </Stack>
+      </Box>
 
       <Snackbar
         open={snackbar.open}
