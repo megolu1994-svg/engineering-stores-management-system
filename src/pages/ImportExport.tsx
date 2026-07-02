@@ -287,9 +287,9 @@ export default function ImportExport() {
     <Box sx={{ pb: 4 }}>
       <Typography
         variant="h5"
-        fontWeight="bold"
         sx={{
           mb: 3,
+          fontWeight: "bold",
           fontSize: { xs: "1.25rem", sm: "1.5rem", md: "2rem" },
         }}
       >
@@ -300,7 +300,7 @@ export default function ImportExport() {
         <Grid size={{ xs: 12, md: 6 }}>
           <Card elevation={3} sx={{ borderRadius: 2 }}>
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Typography variant="h6" fontWeight="bold" gutterBottom>
+              <Typography variant="h6" sx={{ fontWeight: "bold" }} gutterBottom>
                 Material Master Import
               </Typography>
 
@@ -357,7 +357,7 @@ export default function ImportExport() {
                   <Stack
                     direction="row"
                     spacing={1}
-                    flexWrap="wrap"
+                    sx={{ flexWrap: "wrap" }}
                     useFlexGap
                   >
                     <Chip
@@ -477,7 +477,7 @@ export default function ImportExport() {
         <Grid size={{ xs: 12, md: 6 }}>
           <Card elevation={3} sx={{ borderRadius: 2 }}>
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Typography variant="h6" fontWeight="bold" gutterBottom>
+              <Typography variant="h6" sx={{ fontWeight: "bold" }} gutterBottom>
                 Location Master Import
               </Typography>
 
@@ -533,7 +533,7 @@ export default function ImportExport() {
                   <Stack
                     direction="row"
                     spacing={1}
-                    flexWrap="wrap"
+                    sx={{ flexWrap: "wrap" }}
                     useFlexGap
                   >
                     <Chip

@@ -2,96 +2,98 @@ import { useState } from "react";
 
 import {
   Button,
-    Paper,
-      Stack,
-        TextField,
-          Typography,
-          } from "@mui/material";
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
 
-          import LocationSearch from "./LocationSearch";
+import LocationSearch from "./LocationSearch";
 
-          import type { Location } from "../types/location";
+import type { Location } from "../types/location";
 
-          interface Props {
-            onAllocate: (
-                locationCode: string,
-                    quantity: number
-                      ) => void;
-                      }
+interface Props {
+  onAllocate: (
+    locationCode: string,
+    quantity: number
+  ) => void;
+}
 
-                      export default function AllocationForm({
-                        onAllocate,
-                        }: Props) {
+export default function AllocationForm({
+  onAllocate,
+}: Props) {
 
-                          const [location, setLocation] =
-                              useState<Location | null>(null);
+  const [location, setLocation] =
+    useState<Location | null>(null);
 
-                                const [quantity, setQuantity] =
-                                    useState("");
+  const [quantity, setQuantity] =
+    useState("");
 
-                                      function handleAllocate() {
+  function handleAllocate() {
 
-                                          if (!location) {
-                                                alert("Please select a location.");
-                                                      return;
-                                                          }
+    if (!location) {
+      alert("Please select a location.");
+      return;
+    }
 
-                                                              if (Number(quantity) <= 0) {
-                                                                    alert("Enter a valid quantity.");
-                                                                          return;
-                                                                              }
+    if (Number(quantity) <= 0) {
+      alert("Enter a valid quantity.");
+      return;
+    }
 
-                                                                                  onAllocate(
-                                                                                        location.location_code,
-                                                                                              Number(quantity)
-                                                                                                  );
+    onAllocate(
+      location.location_code,
+      Number(quantity)
+    );
 
-                                                                                                      setLocation(null);
-                                                                                                          setQuantity("");
-                                                                                                            }
+    setLocation(null);
+    setQuantity("");
+  }
 
-                                                                                                              return (
-                                                                                                                  <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, mb: 2, borderRadius: 2 }}>
+  return (
+    <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, mb: 2, borderRadius: 2 }}>
 
-                                                                                                                        <Typography
-                                                                                                                                variant="subtitle1"
-                                                                                                                                        fontWeight="bold"
-                                                                                                                                                mb={2}
-                                                                                                                                                      >
-                                                                                                                                                              Allocate Stock
-                                                                                                                                                                    </Typography>
+      <Typography
+        variant="subtitle1"
+        sx={{ fontWeight: "bold", mb: 2 }}
+      >
+        Allocate Stock
+      </Typography>
 
-                                                                                                                                                                          <Stack spacing={2}>
+      <Stack spacing={2}>
 
-                                                                                                                                                                                  <LocationSearch
-                                                                                                                                                                                            value={location}
-                                                                                                                                                                                                      onChange={setLocation}
-                                                                                                                                                                                                              />
+        <LocationSearch
+          value={location}
+          onChange={setLocation}
+        />
 
-                                                                                                                                                                                                                      <TextField
-                                                                                                                                                                                                                                label="Quantity"
-                                                                                                                                                                                                                                          type="number"
-                                                                                                                                                                                                                                                    fullWidth
-                                                                                                                                                                                                                                                              value={quantity}
-                                                                                                                                                                                                                                                                        onChange={(e) =>
-                                                                                                                                                                                                                                                                                    setQuantity(e.target.value)
-                                                                                                                                                                                                                                                                                              }
-                                                                                                                                                                                                                                                                                                        inputProps={{ inputMode: "numeric" }}
-                                                                                                                                                                                                                                                                                                                />
+        <TextField
+          label="Quantity"
+          type="number"
+          fullWidth
+          value={quantity}
+          onChange={(e) =>
+            setQuantity(e.target.value)
+          }
+          slotProps={{
+            htmlInput: {
+              inputMode: "numeric",
+            },
+          }}
+        />
 
-                                                                                                                                                                                                                                                                                                                        <Button
-                                                                                                                                                                                                                                                                                                                                  variant="contained"
-                                                                                                                                                                                                                                                                                                                                            size="large"
-                                                                                                                                                                                                                                                                                                                                                      fullWidth
-                                                                                                                                                                                                                                                                                                                                                                onClick={handleAllocate}
-                                                                                                                                                                                                                                                                                                                                                                          sx={{ minHeight: 48, fontWeight: "bold" }}
-                                                                                                                                                                                                                                                                                                                                                                                  >
-                                                                                                                                                                                                                                                                                                                                                                                            Allocate Stock
-                                                                                                                                                                                                                                                                                                                                                                                                    </Button>
+        <Button
+          variant="contained"
+          size="large"
+          fullWidth
+          onClick={handleAllocate}
+          sx={{ minHeight: 48, fontWeight: "bold" }}
+        >
+          Allocate Stock
+        </Button>
 
-                                                                                                                                                                                                                                                                                                                                                                                                          </Stack>
+      </Stack>
 
-                                                                                                                                                                                                                                                                                                                                                                                                              </Paper>
-                                                                                                                                                                                                                                                                                                                                                                                                                );
-                                                                                                                                                                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                                                                                                                                                                
+    </Paper>
+  );
+}
