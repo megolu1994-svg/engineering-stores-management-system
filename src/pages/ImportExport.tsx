@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -11,7 +12,7 @@ import {
   Chip,
   CircularProgress,
   Divider,
-  Grid,
+  IconButton,
   LinearProgress,
   Snackbar,
   Stack,
@@ -24,9 +25,14 @@ import {
   Typography,
 } from "@mui/material";
 
+import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
-import VisibilityIcon from "@mui/icons-material/Visibility";
+import CloudSyncIcon from "@mui/icons-material/CloudSync";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import PlaceIcon from "@mui/icons-material/Place";
 
 import {
   parseMaterialExcelRows,
@@ -46,6 +52,7 @@ const IMPORT_BATCH_SIZE = 500;
 const PREVIEW_ROW_LIMIT = 20;
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
+type MaterialImportMode = "sap" | "esms" | null;
 
 async function readExcelFile(
   file: File
@@ -58,6 +65,36 @@ async function readExcelFile(
   return json as Record<string, unknown>[];
 }
 
+function downloadWorkbook(
+  headers: string[],
+  rows: (string | number)[][],
+  filename: string
+) {
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+  XLSX.writeFile(workbook, filename);
+}
+
+function isDuplicateError(errors: string[]) {
+  return errors.some((e) => e.toLowerCase().includes("duplicate"));
+}
+
+const cardSx = {
+  borderRadius: 4,
+  boxShadow: "0 4px 20px rgba(15, 23, 42, 0.08)",
+};
+
+const primaryButtonSx = {
+  minHeight: 56,
+  fontWeight: 700,
+  fontSize: "0.95rem",
+  borderRadius: 3,
+  justifyContent: "flex-start",
+  px: 2.5,
+};
+
 export default function ImportExport() {
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -68,6 +105,9 @@ export default function ImportExport() {
   function showSnackbar(message: string, severity: SnackbarSeverity) {
     setSnackbar({ open: true, message, severity });
   }
+
+  // ---------------- Material Master ----------------
+  const [materialMode, setMaterialMode] = useState<MaterialImportMode>(null);
 
   const materialInputRef = useRef<HTMLInputElement | null>(null);
   const [materialFile, setMaterialFile] = useState<File | null>(null);
@@ -80,16 +120,34 @@ export default function ImportExport() {
   const [materialSummary, setMaterialSummary] =
     useState<MaterialImportSummary | null>(null);
 
-  const locationInputRef = useRef<HTMLInputElement | null>(null);
-  const [locationFile, setLocationFile] = useState<File | null>(null);
-  const [locationPreviewLoading, setLocationPreviewLoading] =
-    useState(false);
-  const [locationValidation, setLocationValidation] =
-    useState<LocationValidationResult | null>(null);
-  const [locationImporting, setLocationImporting] = useState(false);
-  const [locationProgress, setLocationProgress] = useState(0);
-  const [locationSummary, setLocationSummary] =
-    useState<LocationImportSummary | null>(null);
+  function openMaterialImport(mode: "sap" | "esms") {
+    setMaterialMode(mode);
+    setMaterialFile(null);
+    setMaterialValidation(null);
+    setMaterialSummary(null);
+    setMaterialProgress(0);
+  }
+
+  function closeMaterialImport() {
+    setMaterialMode(null);
+    setMaterialFile(null);
+    setMaterialValidation(null);
+    setMaterialSummary(null);
+    setMaterialProgress(0);
+  }
+
+  function handleDownloadMaterialTemplate() {
+    downloadWorkbook(
+      ["Material Code", "Description", "UoM", "Quantity", "HSN Code"],
+      [
+        ["9000000001", "SAMPLE BEARING 6205 2RS", "EA", 10, "84821000"],
+        ["9000000002", "SAMPLE GASKET SET", "EA", 25, "40169300"],
+        ["9000000003", "SAMPLE HYDRAULIC OIL 68", "L", 200, "27101983"],
+      ],
+      "ESMS_Material_Template.xlsx"
+    );
+    showSnackbar("Material template downloaded.", "success");
+  }
 
   function handleMaterialFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -159,6 +217,49 @@ export default function ImportExport() {
     } finally {
       setMaterialImporting(false);
     }
+  }
+
+  // ---------------- Location Master ----------------
+  const [locationImportOpen, setLocationImportOpen] = useState(false);
+
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
+  const [locationFile, setLocationFile] = useState<File | null>(null);
+  const [locationPreviewLoading, setLocationPreviewLoading] =
+    useState(false);
+  const [locationValidation, setLocationValidation] =
+    useState<LocationValidationResult | null>(null);
+  const [locationImporting, setLocationImporting] = useState(false);
+  const [locationProgress, setLocationProgress] = useState(0);
+  const [locationSummary, setLocationSummary] =
+    useState<LocationImportSummary | null>(null);
+
+  function openLocationImport() {
+    setLocationImportOpen(true);
+    setLocationFile(null);
+    setLocationValidation(null);
+    setLocationSummary(null);
+    setLocationProgress(0);
+  }
+
+  function closeLocationImport() {
+    setLocationImportOpen(false);
+    setLocationFile(null);
+    setLocationValidation(null);
+    setLocationSummary(null);
+    setLocationProgress(0);
+  }
+
+  function handleDownloadLocationTemplate() {
+    downloadWorkbook(
+      ["Location Code", "Description"],
+      [
+        ["WH-A-01-01", "Warehouse A, Rack 1, Bin 1"],
+        ["WH-A-01-02", "Warehouse A, Rack 1, Bin 2"],
+        ["WH-B-02-05", "Warehouse B, Rack 2, Bin 5"],
+      ],
+      "ESMS_Location_Template.xlsx"
+    );
+    showSnackbar("Location template downloaded.", "success");
   }
 
   function handleLocationFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -231,6 +332,7 @@ export default function ImportExport() {
     }
   }
 
+  // ---------------- Derived preview data ----------------
   const materialPreviewRows = materialValidation
     ? [
         ...materialValidation.validRows.map((row) => ({
@@ -241,24 +343,33 @@ export default function ImportExport() {
           uom: row.uom,
           current_quantity: String(row.current_quantity),
           hsn_code: row.hsn_code,
-          material_group: row.material_group,
           errors: [] as string[],
         })),
         ...materialValidation.invalidRows.map((row) => ({
           rowNumber: row.rowNumber,
-          status: "Invalid" as const,
+          status: isDuplicateError(row.errors)
+            ? ("Duplicate" as const)
+            : ("Invalid" as const),
           material_code: row.fields.material_code,
           short_description: row.fields.short_description,
           uom: row.fields.uom,
           current_quantity: row.fields.current_quantity,
           hsn_code: row.fields.hsn_code,
-          material_group: row.fields.material_group,
           errors: row.errors,
         })),
       ]
         .sort((a, b) => a.rowNumber - b.rowNumber)
         .slice(0, PREVIEW_ROW_LIMIT)
     : [];
+
+  const materialDuplicateCount = materialValidation
+    ? materialValidation.invalidRows.filter((r) => isDuplicateError(r.errors))
+        .length
+    : 0;
+
+  const materialInvalidOnlyCount = materialValidation
+    ? materialValidation.invalidRows.length - materialDuplicateCount
+    : 0;
 
   const locationPreviewRows = locationValidation
     ? [
@@ -267,15 +378,15 @@ export default function ImportExport() {
           status: "Valid" as const,
           location_code: row.location_code,
           location_description: row.location_description,
-          location_type: row.location_type,
           errors: [] as string[],
         })),
         ...locationValidation.invalidRows.map((row) => ({
           rowNumber: row.rowNumber,
-          status: "Invalid" as const,
+          status: isDuplicateError(row.errors)
+            ? ("Duplicate" as const)
+            : ("Invalid" as const),
           location_code: row.fields.location_code,
           location_description: row.fields.location_description,
-          location_type: row.fields.location_type,
           errors: row.errors,
         })),
       ]
@@ -283,367 +394,498 @@ export default function ImportExport() {
         .slice(0, PREVIEW_ROW_LIMIT)
     : [];
 
+  const locationDuplicateCount = locationValidation
+    ? locationValidation.invalidRows.filter((r) => isDuplicateError(r.errors))
+        .length
+    : 0;
+
+  const locationInvalidOnlyCount = locationValidation
+    ? locationValidation.invalidRows.length - locationDuplicateCount
+    : 0;
+
+  function statusChipColor(status: "Valid" | "Duplicate" | "Invalid") {
+    if (status === "Valid") return "success";
+    if (status === "Duplicate") return "warning";
+    return "error";
+  }
+
   return (
     <Box sx={{ pb: 4 }}>
       <Typography
         variant="h5"
         sx={{
-          mb: 3,
-          fontWeight: "bold",
-          fontSize: { xs: "1.25rem", sm: "1.5rem", md: "2rem" },
+          fontWeight: 800,
+          letterSpacing: -0.5,
+          fontSize: { xs: "1.4rem", sm: "1.75rem", md: "2.1rem" },
         }}
       >
-        Import / Export
+        Import Center
       </Typography>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card elevation={3} sx={{ borderRadius: 2 }}>
-            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Typography variant="h6" sx={{ fontWeight: "bold" }} gutterBottom>
-                Material Master Import
-              </Typography>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ mb: 3, mt: 0.5 }}
+      >
+        Download templates and import Material or Location data in bulk.
+      </Typography>
 
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Columns: Material Code, Short Description, UoM, Current
-                Quantity, HSN Code, Material Group
-              </Typography>
+      <Stack spacing={3}>
 
-              <Divider sx={{ mb: 2 }} />
+        {/* ============ MATERIAL MASTER ============ */}
+        <Card elevation={0} sx={cardSx}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
+              <Avatar sx={{ bgcolor: "primary.main", width: 44, height: 44 }}>
+                <Inventory2Icon />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Material Master
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Download the template or import material data
+                </Typography>
+              </Box>
+            </Stack>
 
-              <Stack spacing={2}>
-                <input
-                  ref={materialInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  hidden
-                  onChange={handleMaterialFileChange}
-                />
+            <Stack spacing={1.5}>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<DownloadIcon />}
+                onClick={handleDownloadMaterialTemplate}
+                sx={primaryButtonSx}
+              >
+                Download ESMS Material Template
+              </Button>
 
-                <Button
-                  variant="outlined"
-                  size="large"
-                  fullWidth
-                  startIcon={<UploadFileIcon />}
-                  onClick={() => materialInputRef.current?.click()}
-                  sx={{ minHeight: 48 }}
-                >
-                  Choose Excel File
-                </Button>
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={<CloudSyncIcon />}
+                onClick={() => openMaterialImport("sap")}
+                sx={primaryButtonSx}
+              >
+                Import SAP Material Excel
+              </Button>
 
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {materialFile ? materialFile.name : "No file selected"}
+              <Button
+                variant="contained"
+                color="secondary"
+                fullWidth
+                startIcon={<CloudUploadIcon />}
+                onClick={() => openMaterialImport("esms")}
+                sx={primaryButtonSx}
+              >
+                Import ESMS Material Template
+              </Button>
+            </Stack>
+
+            {materialMode && (
+              <Box
+                sx={{
+                  mt: 3,
+                  p: { xs: 2, sm: 2.5 },
+                  borderRadius: 3,
+                  bgcolor: "grey.50",
+                }}
+              >
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                  <IconButton
+                    onClick={closeMaterialImport}
+                    size="small"
+                    aria-label="Back"
+                    sx={{ minWidth: 40, minHeight: 40 }}
+                  >
+                    <ArrowBackIcon fontSize="small" />
+                  </IconButton>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    {materialMode === "sap"
+                      ? "Import SAP Material Excel"
+                      : "Import ESMS Material Template"}
+                  </Typography>
+                </Stack>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {materialMode === "sap"
+                    ? "Upload the raw Excel export from SAP. Columns such as Material, Material Description, EUn, Qty in UnE and HSN Code (if present) are mapped automatically."
+                    : "Upload a file using the ESMS template columns: Material Code, Description, UoM, Quantity, HSN Code."}
                 </Typography>
 
-                <Button
-                  variant="contained"
-                  size="large"
-                  fullWidth
-                  startIcon={
-                    materialPreviewLoading ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <VisibilityIcon />
-                    )
-                  }
-                  onClick={handleMaterialPreview}
-                  disabled={!materialFile || materialPreviewLoading}
-                  sx={{ minHeight: 48 }}
-                >
-                  Preview
-                </Button>
+                <Stack spacing={2}>
+                  <input
+                    ref={materialInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    hidden
+                    onChange={handleMaterialFileChange}
+                  />
 
-                {materialValidation && (
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ flexWrap: "wrap" }}
-                    useFlexGap
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    fullWidth
+                    startIcon={<UploadFileIcon />}
+                    onClick={() => materialInputRef.current?.click()}
+                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 600 }}
                   >
-                    <Chip
-                      label={`Total: ${materialValidation.totalRecords}`}
-                    />
-                    <Chip
-                      label={`Valid: ${materialValidation.validRows.length}`}
-                      color="success"
-                    />
-                    <Chip
-                      label={`Invalid: ${materialValidation.invalidRows.length}`}
-                      color="error"
-                    />
-                  </Stack>
-                )}
+                    Choose Excel File
+                  </Button>
 
-                {materialValidation && materialPreviewRows.length > 0 && (
-                  <TableContainer sx={{ maxHeight: 320, overflowX: "auto" }}>
-                    <Table size="small" stickyHeader>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Row</TableCell>
-                          <TableCell>Material Code</TableCell>
-                          <TableCell>Description</TableCell>
-                          <TableCell>UoM</TableCell>
-                          <TableCell>Qty</TableCell>
-                          <TableCell>HSN</TableCell>
-                          <TableCell>Group</TableCell>
-                          <TableCell>Status</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {materialPreviewRows.map((row) => (
-                          <TableRow key={row.rowNumber}>
-                            <TableCell>{row.rowNumber}</TableCell>
-                            <TableCell>{row.material_code}</TableCell>
-                            <TableCell>{row.short_description}</TableCell>
-                            <TableCell>{row.uom}</TableCell>
-                            <TableCell>{row.current_quantity}</TableCell>
-                            <TableCell>{row.hsn_code}</TableCell>
-                            <TableCell>{row.material_group}</TableCell>
-                            <TableCell>
-                              <Chip
-                                size="small"
-                                label={row.status}
-                                color={
-                                  row.status === "Valid"
-                                    ? "success"
-                                    : "error"
-                                }
-                                title={row.errors.join(", ")}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                )}
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {materialFile ? materialFile.name : "No file selected"}
+                  </Typography>
 
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  fullWidth
-                  startIcon={
-                    materialImporting ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <CloudUploadIcon />
-                    )
-                  }
-                  onClick={handleMaterialImport}
-                  disabled={
-                    !materialValidation ||
-                    materialValidation.validRows.length === 0 ||
-                    materialImporting
-                  }
-                  sx={{ minHeight: 48 }}
-                >
-                  Import
-                </Button>
-
-                {materialImporting && (
-                  <Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={materialProgress}
-                      sx={{ height: 8, borderRadius: 4 }}
-                    />
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ mt: 0.5, display: "block" }}
-                    >
-                      {materialProgress}% complete
-                    </Typography>
-                  </Box>
-                )}
-
-                {materialSummary && (
-                  <Alert
-                    severity={
-                      materialSummary.failed > 0 ? "warning" : "success"
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    startIcon={
+                      materialPreviewLoading ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <VisibilityIcon />
+                      )
                     }
+                    onClick={handleMaterialPreview}
+                    disabled={!materialFile || materialPreviewLoading}
+                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
                   >
-                    Import complete. Imported: {materialSummary.imported},
-                    Updated: {materialSummary.updated}, Failed:{" "}
-                    {materialSummary.failed}
-                  </Alert>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
+                    Preview
+                  </Button>
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card elevation={3} sx={{ borderRadius: 2 }}>
-            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Typography variant="h6" sx={{ fontWeight: "bold" }} gutterBottom>
-                Location Master Import
-              </Typography>
+                  {materialValidation && (
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }} useFlexGap>
+                      <Chip
+                        label={`Total Rows: ${materialValidation.totalRecords}`}
+                      />
+                      <Chip
+                        label={`Valid Rows: ${materialValidation.validRows.length}`}
+                        color="success"
+                      />
+                      <Chip
+                        label={`Duplicate Rows: ${materialDuplicateCount}`}
+                        color="warning"
+                      />
+                      <Chip
+                        label={`Invalid Rows: ${materialInvalidOnlyCount}`}
+                        color="error"
+                      />
+                    </Stack>
+                  )}
 
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Columns: Location Code, Location Description, Location Type
-              </Typography>
+                  {materialValidation && materialPreviewRows.length > 0 && (
+                    <TableContainer sx={{ maxHeight: 320, overflowX: "auto", borderRadius: 2 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Row</TableCell>
+                            <TableCell>Material Code</TableCell>
+                            <TableCell>Description</TableCell>
+                            <TableCell>UoM</TableCell>
+                            <TableCell>Qty</TableCell>
+                            <TableCell>HSN</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {materialPreviewRows.map((row) => (
+                            <TableRow key={row.rowNumber}>
+                              <TableCell>{row.rowNumber}</TableCell>
+                              <TableCell>{row.material_code}</TableCell>
+                              <TableCell>{row.short_description}</TableCell>
+                              <TableCell>{row.uom}</TableCell>
+                              <TableCell>{row.current_quantity}</TableCell>
+                              <TableCell>{row.hsn_code}</TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={row.status}
+                                  color={statusChipColor(row.status)}
+                                  title={row.errors.join(", ")}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
 
-              <Divider sx={{ mb: 2 }} />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    fullWidth
+                    startIcon={
+                      materialImporting ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <CloudUploadIcon />
+                      )
+                    }
+                    onClick={handleMaterialImport}
+                    disabled={
+                      !materialValidation ||
+                      materialValidation.validRows.length === 0 ||
+                      materialImporting
+                    }
+                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+                  >
+                    Import
+                  </Button>
 
-              <Stack spacing={2}>
-                <input
-                  ref={locationInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  hidden
-                  onChange={handleLocationFileChange}
-                />
+                  {materialImporting && (
+                    <Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={materialProgress}
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 0.5, display: "block" }}
+                      >
+                        {materialProgress}% complete
+                      </Typography>
+                    </Box>
+                  )}
 
-                <Button
-                  variant="outlined"
-                  size="large"
-                  fullWidth
-                  startIcon={<UploadFileIcon />}
-                  onClick={() => locationInputRef.current?.click()}
-                  sx={{ minHeight: 48 }}
-                >
-                  Choose Excel File
-                </Button>
+                  {materialSummary && (
+                    <Alert
+                      severity={materialSummary.failed > 0 ? "warning" : "success"}
+                      sx={{ borderRadius: 2 }}
+                    >
+                      Import complete. Imported: {materialSummary.imported},
+                      Updated: {materialSummary.updated}, Failed:{" "}
+                      {materialSummary.failed}
+                    </Alert>
+                  )}
+                </Stack>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
 
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {locationFile ? locationFile.name : "No file selected"}
+        {/* ============ LOCATION MASTER ============ */}
+        <Card elevation={0} sx={cardSx}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
+              <Avatar sx={{ bgcolor: "secondary.main", width: 44, height: 44 }}>
+                <PlaceIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Location Master
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Download the template or import location data
+                </Typography>
+              </Box>
+            </Stack>
+
+            <Stack spacing={1.5}>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<DownloadIcon />}
+                onClick={handleDownloadLocationTemplate}
+                sx={primaryButtonSx}
+              >
+                Download ESMS Location Template
+              </Button>
+
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={<CloudUploadIcon />}
+                onClick={openLocationImport}
+                sx={primaryButtonSx}
+              >
+                Import Location Excel
+              </Button>
+            </Stack>
+
+            {locationImportOpen && (
+              <Box
+                sx={{
+                  mt: 3,
+                  p: { xs: 2, sm: 2.5 },
+                  borderRadius: 3,
+                  bgcolor: "grey.50",
+                }}
+              >
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                  <IconButton
+                    onClick={closeLocationImport}
+                    size="small"
+                    aria-label="Back"
+                    sx={{ minWidth: 40, minHeight: 40 }}
+                  >
+                    <ArrowBackIcon fontSize="small" />
+                  </IconButton>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Import Location Excel
+                  </Typography>
+                </Stack>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Upload a file using the columns: Location Code, Description.
                 </Typography>
 
-                <Button
-                  variant="contained"
-                  size="large"
-                  fullWidth
-                  startIcon={
-                    locationPreviewLoading ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <VisibilityIcon />
-                    )
-                  }
-                  onClick={handleLocationPreview}
-                  disabled={!locationFile || locationPreviewLoading}
-                  sx={{ minHeight: 48 }}
-                >
-                  Preview
-                </Button>
+                <Stack spacing={2}>
+                  <input
+                    ref={locationInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    hidden
+                    onChange={handleLocationFileChange}
+                  />
 
-                {locationValidation && (
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ flexWrap: "wrap" }}
-                    useFlexGap
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    fullWidth
+                    startIcon={<UploadFileIcon />}
+                    onClick={() => locationInputRef.current?.click()}
+                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 600 }}
                   >
-                    <Chip
-                      label={`Total: ${locationValidation.totalRecords}`}
-                    />
-                    <Chip
-                      label={`Valid: ${locationValidation.validRows.length}`}
-                      color="success"
-                    />
-                    <Chip
-                      label={`Invalid: ${locationValidation.invalidRows.length}`}
-                      color="error"
-                    />
-                  </Stack>
-                )}
+                    Choose Excel File
+                  </Button>
 
-                {locationValidation && locationPreviewRows.length > 0 && (
-                  <TableContainer sx={{ maxHeight: 320, overflowX: "auto" }}>
-                    <Table size="small" stickyHeader>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Row</TableCell>
-                          <TableCell>Location Code</TableCell>
-                          <TableCell>Description</TableCell>
-                          <TableCell>Type</TableCell>
-                          <TableCell>Status</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {locationPreviewRows.map((row) => (
-                          <TableRow key={row.rowNumber}>
-                            <TableCell>{row.rowNumber}</TableCell>
-                            <TableCell>{row.location_code}</TableCell>
-                            <TableCell>{row.location_description}</TableCell>
-                            <TableCell>{row.location_type}</TableCell>
-                            <TableCell>
-                              <Chip
-                                size="small"
-                                label={row.status}
-                                color={
-                                  row.status === "Valid"
-                                    ? "success"
-                                    : "error"
-                                }
-                                title={row.errors.join(", ")}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                )}
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {locationFile ? locationFile.name : "No file selected"}
+                  </Typography>
 
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  fullWidth
-                  startIcon={
-                    locationImporting ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <CloudUploadIcon />
-                    )
-                  }
-                  onClick={handleLocationImport}
-                  disabled={
-                    !locationValidation ||
-                    locationValidation.validRows.length === 0 ||
-                    locationImporting
-                  }
-                  sx={{ minHeight: 48 }}
-                >
-                  Import
-                </Button>
-
-                {locationImporting && (
-                  <Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={locationProgress}
-                      sx={{ height: 8, borderRadius: 4 }}
-                    />
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ mt: 0.5, display: "block" }}
-                    >
-                      {locationProgress}% complete
-                    </Typography>
-                  </Box>
-                )}
-
-                {locationSummary && (
-                  <Alert
-                    severity={
-                      locationSummary.failed > 0 ? "warning" : "success"
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    startIcon={
+                      locationPreviewLoading ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <VisibilityIcon />
+                      )
                     }
+                    onClick={handleLocationPreview}
+                    disabled={!locationFile || locationPreviewLoading}
+                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
                   >
-                    Import complete. Imported: {locationSummary.imported},
-                    Updated: {locationSummary.updated}, Failed:{" "}
-                    {locationSummary.failed}
-                  </Alert>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+                    Preview
+                  </Button>
+
+                  {locationValidation && (
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }} useFlexGap>
+                      <Chip
+                        label={`Total Rows: ${locationValidation.totalRecords}`}
+                      />
+                      <Chip
+                        label={`Valid Rows: ${locationValidation.validRows.length}`}
+                        color="success"
+                      />
+                      <Chip
+                        label={`Duplicate Rows: ${locationDuplicateCount}`}
+                        color="warning"
+                      />
+                      <Chip
+                        label={`Invalid Rows: ${locationInvalidOnlyCount}`}
+                        color="error"
+                      />
+                    </Stack>
+                  )}
+
+                  {locationValidation && locationPreviewRows.length > 0 && (
+                    <TableContainer sx={{ maxHeight: 320, overflowX: "auto", borderRadius: 2 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Row</TableCell>
+                            <TableCell>Location Code</TableCell>
+                            <TableCell>Description</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {locationPreviewRows.map((row) => (
+                            <TableRow key={row.rowNumber}>
+                              <TableCell>{row.rowNumber}</TableCell>
+                              <TableCell>{row.location_code}</TableCell>
+                              <TableCell>{row.location_description}</TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={row.status}
+                                  color={statusChipColor(row.status)}
+                                  title={row.errors.join(", ")}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    fullWidth
+                    startIcon={
+                      locationImporting ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <CloudUploadIcon />
+                      )
+                    }
+                    onClick={handleLocationImport}
+                    disabled={
+                      !locationValidation ||
+                      locationValidation.validRows.length === 0 ||
+                      locationImporting
+                    }
+                    sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+                  >
+                    Import
+                  </Button>
+
+                  {locationImporting && (
+                    <Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={locationProgress}
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 0.5, display: "block" }}
+                      >
+                        {locationProgress}% complete
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {locationSummary && (
+                    <Alert
+                      severity={locationSummary.failed > 0 ? "warning" : "success"}
+                      sx={{ borderRadius: 2 }}
+                    >
+                      Import complete. Imported: {locationSummary.imported},
+                      Updated: {locationSummary.updated}, Failed:{" "}
+                      {locationSummary.failed}
+                    </Alert>
+                  )}
+                </Stack>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+
+      </Stack>
 
       <Snackbar
         open={snackbar.open}

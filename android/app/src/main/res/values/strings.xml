@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">engineering-stores-management-system</string>
+    <string name="title_activity_main">engineering-stores-management-system</string>
+    <string name="package_name">com.esms.engineeringstores</string>
+    <string name="custom_url_scheme">com.esms.engineeringstores</string>
+</resources>

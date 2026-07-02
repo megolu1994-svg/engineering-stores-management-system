@@ -25,6 +25,36 @@ interface Props {
   onDelete: (material: Material) => void;
 }
 
+function StatBlock({ label, value }: { label: string; value: string | number }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        bgcolor: "grey.50",
+        borderRadius: 2,
+        px: 1.25,
+        py: 0.75,
+      }}
+    >
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block", fontWeight: 600, letterSpacing: 0.3 }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        variant="body2"
+        noWrap
+        sx={{ fontWeight: 600 }}
+      >
+        {value || "-"}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function MaterialTable({
   materials,
   onEdit,
@@ -40,9 +70,9 @@ export default function MaterialTable({
       return (
         <Card
           variant="outlined"
-          sx={{ p: 3, textAlign: "center", borderRadius: 2 }}
+          sx={{ p: 4, textAlign: "center", borderRadius: 3 }}
         >
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body1" color="text.secondary">
             No materials found.
           </Typography>
         </Card>
@@ -50,47 +80,56 @@ export default function MaterialTable({
     }
 
     return (
-      <Stack spacing={1.5}>
+      <Stack spacing={2}>
         {materials.map((material) => (
           <Card
             key={material.material_code}
-            variant="outlined"
-            sx={{ borderRadius: 2 }}
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              boxShadow: "0 2px 14px rgba(15, 23, 42, 0.08)",
+              overflow: "hidden",
+            }}
           >
-            <CardContent sx={{ pb: 1.5 }}>
+            <CardContent sx={{ p: 2.25, pb: 2 }}>
               <Box
                 sx={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "flex-start",
-                  gap: 1,
+                  gap: 1.5,
+                  mb: 1.5,
                 }}
               >
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} noWrap>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: 700, fontSize: "1.05rem" }}
+                    noWrap
+                  >
                     {material.material_code}
                   </Typography>
 
                   <Typography
                     variant="body2"
                     color="text.secondary"
-                    sx={{ overflowWrap: "break-word" }}
+                    sx={{ overflowWrap: "break-word", mt: 0.25 }}
                   >
                     {material.short_description}
                   </Typography>
                 </Box>
 
-                <Box sx={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                <Box sx={{ textAlign: "right", whiteSpace: "nowrap", flexShrink: 0 }}>
                   <Typography
                     variant="caption"
                     color="text.secondary"
-                    sx={{ display: "block" }}
+                    sx={{ display: "block", fontWeight: 600 }}
                   >
-                    Qty
+                    Stock
                   </Typography>
                   <Typography
-                    variant="subtitle1"
-                    sx={{ fontWeight: "bold" }}
+                    variant="h6"
+                    sx={{ fontWeight: 800 }}
                     color="primary.main"
                   >
                     {material.current_quantity}
@@ -98,20 +137,19 @@ export default function MaterialTable({
                 </Box>
               </Box>
 
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ mt: 1, display: "block" }}
-              >
-                UoM: {material.uom}
-              </Typography>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <StatBlock label="UOM" value={material.uom} />
+                <StatBlock label="GROUP" value={material.material_group} />
+                <StatBlock label="HSN" value={material.hsn_code} />
+              </Box>
             </CardContent>
 
             <Divider />
 
-            <CardActions sx={{ justifyContent: "flex-end", px: 1.5, py: 1 }}>
+            <CardActions sx={{ justifyContent: "flex-end", px: 1.5, py: 1, gap: 0.5 }}>
               <IconButton
                 color="primary"
+                size="large"
                 onClick={() => onEdit(material)}
                 aria-label="Edit material"
                 sx={{ minWidth: 48, minHeight: 48 }}
@@ -121,6 +159,7 @@ export default function MaterialTable({
 
               <IconButton
                 color="error"
+                size="large"
                 onClick={() => onDelete(material)}
                 aria-label="Delete material"
                 sx={{ minWidth: 48, minHeight: 48 }}
@@ -139,19 +178,20 @@ export default function MaterialTable({
     {
       field: "material_code",
       headerName: "Material Code",
-      width: 170,
+      width: 160,
     },
 
     {
       field: "short_description",
       headerName: "Description",
       flex: 1,
+      minWidth: 220,
     },
 
     {
       field: "uom",
       headerName: "UoM",
-      width: 100,
+      width: 90,
     },
 
     {
@@ -162,9 +202,21 @@ export default function MaterialTable({
     },
 
     {
+      field: "material_group",
+      headerName: "Group",
+      width: 110,
+    },
+
+    {
+      field: "hsn_code",
+      headerName: "HSN Code",
+      width: 130,
+    },
+
+    {
       field: "actions",
       headerName: "Actions",
-      width: 120,
+      width: 130,
       sortable: false,
 
       renderCell: (params) => (
@@ -201,7 +253,14 @@ export default function MaterialTable({
 
   return (
 
-    <Paper elevation={3}>
+    <Paper
+      elevation={0}
+      sx={{
+        borderRadius: 3,
+        boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)",
+        overflow: "hidden",
+      }}
+    >
 
       <DataGrid
         rows={rows}
@@ -215,6 +274,13 @@ export default function MaterialTable({
               pageSize: 10,
               page: 0,
             },
+          },
+        }}
+        sx={{
+          border: "none",
+          "& .MuiDataGrid-columnHeaders": {
+            bgcolor: "grey.50",
+            fontWeight: 700,
           },
         }}
       />

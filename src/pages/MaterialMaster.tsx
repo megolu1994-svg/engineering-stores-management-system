@@ -8,10 +8,16 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  InputAdornment,
   Snackbar,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+
+import SearchIcon from "@mui/icons-material/Search";
+import AddIcon from "@mui/icons-material/Add";
 
 import MaterialForm from "../components/MaterialForm";
 import MaterialTable from "../components/MaterialTable";
@@ -26,6 +32,9 @@ import {
 import type { Material } from "../types/material";
 
 export default function MaterialMaster() {
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   const [materials, setMaterials] = useState<Material[]>([]);
   const [filteredMaterials, setFilteredMaterials] = useState<Material[]>([]);
 
@@ -128,14 +137,15 @@ export default function MaterialMaster() {
   }
 
   return (
-    <Box>
+    <Box sx={{ overflowX: "hidden" }}>
 
       <Typography
         variant="h5"
         sx={{
-          mb: 3,
-          fontWeight: "bold",
-          fontSize: { xs: "1.25rem", sm: "1.5rem", md: "2rem" },
+          mb: 2,
+          fontWeight: 800,
+          letterSpacing: -0.5,
+          fontSize: { xs: "1.4rem", sm: "1.75rem", md: "2.1rem" },
         }}
       >
         Material Master
@@ -143,12 +153,12 @@ export default function MaterialMaster() {
 
       <Box
         sx={{
-          display: "flex",
-          flexDirection: { xs: "column", sm: "row" },
-          justifyContent: { sm: "space-between" },
-          alignItems: { xs: "stretch", sm: "center" },
-          gap: 2,
-          mb: 3,
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          bgcolor: "background.default",
+          pt: 0.5,
+          pb: 2,
         }}
       >
         <TextField
@@ -157,22 +167,43 @@ export default function MaterialMaster() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           fullWidth
-          sx={{ width: { xs: "100%", sm: 350 } }}
-        />
-
-        <Button
-          variant="contained"
-          size="large"
-          fullWidth
-          onClick={handleAdd}
-          sx={{
-            minHeight: 48,
-            width: { xs: "100%", sm: "auto" },
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
+            },
           }}
-        >
-          Add Material
-        </Button>
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              borderRadius: 3,
+              bgcolor: "background.paper",
+              minHeight: 56,
+              boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)",
+            },
+          }}
+        />
       </Box>
+
+      <Button
+        variant="contained"
+        size="large"
+        fullWidth
+        startIcon={<AddIcon />}
+        onClick={handleAdd}
+        sx={{
+          minHeight: 56,
+          fontWeight: 700,
+          fontSize: "1rem",
+          borderRadius: 3,
+          mb: 3,
+          width: { xs: "100%", sm: "auto" },
+        }}
+      >
+        Add Material
+      </Button>
 
       {showForm && (
         <MaterialForm
@@ -198,23 +229,26 @@ export default function MaterialMaster() {
         onClose={() => setDeleteMaterialData(null)}
         fullWidth
         maxWidth="xs"
+        fullScreen={mobile}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>
           Delete Material
         </DialogTitle>
 
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete this material?
+            Are you sure you want to delete this material? This action
+            cannot be undone.
           </DialogContentText>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button
             onClick={() =>
               setDeleteMaterialData(null)
             }
-            sx={{ minHeight: 48 }}
+            fullWidth={mobile}
+            sx={{ minHeight: 48, borderRadius: 2 }}
           >
             Cancel
           </Button>
@@ -223,7 +257,8 @@ export default function MaterialMaster() {
             color="error"
             variant="contained"
             onClick={confirmDelete}
-            sx={{ minHeight: 48 }}
+            fullWidth={mobile}
+            sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
           >
             Delete
           </Button>

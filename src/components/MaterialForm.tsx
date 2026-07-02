@@ -26,6 +26,12 @@ const emptyMaterial: Material = {
   is_active: true,
 };
 
+const fieldSx = {
+  "& .MuiOutlinedInput-root": {
+    borderRadius: 2,
+  },
+};
+
 export default function MaterialForm({
   material,
   onSave,
@@ -87,13 +93,30 @@ export default function MaterialForm({
   }
 
   return (
-    <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+    <Paper
+      elevation={0}
+      sx={{
+        p: { xs: 2.5, sm: 4 },
+        mb: 3,
+        borderRadius: 3,
+        boxShadow: "0 2px 14px rgba(15, 23, 42, 0.08)",
+      }}
+    >
 
-      <Typography variant="h5" gutterBottom>
+      <Typography
+        variant="h5"
+        sx={{ fontWeight: 800, mb: 0.5, fontSize: { xs: "1.25rem", sm: "1.5rem" } }}
+      >
         {material ? "Edit Material" : "Add Material"}
       </Typography>
 
-      <Grid container spacing={2}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        {material
+          ? "Update the details below and save your changes."
+          : "Fill in the details below to add a new material."}
+      </Typography>
+
+      <Grid container spacing={2.5}>
 
         <Grid size={{ xs: 12, md: 6 }}>
           <TextField
@@ -104,6 +127,7 @@ export default function MaterialForm({
             onChange={(e) =>
               updateField("material_code", e.target.value)
             }
+            sx={fieldSx}
           />
         </Grid>
 
@@ -118,6 +142,7 @@ export default function MaterialForm({
                 e.target.value
               )
             }
+            sx={fieldSx}
           />
         </Grid>
 
@@ -129,6 +154,7 @@ export default function MaterialForm({
             onChange={(e) =>
               updateField("uom", e.target.value)
             }
+            sx={fieldSx}
           />
         </Grid>
 
@@ -144,6 +170,7 @@ export default function MaterialForm({
                 Number(e.target.value)
               )
             }
+            sx={fieldSx}
           />
         </Grid>
 
@@ -158,6 +185,7 @@ export default function MaterialForm({
                 e.target.value
               )
             }
+            sx={fieldSx}
           />
         </Grid>
 
@@ -171,6 +199,7 @@ export default function MaterialForm({
                 readOnly: true,
               },
             }}
+            sx={fieldSx}
           />
         </Grid>
 
@@ -179,20 +208,27 @@ export default function MaterialForm({
       <Box
         sx={{
           display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
           gap: 2,
-          mt: 3,
+          mt: 4,
         }}
       >
         <Button
           variant="contained"
+          size="large"
+          fullWidth
           onClick={handleSave}
+          sx={{ minHeight: 52, fontWeight: 700, borderRadius: 2, fontSize: "1rem" }}
         >
           {material ? "Update" : "Save"}
         </Button>
 
         <Button
           variant="outlined"
+          size="large"
+          fullWidth
           onClick={onCancel}
+          sx={{ minHeight: 52, fontWeight: 600, borderRadius: 2, fontSize: "1rem" }}
         >
           Cancel
         </Button>
