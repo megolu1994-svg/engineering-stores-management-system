@@ -33,6 +33,62 @@ export async function getMaterials(): Promise<Material[]> {
   return allMaterials;
 }
 
+const MATERIAL_SEARCH_COLUMNS =
+  "material_code, short_description, uom, current_quantity, hsn_code, material_group, is_active";
+
+/**
+ * Escapes PostgREST `ilike` wildcard characters (% and _) in user-provided
+ * search text so they are treated as literal characters rather than
+ * wildcards.
+ */
+function escapeIlikeValue(value: string): string {
+  return value.replace(/[%_]/g, (match) => `\\${match}`);
+}
+
+/**
+ * Single, reusable server-side material search used by both Material
+ * Master and Material Allocation (via MaterialSearch). Searches
+ * material_code and short_description directly in Supabase, returns only
+ * the columns the UI needs, and is paginated via `.range()` so it stays
+ * fast even with 100,000+ materials.
+ *
+ * - `query` empty -> returns the first page of active materials
+ *   (ordered by material_code), useful for an initial/browse view.
+ * - `query` non-empty -> returns up to `pageSize` active materials whose
+ *   material_code or short_description contains the query (case
+ *   insensitive).
+ */
+export async function searchMaterials(
+  query: string,
+  page: number = 0,
+  pageSize: number = 20
+): Promise<Material[]> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  let request = supabase
+    .from("material_master")
+    .select(MATERIAL_SEARCH_COLUMNS)
+    .eq("is_active", true)
+    .order("material_code")
+    .range(from, to);
+
+  const trimmed = query.trim();
+
+  if (trimmed) {
+    const safe = escapeIlikeValue(trimmed);
+    request = request.or(
+      `material_code.ilike.%${safe}%,short_description.ilike.%${safe}%`
+    );
+  }
+
+  const { data, error } = await request;
+
+  if (error) throw error;
+
+  return (data ?? []) as Material[];
+}
+
 export async function materialExists(
   materialCode: string
 ): Promise<boolean> {

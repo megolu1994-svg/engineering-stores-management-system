@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -25,18 +25,21 @@ import MaterialTable from "../components/MaterialTable";
 import {
   addMaterial,
   deleteMaterial,
-  getMaterials,
+  searchMaterials,
   updateMaterial,
 } from "../services/materialService";
 
 import type { Material } from "../types/material";
+
+const SEARCH_DEBOUNCE_MS = 300;
+const BROWSE_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 20;
 
 export default function MaterialMaster() {
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [materials, setMaterials] = useState<Material[]>([]);
-  const [filteredMaterials, setFilteredMaterials] = useState<Material[]>([]);
 
   const [search, setSearch] = useState("");
 
@@ -56,56 +59,69 @@ export default function MaterialMaster() {
     "success" | "error"
   >("success");
 
-  async function loadMaterials() {
-    const data = await getMaterials();
-    setMaterials(data);
-    setFilteredMaterials(data);
-  }
+  const requestId = useRef(0);
 
-  useEffect(() => {
-    loadMaterials();
+  // Loads whatever is currently "in view": either the first browse page
+  // (no search text) or the current search results. This is intentionally
+  // lightweight (<= 50 rows) - it never loads the entire material_master
+  // table.
+  const loadCurrentView = useCallback(async (query: string) => {
+    const currentRequestId = ++requestId.current;
+
+    const pageSize = query.trim() ? SEARCH_PAGE_SIZE : BROWSE_PAGE_SIZE;
+
+    const data = await searchMaterials(query, 0, pageSize);
+
+    if (currentRequestId === requestId.current) {
+      setMaterials(data);
+    }
   }, []);
 
+  // Initial browse page on mount.
   useEffect(() => {
-    const value = search.toLowerCase().trim();
+    loadCurrentView("");
+  }, [loadCurrentView]);
 
-    const filtered = materials.filter((m) => {
-      return (
-        m.material_code.toLowerCase().includes(value) ||
-        m.short_description.toLowerCase().includes(value) ||
-        m.uom.toLowerCase().includes(value)
-      );
-    });
+  // Debounced server-side search as the user types.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadCurrentView(search);
+    }, SEARCH_DEBOUNCE_MS);
 
-    setFilteredMaterials(filtered);
-  }, [search, materials]);
+    return () => clearTimeout(timer);
+  }, [search, loadCurrentView]);
 
-  async function handleSave(material: Material) {
-    try {
-      if (selectedMaterial) {
-        await updateMaterial(material);
+  const handleSave = useCallback(
+    async (material: Material) => {
+      try {
+        if (selectedMaterial) {
+          await updateMaterial(material);
 
-        setSnackbarSeverity("success");
-        setSnackbarMessage("Material updated successfully.");
-      } else {
-        await addMaterial(material);
+          setSnackbarSeverity("success");
+          setSnackbarMessage("Material updated successfully.");
+        } else {
+          await addMaterial(material);
 
-        setSnackbarSeverity("success");
-        setSnackbarMessage("Material saved successfully.");
+          setSnackbarSeverity("success");
+          setSnackbarMessage("Material saved successfully.");
+        }
+
+        // Refresh only the current (small) view instead of reloading the
+        // entire material_master table.
+        await loadCurrentView(search);
+
+        setShowForm(false);
+        setSelectedMaterial(null);
+
+        setSnackbarOpen(true);
+      } catch (error: any) {
+        setSnackbarSeverity("error");
+        setSnackbarMessage(error.message);
+        setSnackbarOpen(true);
       }
-
-      await loadMaterials();
-
-      setShowForm(false);
-      setSelectedMaterial(null);
-
-      setSnackbarOpen(true);
-    } catch (error: any) {
-      setSnackbarSeverity("error");
-      setSnackbarMessage(error.message);
-      setSnackbarOpen(true);
-    }
-  }
+    },
+    [selectedMaterial, search, loadCurrentView]
+  );
 
   function handleEdit(material: Material) {
     setSelectedMaterial(material);
@@ -117,13 +133,15 @@ export default function MaterialMaster() {
     setShowForm(true);
   }
 
-  async function confirmDelete() {
+  const confirmDelete = useCallback(async () => {
     if (!deleteMaterialData) return;
 
     try {
       await deleteMaterial(deleteMaterialData.material_code);
 
-      await loadMaterials();
+      // Refresh only the current (small) view instead of reloading the
+      // entire material_master table.
+      await loadCurrentView(search);
 
       setSnackbarSeverity("success");
       setSnackbarMessage("Material deleted successfully.");
@@ -134,7 +152,7 @@ export default function MaterialMaster() {
 
     setDeleteMaterialData(null);
     setSnackbarOpen(true);
-  }
+  }, [deleteMaterialData, search, loadCurrentView]);
 
   return (
     <Box sx={{ overflowX: "hidden" }}>
@@ -217,7 +235,7 @@ export default function MaterialMaster() {
       )}
 
       <MaterialTable
-        materials={filteredMaterials}
+        materials={materials}
         onEdit={handleEdit}
         onDelete={(material) =>
           setDeleteMaterialData(material)
