@@ -2,15 +2,35 @@ import { supabase } from "../config/supabase";
 import type { Material } from "../types/material";
 
 export async function getMaterials(): Promise<Material[]> {
-  const { data, error } = await supabase
-    .from("material_master")
-    .select("*")
-    .eq("is_active", true)
-    .order("material_code");
+  const PAGE_SIZE = 1000;
 
-  if (error) throw error;
+  const allMaterials: Material[] = [];
+  let from = 0;
 
-  return data as Material[];
+  while (true) {
+    const to = from + PAGE_SIZE - 1;
+
+    const { data, error } = await supabase
+      .from("material_master")
+      .select("*")
+      .eq("is_active", true)
+      .order("material_code")
+      .range(from, to);
+
+    if (error) throw error;
+
+    const page = (data ?? []) as Material[];
+
+    allMaterials.push(...page);
+
+    if (page.length < PAGE_SIZE) {
+      break;
+    }
+
+    from += PAGE_SIZE;
+  }
+
+  return allMaterials;
 }
 
 export async function materialExists(
