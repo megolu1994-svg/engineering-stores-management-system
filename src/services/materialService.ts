@@ -169,6 +169,7 @@ export function extractMaterialFields(
       "current_quantity",
       "Stock",
       "Quantity",
+      "Qty",
       "Qty in UnE",
       "Qty in unit of entry",
     ]),
