@@ -30,6 +30,7 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ErrorIcon from "@mui/icons-material/Error";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import PlaceIcon from "@mui/icons-material/Place";
 
@@ -38,6 +39,7 @@ import {
   bulkImportMaterials,
   type MaterialValidationResult,
   type MaterialImportSummary,
+  type MaterialImportFailure,
 } from "../services/materialService";
 
 import {
@@ -131,7 +133,8 @@ export default function ImportExport() {
   const [materialValidation, setMaterialValidation] =
     useState<MaterialValidationResult | null>(null);
   const [materialImporting, setMaterialImporting] = useState(false);
-  const [materialProgress, setMaterialProgress] = useState(0);
+  const [materialProcessed, setMaterialProcessed] = useState(0);
+  const [materialImportTotal, setMaterialImportTotal] = useState(0);
   const [materialSummary, setMaterialSummary] =
     useState<MaterialImportSummary | null>(null);
 
@@ -140,7 +143,8 @@ export default function ImportExport() {
     setMaterialFile(null);
     setMaterialValidation(null);
     setMaterialSummary(null);
-    setMaterialProgress(0);
+    setMaterialProcessed(0);
+    setMaterialImportTotal(0);
   }
 
   function closeMaterialImport() {
@@ -148,7 +152,8 @@ export default function ImportExport() {
     setMaterialFile(null);
     setMaterialValidation(null);
     setMaterialSummary(null);
-    setMaterialProgress(0);
+    setMaterialProcessed(0);
+    setMaterialImportTotal(0);
   }
 
   function handleDownloadMaterialTemplate() {
@@ -169,7 +174,8 @@ export default function ImportExport() {
     setMaterialFile(file);
     setMaterialValidation(null);
     setMaterialSummary(null);
-    setMaterialProgress(0);
+    setMaterialProcessed(0);
+    setMaterialImportTotal(0);
     e.target.value = "";
   }
 
@@ -210,15 +216,18 @@ export default function ImportExport() {
     }
 
     setMaterialImporting(true);
-    setMaterialProgress(0);
+    setMaterialProcessed(0);
+    setMaterialImportTotal(materialValidation.validRows.length);
     setMaterialSummary(null);
 
     try {
       const summary = await bulkImportMaterials(
         materialValidation.validRows,
         IMPORT_BATCH_SIZE,
-        (processed, total) =>
-          setMaterialProgress(Math.round((processed / total) * 100))
+        (processed, total) => {
+          setMaterialProcessed(processed);
+          setMaterialImportTotal(total);
+        }
       );
 
       setMaterialSummary(summary);
@@ -232,6 +241,38 @@ export default function ImportExport() {
     } finally {
       setMaterialImporting(false);
     }
+  }
+
+  function handleDownloadFailedMaterials() {
+    if (!materialSummary || materialSummary.failures.length === 0) {
+      return;
+    }
+
+    downloadWorkbook(
+      [
+        "Material Code",
+        "Description",
+        "UoM",
+        "Quantity",
+        "HSN",
+        "Material Group",
+        "Error",
+        "Row Number",
+      ],
+      materialSummary.failures.map((failure: MaterialImportFailure) => [
+        failure.material_code,
+        failure.short_description,
+        failure.uom,
+        failure.current_quantity,
+        failure.hsn_code,
+        failure.material_group,
+        `${failure.errorCategory}: ${failure.error}`,
+        failure.rowNumber,
+      ]),
+      "Material_Import_Failed_Records.xlsx"
+    );
+
+    showSnackbar("Failed records downloaded.", "success");
   }
 
   // ---------------- Location Master ----------------
@@ -655,7 +696,13 @@ export default function ImportExport() {
                     <Box>
                       <LinearProgress
                         variant="determinate"
-                        value={materialProgress}
+                        value={
+                          materialImportTotal > 0
+                            ? Math.round(
+                                (materialProcessed / materialImportTotal) * 100
+                              )
+                            : 0
+                        }
                         sx={{ height: 8, borderRadius: 4 }}
                       />
                       <Typography
@@ -663,20 +710,175 @@ export default function ImportExport() {
                         color="text.secondary"
                         sx={{ mt: 0.5, display: "block" }}
                       >
-                        {materialProgress}% complete
+                        Processing {materialProcessed} / {materialImportTotal}
                       </Typography>
                     </Box>
                   )}
 
                   {materialSummary && (
-                    <Alert
-                      severity={materialSummary.failed > 0 ? "warning" : "success"}
-                      sx={{ borderRadius: 2 }}
-                    >
-                      Import complete. Imported: {materialSummary.imported},
-                      Updated: {materialSummary.updated}, Failed:{" "}
-                      {materialSummary.failed}
-                    </Alert>
+                    <Box sx={{ ...columnFlexSx, gap: 1.5 }}>
+                      <Alert
+                        severity={
+                          materialSummary.failed > 0 ? "warning" : "success"
+                        }
+                        sx={{ borderRadius: 2 }}
+                      >
+                        Import complete. Imported: {materialSummary.imported},
+                        Updated: {materialSummary.updated}, Failed:{" "}
+                        {materialSummary.failed}
+                      </Alert>
+
+                      <Box
+                        sx={{
+                          p: 2,
+                          borderRadius: 2,
+                          bgcolor: "background.paper",
+                          border: "1px solid",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 700, mb: 1 }}
+                        >
+                          Import Summary
+                        </Typography>
+
+                        <Box sx={{ ...rowFlexSx, flexWrap: "wrap", gap: 1 }}>
+                          <Chip
+                            label={`Total Excel Rows: ${
+                              materialValidation?.totalRecords ?? 0
+                            }`}
+                          />
+                          <Chip
+                            label={`Sent for Import: ${materialSummary.totalRows}`}
+                          />
+                          <Chip
+                            label={`Imported: ${materialSummary.imported}`}
+                            color="success"
+                          />
+                          <Chip
+                            label={`Updated: ${materialSummary.updated}`}
+                            color="info"
+                          />
+                          <Chip
+                            label={`Failed: ${materialSummary.failed}`}
+                            color="error"
+                          />
+                          <Chip
+                            label={`Success: ${
+                              materialSummary.totalRows > 0
+                                ? (
+                                    ((materialSummary.imported +
+                                      materialSummary.updated) /
+                                      materialSummary.totalRows) *
+                                    100
+                                  ).toFixed(1)
+                                : "0.0"
+                            }%`}
+                          />
+                          <Chip
+                            label={`Time Taken: ${(
+                              materialSummary.timeTakenMs / 1000
+                            ).toFixed(1)}s`}
+                          />
+                        </Box>
+                      </Box>
+
+                      {materialSummary.failures.length > 0 && (
+                        <Box
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: "background.paper",
+                            border: "1px solid",
+                            borderColor: "error.light",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              ...rowFlexSx,
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 1,
+                              mb: 1.5,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                ...rowFlexSx,
+                                alignItems: "center",
+                                gap: 1,
+                              }}
+                            >
+                              <ErrorIcon color="error" fontSize="small" />
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ fontWeight: 700 }}
+                              >
+                                Failed Records ({materialSummary.failures.length})
+                              </Typography>
+                            </Box>
+
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              startIcon={<DownloadIcon />}
+                              onClick={handleDownloadFailedMaterials}
+                              sx={{ borderRadius: 2, fontWeight: 600 }}
+                            >
+                              Download Failed Records
+                            </Button>
+                          </Box>
+
+                          <TableContainer
+                            sx={{
+                              maxHeight: 320,
+                              overflowX: "auto",
+                              borderRadius: 2,
+                            }}
+                          >
+                            <Table size="small" stickyHeader>
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>Material Code</TableCell>
+                                  <TableCell>Row</TableCell>
+                                  <TableCell>Reason</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {materialSummary.failures.map(
+                                  (
+                                    failure: MaterialImportFailure,
+                                    index: number
+                                  ) => (
+                                    <TableRow
+                                      key={`${failure.material_code}-${index}`}
+                                    >
+                                      <TableCell>
+                                        {failure.material_code}
+                                      </TableCell>
+                                      <TableCell>{failure.rowNumber}</TableCell>
+                                      <TableCell>
+                                        <Chip
+                                          size="small"
+                                          label={failure.errorCategory}
+                                          color="error"
+                                          sx={{ mr: 1 }}
+                                        />
+                                        {failure.error}
+                                      </TableCell>
+                                    </TableRow>
+                                  )
+                                )}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+                      )}
+                    </Box>
                   )}
                 </Box>
               </Box>

@@ -353,27 +353,126 @@ export function parseMaterialExcelRows(
   return { totalRecords, validRows, invalidRows };
 }
 
+export type MaterialImportErrorCategory =
+  | "Duplicate Key"
+  | "Data Too Long"
+  | "Invalid Value"
+  | "Database Constraint"
+  | "Unknown Error";
+
 export interface MaterialImportFailure {
   material_code: string;
+  rowNumber: number;
+  short_description: string;
+  uom: string;
+  current_quantity: number;
+  hsn_code: string;
+  material_group: string;
   error: string;
+  errorCategory: MaterialImportErrorCategory;
 }
 
 export interface MaterialImportSummary {
+  totalRows: number;
   imported: number;
   updated: number;
   failed: number;
+  timeTakenMs: number;
   failures: MaterialImportFailure[];
 }
 
+interface SupabaseLikeError {
+  code?: string;
+  message?: string;
+}
+
+/**
+ * Classifies a database error into a human-readable category so failed
+ * import records can be triaged quickly instead of showing a raw
+ * Postgres/Supabase error string.
+ */
+function categorizeError(err: unknown): MaterialImportErrorCategory {
+  const supabaseError = err as SupabaseLikeError;
+  const code = supabaseError?.code ?? "";
+  const message = (supabaseError?.message ?? "").toLowerCase();
+
+  if (code === "23505" || message.includes("duplicate key")) {
+    return "Duplicate Key";
+  }
+
+  if (
+    code === "22001" ||
+    message.includes("too long") ||
+    message.includes("value too long")
+  ) {
+    return "Data Too Long";
+  }
+
+  if (
+    code === "22P02" ||
+    code === "22003" ||
+    message.includes("invalid input") ||
+    message.includes("invalid value") ||
+    message.includes("invalid text representation")
+  ) {
+    return "Invalid Value";
+  }
+
+  if (
+    code === "23502" ||
+    code === "23503" ||
+    code === "23514" ||
+    message.includes("constraint") ||
+    message.includes("violates")
+  ) {
+    return "Database Constraint";
+  }
+
+  return "Unknown Error";
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  ) {
+    return (err as { message: string }).message;
+  }
+
+  return "Unknown error during import.";
+}
+
+/**
+ * Imports materials in an enterprise-safe way:
+ *
+ * - Excel rows are still read/chunked in batches of `batchSize` for memory
+ *   efficiency.
+ * - Within each batch, every material is upserted INDIVIDUALLY. A single
+ *   failing row is caught, categorized, and recorded as a failure - it
+ *   never aborts the batch or causes any other row to be skipped.
+ * - Every row passed in is guaranteed to end up as imported, updated, or
+ *   failed. Nothing is silently dropped:
+ *     imported + updated + failed === rows.length
+ */
 export async function bulkImportMaterials(
   rows: MaterialImportRow[],
   batchSize: number,
   onProgress?: (processed: number, total: number) => void
 ): Promise<MaterialImportSummary> {
+  const startedAt = Date.now();
+
   const summary: MaterialImportSummary = {
+    totalRows: rows.length,
     imported: 0,
     updated: 0,
     failed: 0,
+    timeTakenMs: 0,
     failures: [],
   };
 
@@ -384,6 +483,8 @@ export async function bulkImportMaterials(
     const batch = rows.slice(i, i + batchSize);
     const codes = batch.map((row) => row.material_code);
 
+    let existingSet = new Set<string>();
+
     try {
       const { data: existing, error: fetchError } = await supabase
         .from("material_master")
@@ -392,57 +493,67 @@ export async function bulkImportMaterials(
 
       if (fetchError) throw fetchError;
 
-      const existingSet = new Set(
+      existingSet = new Set(
         (existing ?? []).map(
           (item: { material_code: string }) => item.material_code
         )
       );
+    } catch {
+      // If the existence check itself fails, every row in this batch is
+      // still attempted individually below. Worst case, imported/updated
+      // counts may be swapped for this batch, but no row is lost.
+      existingSet = new Set();
+    }
 
-      const payload = batch.map((row) => ({
-        material_code: row.material_code,
-        short_description: row.short_description,
-        uom: row.uom,
-        current_quantity: row.current_quantity,
-        hsn_code: row.hsn_code,
-        material_group: row.material_group,
-        is_active: true,
-      }));
+    for (const row of batch) {
+      try {
+        const { error: upsertError } = await supabase
+          .from("material_master")
+          .upsert(
+            {
+              material_code: row.material_code,
+              short_description: row.short_description,
+              uom: row.uom,
+              current_quantity: row.current_quantity,
+              hsn_code: row.hsn_code,
+              material_group: row.material_group,
+              is_active: true,
+            },
+            { onConflict: "material_code" }
+          );
 
-      const { error: upsertError } = await supabase
-        .from("material_master")
-        .upsert(payload, { onConflict: "material_code" });
+        if (upsertError) throw upsertError;
 
-      if (upsertError) throw upsertError;
-
-      batch.forEach((row) => {
         if (existingSet.has(row.material_code)) {
           summary.updated += 1;
         } else {
           summary.imported += 1;
         }
-      });
-    } catch (err) {
-      summary.failed += batch.length;
+      } catch (err) {
+        summary.failed += 1;
 
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unknown error during import.";
-
-      batch.forEach((row) => {
         summary.failures.push({
           material_code: row.material_code,
-          error: message,
+          rowNumber: row.rowNumber,
+          short_description: row.short_description,
+          uom: row.uom,
+          current_quantity: row.current_quantity,
+          hsn_code: row.hsn_code,
+          material_group: row.material_group,
+          error: extractErrorMessage(err),
+          errorCategory: categorizeError(err),
         });
-      });
-    }
+      }
 
-    processed += batch.length;
+      processed += 1;
 
-    if (onProgress) {
-      onProgress(processed, total);
+      if (onProgress) {
+        onProgress(processed, total);
+      }
     }
   }
+
+  summary.timeTakenMs = Date.now() - startedAt;
 
   return summary;
 }
