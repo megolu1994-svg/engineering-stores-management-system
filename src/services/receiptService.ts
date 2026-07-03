@@ -1,4 +1,5 @@
 import { supabase } from "../config/supabase";
+import { applyStockMovement } from "./inventoryTransactionService";
 
 /* =========================================================================
  * Material Receipt - DRC Management (Sprint 1)
@@ -32,6 +33,12 @@ export const PACKAGE_TYPES: PackageType[] = [
 
 export type ReceiptStatus = "Pending Inspection" | "Pending GRN" | "Closed";
 
+export type InspectionStatus =
+  | "Pending Inspection"
+  | "Accepted"
+  | "Rejected"
+  | "Accepted with Remarks";
+
 export interface ReceiptHeader {
   id: number;
   drc_number: string;
@@ -54,6 +61,17 @@ export interface ReceiptHeader {
   receipt_datetime: string;
   created_at: string;
   updated_at: string;
+  // Sprint 2
+  inspection_status: InspectionStatus | null;
+  inspection_remarks: string | null;
+  inspection_date: string | null;
+  inspection_by: string | null;
+  grn_number: string | null;
+  grn_date: string | null;
+  uploaded_by: string | null;
+  upload_date: string | null;
+  closed_date: string | null;
+  closed_by: string | null;
 }
 
 /**
@@ -288,5 +306,555 @@ export async function getReceiptSummary(): Promise<ReceiptSummary> {
     pendingGrn: rows.filter((r) => r.status === "Pending GRN").length,
     closed: rows.filter((r) => r.status === "Closed").length,
     total: rows.length,
+  };
+}
+
+/* =========================================================================
+ * Sprint 2: Inspection
+ * ========================================================================= */
+
+export interface InspectionHistoryEntry {
+  id: number;
+  receipt_id: number;
+  inspection_status: InspectionStatus;
+  inspection_remarks: string | null;
+  inspection_by: string | null;
+  inspection_date: string;
+}
+
+/**
+ * Records an inspection action for a DRC: appends an entry to
+ * `receipt_inspection_history` and updates the DRC's current inspection
+ * fields. If the outcome is Accepted or Accepted with Remarks, the DRC's
+ * overall status automatically moves to "Pending GRN" - otherwise the
+ * DRC's overall status is left as-is (e.g. a Rejected inspection allows
+ * the DRC to be re-inspected later without changing its status).
+ */
+export async function submitInspection(
+  receiptId: number,
+  inspectionStatus: InspectionStatus,
+  inspectionRemarks: string,
+  inspectionBy: string
+): Promise<ReceiptHeader> {
+  const nowIso = new Date().toISOString();
+  const remarks = inspectionRemarks.trim() || null;
+  const by = inspectionBy.trim() || null;
+
+  const { error: historyError } = await supabase
+    .from("receipt_inspection_history")
+    .insert([
+      {
+        receipt_id: receiptId,
+        inspection_status: inspectionStatus,
+        inspection_remarks: remarks,
+        inspection_by: by,
+        inspection_date: nowIso,
+      },
+    ]);
+
+  if (historyError) throw historyError;
+
+  const headerUpdate: Record<string, unknown> = {
+    inspection_status: inspectionStatus,
+    inspection_remarks: remarks,
+    inspection_by: by,
+    inspection_date: nowIso,
+  };
+
+  if (
+    inspectionStatus === "Accepted" ||
+    inspectionStatus === "Accepted with Remarks"
+  ) {
+    headerUpdate.status = "Pending GRN";
+  }
+
+  const { data, error } = await supabase
+    .from("receipt_header")
+    .update(headerUpdate)
+    .eq("id", receiptId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data as ReceiptHeader;
+}
+
+export async function getInspectionHistory(
+  receiptId: number
+): Promise<InspectionHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from("receipt_inspection_history")
+    .select("*")
+    .eq("receipt_id", receiptId)
+    .order("inspection_date", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return (data ?? []) as InspectionHistoryEntry[];
+}
+
+/* =========================================================================
+ * Sprint 2: GRN Upload
+ * ========================================================================= */
+
+/** The sentinel location used for GRN-received stock (no put-away location
+ * is captured on the GRN Excel - Material Code + Quantity only). */
+export const GRN_UNALLOCATED_LOCATION = "UNALLOCATED";
+
+export interface GrnImportRow {
+  rowNumber: number;
+  material_code: string;
+  quantity: number;
+}
+
+export interface GrnFormatInvalidRow {
+  rowNumber: number;
+  material_code: string;
+  quantityRaw: string;
+  errors: string[];
+}
+
+export interface GrnParseResult {
+  totalRecords: number;
+  /** Valid rows, already de-duplicated by Material Code (quantities summed). */
+  mergedRows: GrnImportRow[];
+  /** Rows rejected for format reasons (missing code, bad quantity) before
+   * any database lookup happens. */
+  invalidRows: GrnFormatInvalidRow[];
+  /** How many raw rows collapsed into each merged row (for information only). */
+  duplicateCodeCount: number;
+}
+
+function getGrnFieldValue(
+  row: Record<string, unknown>,
+  aliases: string[]
+): string {
+  const keys = Object.keys(row);
+
+  for (const alias of aliases) {
+    const match = keys.find(
+      (key) => key.trim().toLowerCase() === alias.toLowerCase()
+    );
+
+    if (match !== undefined) {
+      const value = row[match];
+      return value === null || value === undefined
+        ? ""
+        : String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function isGrnRowBlank(row: Record<string, unknown>): boolean {
+  return Object.values(row).every((value) => {
+    if (value === null || value === undefined) return true;
+    return String(value).trim() === "";
+  });
+}
+
+function parseGrnQuantity(raw: string): number {
+  const cleaned = raw.replace(/,/g, "").trim();
+  if (!cleaned) return NaN;
+  return Number(cleaned);
+}
+
+/**
+ * Parses a GRN Excel file (columns: Material Code, Quantity). This is a
+ * pure, in-memory step - no database calls - so it stays fast even for
+ * 10,000+ rows. Duplicate Material Codes are summed into a single row
+ * here rather than being treated as an error.
+ */
+export function parseGrnExcelRows(
+  rawRows: Record<string, unknown>[]
+): GrnParseResult {
+  const invalidRows: GrnFormatInvalidRow[] = [];
+  const merged = new Map<string, { rowNumber: number; quantity: number }>();
+
+  let totalRecords = 0;
+  let rawValidRowCount = 0;
+
+  rawRows.forEach((row, index) => {
+    if (isGrnRowBlank(row)) {
+      return;
+    }
+
+    totalRecords += 1;
+
+    const rowNumber = index + 2;
+
+    const materialCode = getGrnFieldValue(row, [
+      "Material Code",
+      "material_code",
+      "Material",
+    ]);
+
+    const quantityRaw = getGrnFieldValue(row, [
+      "Quantity",
+      "Qty",
+      "GRN Quantity",
+    ]);
+
+    const errors: string[] = [];
+
+    if (!materialCode) {
+      errors.push("Material Code is required.");
+    }
+
+    const quantity = parseGrnQuantity(quantityRaw);
+
+    if (!quantityRaw) {
+      errors.push("Quantity is required.");
+    } else if (Number.isNaN(quantity)) {
+      errors.push("Quantity must be a number.");
+    } else if (quantity <= 0) {
+      errors.push("Quantity must be greater than zero.");
+    }
+
+    if (errors.length > 0) {
+      invalidRows.push({
+        rowNumber,
+        material_code: materialCode,
+        quantityRaw,
+        errors,
+      });
+      return;
+    }
+
+    rawValidRowCount += 1;
+
+    const key = materialCode.toUpperCase();
+    const existing = merged.get(key);
+
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      merged.set(key, { rowNumber, quantity });
+    }
+  });
+
+  const mergedRows: GrnImportRow[] = Array.from(merged.entries()).map(
+    ([materialCode, v]) => ({
+      rowNumber: v.rowNumber,
+      material_code: materialCode,
+      quantity: v.quantity,
+    })
+  );
+
+  return {
+    totalRecords,
+    mergedRows,
+    invalidRows,
+    duplicateCodeCount: rawValidRowCount - mergedRows.length,
+  };
+}
+
+export interface GrnMaterialValidationResult {
+  /** Rows whose Material Code exists in material_master. */
+  knownRows: GrnImportRow[];
+  /** Material Codes that do not exist in material_master. */
+  unknownMaterials: GrnImportRow[];
+}
+
+/**
+ * Checks Material Code existence against material_master in a single
+ * batched query (`.in()`), regardless of how many rows were uploaded -
+ * this is what keeps validation fast for 10,000+ row files.
+ */
+export async function validateGrnMaterials(
+  rows: GrnImportRow[]
+): Promise<GrnMaterialValidationResult> {
+  if (rows.length === 0) {
+    return { knownRows: [], unknownMaterials: [] };
+  }
+
+  const codes = rows.map((r) => r.material_code);
+
+  const { data, error } = await supabase
+    .from("material_master")
+    .select("material_code")
+    .in("material_code", codes);
+
+  if (error) {
+    console.error(error);
+    return { knownRows: [], unknownMaterials: rows };
+  }
+
+  const knownSet = new Set(
+    (data ?? []).map((m: { material_code: string }) => m.material_code)
+  );
+
+  const knownRows: GrnImportRow[] = [];
+  const unknownMaterials: GrnImportRow[] = [];
+
+  rows.forEach((row) => {
+    if (knownSet.has(row.material_code)) {
+      knownRows.push(row);
+    } else {
+      unknownMaterials.push(row);
+    }
+  });
+
+  return { knownRows, unknownMaterials };
+}
+
+export interface GrnImportFailure {
+  material_code: string;
+  quantity: number;
+  error: string;
+}
+
+export interface GrnImportSummary {
+  receiptId: number;
+  grnId: number | null;
+  grnNumber: string;
+  imported: number;
+  failed: number;
+  totalQuantity: number;
+  failures: GrnImportFailure[];
+  closed: boolean;
+  receipt: ReceiptHeader | null;
+}
+
+/**
+ * Imports a validated, de-duplicated set of GRN rows for a DRC:
+ *
+ * 1. Batch-fetches any existing UNALLOCATED material_allocation rows for
+ *    these materials in one query (no duplicate allocations are ever
+ *    created - an existing row's quantity is increased instead).
+ * 2. For every material, calls the Inventory Transaction Engine's
+ *    `applyStockMovement` (transactionType "MATERIAL_RECEIPT") to
+ *    increase stock. One failing material never blocks the rest.
+ * 3. Bulk-inserts all GRN line items in a single insert call.
+ * 4. Creates the `receipt_grn` header row and, if at least one material
+ *    was imported successfully, closes the DRC (status, GRN details,
+ *    closed date/by) in one update call.
+ */
+export async function importGrn(
+  receiptId: number,
+  grnNumber: string,
+  grnDate: string,
+  uploadedBy: string,
+  rows: GrnImportRow[]
+): Promise<GrnImportSummary> {
+  const summary: GrnImportSummary = {
+    receiptId,
+    grnId: null,
+    grnNumber,
+    imported: 0,
+    failed: 0,
+    totalQuantity: 0,
+    failures: [],
+    closed: false,
+    receipt: null,
+  };
+
+  if (rows.length === 0) {
+    return summary;
+  }
+
+  const codes = rows.map((r) => r.material_code);
+
+  const { data: existingAllocations, error: fetchError } = await supabase
+    .from("material_allocation")
+    .select("id, material_code, quantity")
+    .eq("location_code", GRN_UNALLOCATED_LOCATION)
+    .in("material_code", codes);
+
+  if (fetchError) {
+    console.error(fetchError);
+  }
+
+  const allocationMap = new Map<
+    string,
+    { id: number; quantity: number }
+  >(
+    (existingAllocations ?? []).map(
+      (a: { id: number; material_code: string; quantity: number }) => [
+        a.material_code,
+        { id: a.id, quantity: Number(a.quantity) },
+      ]
+    )
+  );
+
+  const importedLines: { material_code: string; quantity: number }[] = [];
+
+  for (const row of rows) {
+    try {
+      const existing = allocationMap.get(row.material_code);
+      const prevQuantity = existing ? existing.quantity : 0;
+      const newQuantity = prevQuantity + row.quantity;
+
+      await applyStockMovement({
+        materialCode: row.material_code,
+        locationCode: GRN_UNALLOCATED_LOCATION,
+        prevQuantity,
+        newQuantity,
+        allocationId: existing?.id,
+        transactionType: "MATERIAL_RECEIPT",
+        referenceType: "GRN",
+        referenceNumber: grnNumber,
+        reason: "GRN Receipt",
+      });
+
+      // Keep the running balance current in case the same material
+      // appears again (already de-duplicated upstream, but this keeps
+      // the map correct defensively).
+      allocationMap.set(row.material_code, {
+        id: existing?.id ?? -1,
+        quantity: newQuantity,
+      });
+
+      importedLines.push({
+        material_code: row.material_code,
+        quantity: row.quantity,
+      });
+
+      summary.imported += 1;
+      summary.totalQuantity += row.quantity;
+    } catch (err) {
+      summary.failed += 1;
+      summary.failures.push({
+        material_code: row.material_code,
+        quantity: row.quantity,
+        error: err instanceof Error ? err.message : "Unknown error.",
+      });
+    }
+  }
+
+  if (summary.imported === 0) {
+    return summary;
+  }
+
+  const { data: grnHeader, error: grnError } = await supabase
+    .from("receipt_grn")
+    .insert([
+      {
+        receipt_id: receiptId,
+        grn_number: grnNumber,
+        grn_date: grnDate,
+        uploaded_by: uploadedBy.trim() || null,
+        material_count: summary.imported,
+        total_quantity: summary.totalQuantity,
+      },
+    ])
+    .select()
+    .single();
+
+  if (grnError) {
+    console.error(grnError);
+  } else {
+    summary.grnId = grnHeader.id;
+
+    // Bulk insert every line item in a single call.
+    const { error: linesError } = await supabase
+      .from("receipt_grn_lines")
+      .insert(
+        importedLines.map((line) => ({
+          grn_id: grnHeader.id,
+          material_code: line.material_code,
+          quantity: line.quantity,
+        }))
+      );
+
+    if (linesError) {
+      console.error(linesError);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data: updatedReceipt, error: closeError } = await supabase
+    .from("receipt_header")
+    .update({
+      grn_number: grnNumber,
+      grn_date: grnDate,
+      uploaded_by: uploadedBy.trim() || null,
+      upload_date: nowIso,
+      status: "Closed",
+      closed_date: nowIso,
+      closed_by: uploadedBy.trim() || null,
+    })
+    .eq("id", receiptId)
+    .select()
+    .single();
+
+  if (closeError) {
+    console.error(closeError);
+  } else {
+    summary.closed = true;
+    summary.receipt = updatedReceipt as ReceiptHeader;
+  }
+
+  return summary;
+}
+
+export interface GrnHistoryEntry {
+  id: number;
+  receipt_id: number;
+  grn_number: string;
+  grn_date: string;
+  uploaded_by: string | null;
+  upload_date: string;
+  material_count: number;
+  total_quantity: number;
+}
+
+export async function getGrnHistory(
+  receiptId: number
+): Promise<GrnHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from("receipt_grn")
+    .select("*")
+    .eq("receipt_id", receiptId)
+    .order("upload_date", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return (data ?? []) as GrnHistoryEntry[];
+}
+
+export interface GrnLine {
+  id: number;
+  grn_id: number;
+  material_code: string;
+  quantity: number;
+}
+
+export async function getGrnLines(grnId: number): Promise<GrnLine[]> {
+  const { data, error } = await supabase
+    .from("receipt_grn_lines")
+    .select("*")
+    .eq("grn_id", grnId)
+    .order("material_code");
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return (data ?? []) as GrnLine[];
+}
+
+/**
+ * Generates the downloadable GRN Excel template (Material Code, Quantity)
+ * with a couple of sample rows, via SheetJS. Called from the UI layer,
+ * which triggers the actual file download.
+ */
+export function buildGrnTemplateRows(): { headers: string[]; rows: (string | number)[][] } {
+  return {
+    headers: ["Material Code", "Quantity"],
+    rows: [
+      ["9000000001", 10],
+      ["9000000002", 25],
+    ],
   };
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import * as XLSX from "xlsx";
 
 import {
   Alert,
@@ -16,6 +17,7 @@ import {
   Grid,
   IconButton,
   InputAdornment,
+  LinearProgress,
   MenuItem,
   Paper,
   Radio,
@@ -46,6 +48,11 @@ import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import AddPhotoAlternateIcon from "@mui/icons-material/AddPhotoAlternate";
 import DeleteIcon from "@mui/icons-material/Delete";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import DownloadIcon from "@mui/icons-material/Download";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import HistoryIcon from "@mui/icons-material/History";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
 import {
   createReceipt,
@@ -53,14 +60,36 @@ import {
   getReceipts,
   getReceiptSummary,
   PACKAGE_TYPES,
+  // Sprint 2
+  submitInspection,
+  getInspectionHistory,
+  parseGrnExcelRows,
+  validateGrnMaterials,
+  importGrn,
+  getGrnHistory,
+  buildGrnTemplateRows,
   type ReceiptHeader,
   type ReceiptFormInput,
   type ReceiptSummary,
   type ReceiptMode,
   type PackageType,
+  type InspectionStatus,
+  type InspectionHistoryEntry,
+  type GrnImportRow,
+  type GrnFormatInvalidRow,
+  type GrnHistoryEntry,
 } from "../services/receiptService";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
+
+const INSPECTION_STATUSES: InspectionStatus[] = [
+  "Pending Inspection",
+  "Accepted",
+  "Rejected",
+  "Accepted with Remarks",
+];
+
+
 
 const emptyForm: ReceiptFormInput = {
   receipt_mode: "Vehicle",
@@ -313,6 +342,243 @@ export default function MaterialReceipt() {
 
   // ---------------- View DRC ----------------
   const [viewReceipt, setViewReceipt] = useState<ReceiptHeader | null>(null);
+
+  // ---------------- Sprint 2: Inspection ----------------
+  const [inspectionStatusInput, setInspectionStatusInput] =
+    useState<InspectionStatus>("Accepted");
+  const [inspectionRemarksInput, setInspectionRemarksInput] = useState("");
+  const [inspectionByInput, setInspectionByInput] = useState("");
+  const [submittingInspection, setSubmittingInspection] = useState(false);
+  const [inspectionHistory, setInspectionHistory] = useState<
+    InspectionHistoryEntry[]
+  >([]);
+
+  // ---------------- Sprint 2: GRN Upload ----------------
+  const [grnNumber, setGrnNumber] = useState("");
+  const [grnDate, setGrnDate] = useState("");
+  const [uploadedBy, setUploadedBy] = useState("");
+  const grnFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [grnFile, setGrnFile] = useState<File | null>(null);
+  const [grnPreviewLoading, setGrnPreviewLoading] = useState(false);
+  const [grnMergedRows, setGrnMergedRows] = useState<GrnImportRow[]>([]);
+  const [grnFormatInvalidRows, setGrnFormatInvalidRows] = useState<
+    GrnFormatInvalidRow[]
+  >([]);
+  const [grnUnknownMaterials, setGrnUnknownMaterials] = useState<
+    GrnImportRow[]
+  >([]);
+  const [grnKnownRows, setGrnKnownRows] = useState<GrnImportRow[]>([]);
+  const [grnImporting, setGrnImporting] = useState(false);
+  const [grnHistory, setGrnHistory] = useState<GrnHistoryEntry[]>([]);
+
+  function resetGrnForm() {
+    setGrnNumber("");
+    setGrnDate("");
+    setUploadedBy("");
+    setGrnFile(null);
+    setGrnMergedRows([]);
+    setGrnFormatInvalidRows([]);
+    setGrnUnknownMaterials([]);
+    setGrnKnownRows([]);
+  }
+
+  // Load Inspection + GRN history whenever a DRC is opened for viewing.
+  useEffect(() => {
+    if (!viewReceipt) {
+      setInspectionHistory([]);
+      setGrnHistory([]);
+      return;
+    }
+
+    setInspectionStatusInput("Accepted");
+    setInspectionRemarksInput("");
+    setInspectionByInput("");
+    resetGrnForm();
+
+    let cancelled = false;
+
+    Promise.all([
+      getInspectionHistory(viewReceipt.id),
+      getGrnHistory(viewReceipt.id),
+    ]).then(([inspections, grns]) => {
+      if (cancelled) return;
+      setInspectionHistory(inspections);
+      setGrnHistory(grns);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewReceipt?.id]);
+
+  async function handleSubmitInspection() {
+    if (!viewReceipt) return;
+
+    if (
+      (inspectionStatusInput === "Rejected" ||
+        inspectionStatusInput === "Accepted with Remarks") &&
+      !inspectionRemarksInput.trim()
+    ) {
+      showSnackbar(
+        "Please enter Inspection Remarks for this outcome.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!inspectionByInput.trim()) {
+      showSnackbar("Please enter Inspection By.", "warning");
+      return;
+    }
+
+    setSubmittingInspection(true);
+
+    try {
+      const updated = await submitInspection(
+        viewReceipt.id,
+        inspectionStatusInput,
+        inspectionRemarksInput,
+        inspectionByInput
+      );
+
+      setViewReceipt(updated);
+      setInspectionRemarksInput("");
+      setInspectionByInput("");
+
+      const history = await getInspectionHistory(viewReceipt.id);
+      setInspectionHistory(history);
+
+      showSnackbar(
+        `Inspection recorded: ${inspectionStatusInput}.`,
+        "success"
+      );
+
+      await refreshAll();
+    } catch {
+      showSnackbar("Something went wrong while saving the inspection.", "error");
+    } finally {
+      setSubmittingInspection(false);
+    }
+  }
+
+  function handleDownloadGrnTemplate() {
+    const { headers, rows } = buildGrnTemplateRows();
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "GRN Template");
+    XLSX.writeFile(workbook, "GRN_Import_Template.xlsx");
+  }
+
+  function handleGrnFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setGrnFile(file);
+    setGrnMergedRows([]);
+    setGrnFormatInvalidRows([]);
+    setGrnUnknownMaterials([]);
+    setGrnKnownRows([]);
+    e.target.value = "";
+  }
+
+  async function handleGrnPreview() {
+    if (!grnFile) {
+      showSnackbar("Please choose a GRN Excel file first.", "warning");
+      return;
+    }
+
+    setGrnPreviewLoading(true);
+
+    try {
+      const buffer = await grnFile.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(sheet, {
+        defval: "",
+      }) as Record<string, unknown>[];
+
+      const parsed = parseGrnExcelRows(rawRows);
+      setGrnFormatInvalidRows(parsed.invalidRows);
+      setGrnMergedRows(parsed.mergedRows);
+
+      const validation = await validateGrnMaterials(parsed.mergedRows);
+      setGrnKnownRows(validation.knownRows);
+      setGrnUnknownMaterials(validation.unknownMaterials);
+
+      if (validation.knownRows.length === 0) {
+        showSnackbar(
+          "No valid, known materials found in this file.",
+          "error"
+        );
+      } else {
+        showSnackbar(
+          `Preview ready. ${validation.knownRows.length} material(s) ready to import.`,
+          "success"
+        );
+      }
+    } catch {
+      showSnackbar("Failed to read the GRN Excel file.", "error");
+    } finally {
+      setGrnPreviewLoading(false);
+    }
+  }
+
+  async function handleGrnImport() {
+    if (!viewReceipt) return;
+
+    if (!grnNumber.trim()) {
+      showSnackbar("Please enter the GRN Number.", "warning");
+      return;
+    }
+
+    if (!grnDate) {
+      showSnackbar("Please enter the GRN Date.", "warning");
+      return;
+    }
+
+    if (!uploadedBy.trim()) {
+      showSnackbar("Please enter Uploaded By.", "warning");
+      return;
+    }
+
+    if (grnKnownRows.length === 0) {
+      showSnackbar("Please preview a file with valid materials first.", "warning");
+      return;
+    }
+
+    setGrnImporting(true);
+
+    try {
+      const summary = await importGrn(
+        viewReceipt.id,
+        grnNumber.trim(),
+        grnDate,
+        uploadedBy,
+        grnKnownRows
+      );
+
+      if (summary.receipt) {
+        setViewReceipt(summary.receipt);
+      }
+
+      const grns = await getGrnHistory(viewReceipt.id);
+      setGrnHistory(grns);
+
+      resetGrnForm();
+
+      showSnackbar(
+        summary.closed
+          ? `GRN imported. ${summary.imported} material(s), ${summary.totalQuantity} total quantity. DRC closed.`
+          : `GRN import failed for all materials (${summary.failed} failure(s)).`,
+        summary.closed ? "success" : "error"
+      );
+
+      await refreshAll();
+    } catch {
+      showSnackbar("Something went wrong while importing the GRN.", "error");
+    } finally {
+      setGrnImporting(false);
+    }
+  }
 
   // ---------------- Print DRC ----------------
   function handlePrint(receipt: ReceiptHeader) {
@@ -1010,7 +1276,7 @@ export default function MaterialReceipt() {
         open={!!viewReceipt}
         onClose={() => setViewReceipt(null)}
         fullWidth
-        maxWidth="xs"
+        maxWidth="sm"
         fullScreen={mobile}
       >
         {viewReceipt && (
@@ -1029,13 +1295,23 @@ export default function MaterialReceipt() {
               </IconButton>
             </DialogTitle>
 
-            <DialogContent dividers>
-              <Chip
-                size="small"
-                label={viewReceipt.status}
-                color={statusColor(viewReceipt.status)}
-                sx={{ fontWeight: 700, mb: 1.5 }}
-              />
+            <DialogContent dividers sx={{ p: 1.5 }}>
+              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1.5 }}>
+                <Chip
+                  size="small"
+                  label={viewReceipt.status}
+                  color={statusColor(viewReceipt.status)}
+                  sx={{ fontWeight: 700 }}
+                />
+                {viewReceipt.inspection_status && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`Inspection: ${viewReceipt.inspection_status}`}
+                    sx={{ fontWeight: 600 }}
+                  />
+                )}
+              </Box>
 
               <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
                 {[
@@ -1086,6 +1362,388 @@ export default function MaterialReceipt() {
                     ))}
                   </Box>
                 </>
+              )}
+
+              {/* ---- Sprint 2: Inspection ---- */}
+              <Divider sx={{ my: 1.5 }} />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
+                <FactCheckIcon fontSize="small" color="action" />
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Inspection
+                </Typography>
+              </Box>
+
+              {viewReceipt.status === "Pending Inspection" ||
+              viewReceipt.inspection_status === "Rejected" ? (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <TextField
+                    select
+                    label="Inspection Status"
+                    size="small"
+                    fullWidth
+                    value={inspectionStatusInput}
+                    onChange={(e) =>
+                      setInspectionStatusInput(e.target.value as InspectionStatus)
+                    }
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  >
+                    {INSPECTION_STATUSES.filter(
+                      (s) => s !== "Pending Inspection"
+                    ).map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    label="Inspection Remarks"
+                    size="small"
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    value={inspectionRemarksInput}
+                    onChange={(e) => setInspectionRemarksInput(e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+
+                  <TextField
+                    label="Inspection By"
+                    size="small"
+                    fullWidth
+                    value={inspectionByInput}
+                    onChange={(e) => setInspectionByInput(e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    startIcon={
+                      submittingInspection ? (
+                        <CircularProgress size={18} color="inherit" />
+                      ) : (
+                        <FactCheckIcon fontSize="small" />
+                      )
+                    }
+                    onClick={handleSubmitInspection}
+                    disabled={submittingInspection}
+                    sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
+                  >
+                    Submit Inspection
+                  </Button>
+                </Box>
+              ) : (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Status
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {viewReceipt.inspection_status ?? "-"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Inspected By
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {viewReceipt.inspection_by ?? "-"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Inspection Date
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {viewReceipt.inspection_date
+                        ? formatDateTime(viewReceipt.inspection_date)
+                        : "-"}
+                    </Typography>
+                  </Box>
+                  {viewReceipt.inspection_remarks && (
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Remarks
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, textAlign: "right" }}>
+                        {viewReceipt.inspection_remarks}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* ---- Sprint 2: GRN Upload ---- */}
+              {viewReceipt.status === "Pending GRN" && (
+                <>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
+                    <CloudUploadIcon fontSize="small" color="action" />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      GRN Upload
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <TextField
+                        label="GRN Number"
+                        size="small"
+                        fullWidth
+                        value={grnNumber}
+                        onChange={(e) => setGrnNumber(e.target.value)}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      />
+                      <TextField
+                        label="GRN Date"
+                        type="date"
+                        size="small"
+                        fullWidth
+                        value={grnDate}
+                        onChange={(e) => setGrnDate(e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      />
+                    </Box>
+
+                    <TextField
+                      label="Uploaded By"
+                      size="small"
+                      fullWidth
+                      value={uploadedBy}
+                      onChange={(e) => setUploadedBy(e.target.value)}
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      startIcon={<DownloadIcon fontSize="small" />}
+                      onClick={handleDownloadGrnTemplate}
+                      sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                    >
+                      Download Excel Template
+                    </Button>
+
+                    <input
+                      ref={grnFileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      hidden
+                      onChange={handleGrnFileChange}
+                    />
+
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      startIcon={<UploadFileIcon fontSize="small" />}
+                      onClick={() => grnFileInputRef.current?.click()}
+                      sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                    >
+                      Choose GRN Excel File
+                    </Button>
+
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {grnFile ? grnFile.name : "No file selected"}
+                    </Typography>
+
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      startIcon={
+                        grnPreviewLoading ? (
+                          <CircularProgress size={18} color="inherit" />
+                        ) : (
+                          <VisibilityIcon fontSize="small" />
+                        )
+                      }
+                      onClick={handleGrnPreview}
+                      disabled={!grnFile || grnPreviewLoading}
+                      sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
+                    >
+                      Preview
+                    </Button>
+
+                    {(grnMergedRows.length > 0 || grnFormatInvalidRows.length > 0) && (
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                        <Chip size="small" label={`Parsed: ${grnMergedRows.length}`} />
+                        <Chip
+                          size="small"
+                          label={`Known: ${grnKnownRows.length}`}
+                          color="success"
+                        />
+                        <Chip
+                          size="small"
+                          label={`Unknown: ${grnUnknownMaterials.length}`}
+                          color="error"
+                        />
+                        <Chip
+                          size="small"
+                          label={`Format errors: ${grnFormatInvalidRows.length}`}
+                          color="warning"
+                        />
+                      </Box>
+                    )}
+
+                    {grnUnknownMaterials.length > 0 && (
+                      <TableContainer sx={{ maxHeight: 200, overflowX: "auto", borderRadius: 2 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Unknown Material Code</TableCell>
+                              <TableCell align="right">Quantity</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {grnUnknownMaterials.map((row) => (
+                              <TableRow key={row.material_code}>
+                                <TableCell>{row.material_code}</TableCell>
+                                <TableCell align="right">{row.quantity}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+
+                    {grnFormatInvalidRows.length > 0 && (
+                      <TableContainer sx={{ maxHeight: 200, overflowX: "auto", borderRadius: 2 }}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Row</TableCell>
+                              <TableCell>Material Code</TableCell>
+                              <TableCell>Reason</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {grnFormatInvalidRows.map((row) => (
+                              <TableRow key={row.rowNumber}>
+                                <TableCell>{row.rowNumber}</TableCell>
+                                <TableCell>{row.material_code || "-"}</TableCell>
+                                <TableCell>{row.errors.join(", ")}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      startIcon={
+                        grnImporting ? (
+                          <CircularProgress size={18} color="inherit" />
+                        ) : (
+                          <CloudUploadIcon fontSize="small" />
+                        )
+                      }
+                      onClick={handleGrnImport}
+                      disabled={grnKnownRows.length === 0 || grnImporting}
+                      sx={{ minHeight: 44, borderRadius: 2, fontWeight: 700 }}
+                    >
+                      Import GRN &amp; Close DRC
+                    </Button>
+
+                    {grnImporting && (
+                      <LinearProgress sx={{ height: 6, borderRadius: 3 }} />
+                    )}
+                  </Box>
+                </>
+              )}
+
+              {/* ---- Sprint 2: History ---- */}
+              <Divider sx={{ my: 1.5 }} />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
+                <HistoryIcon fontSize="small" color="action" />
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  History
+                </Typography>
+              </Box>
+
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                Inspection History
+              </Typography>
+              {inspectionHistory.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  No inspections recorded yet.
+                </Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1.5 }}>
+                  {inspectionHistory.map((h) => (
+                    <Box
+                      key={h.id}
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        bgcolor: "grey.50",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.25,
+                      }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                        <Chip
+                          size="small"
+                          label={h.inspection_status}
+                          sx={{ fontWeight: 600 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDateTime(h.inspection_date)}
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        By: {h.inspection_by ?? "-"}
+                      </Typography>
+                      {h.inspection_remarks && (
+                        <Typography variant="body2">{h.inspection_remarks}</Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                GRN History
+              </Typography>
+              {grnHistory.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No GRN imported yet.
+                </Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {grnHistory.map((g) => (
+                    <Box
+                      key={g.id}
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        bgcolor: "grey.50",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.25,
+                      }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {g.grn_number}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatDate(g.grn_date)}
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Uploaded by {g.uploaded_by ?? "-"} on {formatDateTime(g.upload_date)}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        {g.material_count} material(s) imported - total quantity {g.total_quantity}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
               )}
             </DialogContent>
 
