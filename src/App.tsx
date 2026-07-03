@@ -7,6 +7,7 @@ import MaterialMaster from "./pages/MaterialMaster";
 import LocationMaster from "./pages/LocationMaster";
 import MaterialAllocation from "./pages/MaterialAllocation";
 import MaterialReceipt from "./pages/MaterialReceipt";
+import MaterialIssue from "./pages/MaterialIssue";
 import Reports from "./pages/Reports";
 import ImportExport from "./pages/ImportExport";
 import Settings from "./pages/Settings";
@@ -24,6 +25,8 @@ export default function App() {
         <Route path="allocation" element={<MaterialAllocation />} />
 
         <Route path="material-receipt" element={<MaterialReceipt />} />
+
+        <Route path="material-issue" element={<MaterialIssue />} />
 
         <Route path="reports" element={<Reports />} />
 
