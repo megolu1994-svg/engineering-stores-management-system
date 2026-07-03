@@ -7,14 +7,17 @@ import {
   Card,
   CardContent,
   CircularProgress,
-  Divider,
   MenuItem,
   Snackbar,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 
 import TuneIcon from "@mui/icons-material/Tune";
+import AddIcon from "@mui/icons-material/Add";
+import RemoveIcon from "@mui/icons-material/Remove";
 
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
@@ -28,6 +31,7 @@ import {
 } from "../services/materialAllocationService";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
+type Direction = "increase" | "decrease";
 
 const ADJUSTMENT_REASONS = [
   "Physical Count Variance",
@@ -54,7 +58,8 @@ export default function AdjustmentTab() {
   const [currentQuantity, setCurrentQuantity] = useState<number | null>(null);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
 
-  const [newQuantity, setNewQuantity] = useState("");
+  const [direction, setDirection] = useState<Direction>("increase");
+  const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving] = useState(false);
@@ -89,6 +94,19 @@ export default function AdjustmentTab() {
     };
   }, [material, location]);
 
+  // The underlying adjustment mechanism (applyAdjustment) still takes a
+  // single absolute "new quantity" - the Increase/Decrease toggle is a
+  // friendlier input on top of that, computed here in the UI layer only.
+  const amountValue = Number(amount);
+  const hasValidAmount = amount !== "" && !Number.isNaN(amountValue) && amountValue > 0;
+
+  const computedNewQuantity =
+    currentQuantity !== null && hasValidAmount
+      ? direction === "increase"
+        ? currentQuantity + amountValue
+        : currentQuantity - amountValue
+      : null;
+
   async function handleSubmit() {
     if (!material) {
       showSnackbar("Please select a material.", "warning");
@@ -100,10 +118,13 @@ export default function AdjustmentTab() {
       return;
     }
 
-    const quantity = Number(newQuantity);
+    if (!hasValidAmount) {
+      showSnackbar("Please enter a valid quantity.", "warning");
+      return;
+    }
 
-    if (!newQuantity || Number.isNaN(quantity) || quantity < 0) {
-      showSnackbar("Please enter a valid new quantity.", "warning");
+    if (computedNewQuantity === null || computedNewQuantity < 0) {
+      showSnackbar("Resulting quantity cannot be negative.", "warning");
       return;
     }
 
@@ -118,18 +139,18 @@ export default function AdjustmentTab() {
       await applyAdjustment(
         material.material_code,
         location.location_code,
-        quantity,
+        computedNewQuantity,
         reason,
         remarks || undefined
       );
 
       showSnackbar(
-        `Stock adjusted to ${quantity} for ${material.material_code} at ${location.location_code}.`,
+        `Stock adjusted to ${computedNewQuantity} for ${material.material_code} at ${location.location_code}.`,
         "success"
       );
 
-      setCurrentQuantity(quantity);
-      setNewQuantity("");
+      setCurrentQuantity(computedNewQuantity);
+      setAmount("");
       setReason("");
       setRemarks("");
     } catch {
@@ -139,23 +160,15 @@ export default function AdjustmentTab() {
     }
   }
 
-  const delta =
-    currentQuantity !== null && newQuantity !== "" && !Number.isNaN(Number(newQuantity))
-      ? Number(newQuantity) - currentQuantity
-      : null;
-
   return (
-    <Box sx={{ mt: 2.5 }}>
-      <Card elevation={0} sx={{ borderRadius: 4, boxShadow: "0 4px 20px rgba(15, 23, 42, 0.07)" }}>
-        <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+    <Box sx={{ mt: 1.5 }}>
+      <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)" }}>
+        <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>
             Manual Stock Adjustment
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-            Correct the allocated quantity for a material at a location. A reason is required.
-          </Typography>
 
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <MaterialSearch value={material} onChange={setMaterial} />
 
             <LocationSearch value={location} onChange={setLocation} />
@@ -166,35 +179,64 @@ export default function AdjustmentTab() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  p: 2,
+                  px: 1.25,
+                  py: 0.75,
                   borderRadius: 2,
                   bgcolor: "grey.50",
                 }}
               >
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="caption" color="text.secondary">
                   Current Quantity
                 </Typography>
 
                 {loadingCurrent ? (
-                  <CircularProgress size={18} />
+                  <CircularProgress size={16} />
                 ) : (
-                  <Typography sx={{ fontWeight: 700 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {currentQuantity ?? 0} {material.uom}
                   </Typography>
                 )}
               </Box>
             )}
 
-            <TextField
-              label="New Quantity"
-              type="number"
+            <ToggleButtonGroup
+              value={direction}
+              exclusive
               fullWidth
-              value={newQuantity}
-              onChange={(e) => setNewQuantity(e.target.value)}
-              slotProps={{ htmlInput: { inputMode: "numeric" } }}
+              size="small"
+              onChange={(_, value: Direction | null) => {
+                if (value) setDirection(value);
+              }}
+              sx={{
+                "& .MuiToggleButton-root": {
+                  minHeight: 40,
+                  borderRadius: 2,
+                  fontWeight: 700,
+                  textTransform: "none",
+                  gap: 0.5,
+                },
+              }}
+            >
+              <ToggleButton value="increase" color="success">
+                <AddIcon fontSize="small" /> Increase
+              </ToggleButton>
+              <ToggleButton value="decrease" color="error">
+                <RemoveIcon fontSize="small" /> Decrease
+              </ToggleButton>
+            </ToggleButtonGroup>
+
+            <TextField
+              label="Quantity"
+              type="number"
+              size="small"
+              fullWidth
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               helperText={
-                delta !== null
-                  ? `Change: ${delta > 0 ? "+" : ""}${delta}`
+                computedNewQuantity !== null
+                  ? `New quantity will be: ${computedNewQuantity}`
                   : " "
               }
             />
@@ -202,9 +244,11 @@ export default function AdjustmentTab() {
             <TextField
               select
               label="Reason"
+              size="small"
               fullWidth
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             >
               {ADJUSTMENT_REASONS.map((option) => (
                 <MenuItem key={option} value={option}>
@@ -216,31 +260,30 @@ export default function AdjustmentTab() {
             <TextField
               label="Remarks"
               placeholder="Optional additional details"
+              size="small"
               fullWidth
               multiline
               minRows={2}
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             />
-
-            <Divider />
 
             <Button
               variant="contained"
-              size="large"
               fullWidth
               startIcon={
                 saving ? (
-                  <CircularProgress size={20} color="inherit" />
+                  <CircularProgress size={18} color="inherit" />
                 ) : (
-                  <TuneIcon />
+                  <TuneIcon fontSize="small" />
                 )
               }
               onClick={handleSubmit}
               disabled={saving}
-              sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+              sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
             >
-              Apply Adjustment
+              Save
             </Button>
           </Box>
         </CardContent>

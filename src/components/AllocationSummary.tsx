@@ -12,12 +12,12 @@ export default function AllocationSummary({
 }: Props) {
   if (!material) {
     return (
-      <Paper elevation={3} sx={{ p: 2, mb: 2, borderRadius: 2 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+      <Paper elevation={2} sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: "bold", fontSize: "0.9rem" }}>
           Material Information
         </Typography>
 
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
           Please select a material.
         </Typography>
       </Paper>
@@ -44,7 +44,7 @@ export default function AllocationSummary({
   }
 
   return (
-    <Paper elevation={3} sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+    <Paper elevation={2} sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
       <Box
         sx={{
           display: "flex",
@@ -55,14 +55,24 @@ export default function AllocationSummary({
         }}
       >
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} noWrap>
+          <Typography
+            variant="subtitle2"
+            sx={{ fontWeight: "bold", fontSize: "0.95rem" }}
+            noWrap
+          >
             {material.material_code}
           </Typography>
 
           <Typography
-            variant="body2"
+            variant="caption"
             color="text.secondary"
-            sx={{ overflowWrap: "break-word" }}
+            sx={{
+              overflowWrap: "break-word",
+              display: "-webkit-box",
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
           >
             {material.short_description}
           </Typography>
@@ -77,18 +87,18 @@ export default function AllocationSummary({
         </Typography>
       </Box>
 
-      <Divider sx={{ my: 1.5 }} />
+      <Divider sx={{ my: 1 }} />
 
-      <Grid container spacing={1}>
+      <Grid container spacing={0.5}>
         <Grid size={4}>
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: "block" }}
+            sx={{ display: "block", fontSize: "0.68rem" }}
           >
-            Stock
+            Total Stock
           </Typography>
-          <Typography variant="subtitle2" sx={{ fontWeight: "bold" }}>
+          <Typography variant="body2" sx={{ fontWeight: "bold" }}>
             {stock}
           </Typography>
         </Grid>
@@ -97,12 +107,12 @@ export default function AllocationSummary({
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: "block" }}
+            sx={{ display: "block", fontSize: "0.68rem" }}
           >
             Allocated
           </Typography>
           <Typography
-            variant="subtitle2"
+            variant="body2"
             sx={{ fontWeight: "bold" }}
             color="primary.main"
           >
@@ -114,12 +124,12 @@ export default function AllocationSummary({
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: "block" }}
+            sx={{ display: "block", fontSize: "0.68rem" }}
           >
-            Balance
+            Unallocated
           </Typography>
           <Typography
-            variant="subtitle2"
+            variant="body2"
             sx={{ fontWeight: "bold", color: balanceColor }}
           >
             {balance}
@@ -127,18 +137,18 @@ export default function AllocationSummary({
         </Grid>
       </Grid>
 
-      <Box sx={{ mt: 2 }}>
+      <Box sx={{ mt: 1 }}>
         <Box
           sx={{
             display: "flex",
             justifyContent: "space-between",
-            mb: 0.5,
+            mb: 0.25,
           }}
         >
-          <Typography variant="caption" color="text.secondary">
-            Allocated {allocatedQty} / {stock}
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
+            {allocatedQty} / {stock}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
             {allocatedPercent.toFixed(0)}%
           </Typography>
         </Box>
@@ -147,7 +157,7 @@ export default function AllocationSummary({
           variant="determinate"
           value={allocatedPercent}
           color={progressColor}
-          sx={{ height: 8, borderRadius: 4 }}
+          sx={{ height: 6, borderRadius: 3 }}
         />
       </Box>
     </Paper>

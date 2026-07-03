@@ -1,9 +1,9 @@
 import { useState } from "react";
 
 import {
+  Box,
   Button,
   Paper,
-  Stack,
   TextField,
   Typography,
 } from "@mui/material";
@@ -51,48 +51,70 @@ export default function AllocationForm({
   }
 
   return (
-    <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, mb: 2, borderRadius: 2 }}>
+    <Paper elevation={2} sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
 
       <Typography
-        variant="subtitle1"
-        sx={{ fontWeight: "bold", mb: 2 }}
+        variant="subtitle2"
+        sx={{ fontWeight: "bold", mb: 1, fontSize: "0.9rem" }}
       >
         Allocate Stock
       </Typography>
 
-      <Stack spacing={2}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          gap: 1,
+        }}
+      >
+        <Box sx={{ flex: { sm: 2 } }}>
+          <LocationSearch
+            value={location}
+            onChange={setLocation}
+          />
+        </Box>
 
-        <LocationSearch
-          value={location}
-          onChange={setLocation}
-        />
-
-        <TextField
-          label="Quantity"
-          type="number"
-          fullWidth
-          value={quantity}
-          onChange={(e) =>
-            setQuantity(e.target.value)
-          }
-          slotProps={{
-            htmlInput: {
-              inputMode: "numeric",
-            },
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1,
+            flex: { sm: 2 },
           }}
-        />
-
-        <Button
-          variant="contained"
-          size="large"
-          fullWidth
-          onClick={handleAllocate}
-          sx={{ minHeight: 48, fontWeight: "bold" }}
         >
-          Allocate Stock
-        </Button>
+          <TextField
+            label="Quantity"
+            type="number"
+            size="small"
+            fullWidth
+            value={quantity}
+            onChange={(e) =>
+              setQuantity(e.target.value)
+            }
+            slotProps={{
+              htmlInput: {
+                inputMode: "numeric",
+              },
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": { borderRadius: 2 },
+            }}
+          />
 
-      </Stack>
+          <Button
+            variant="contained"
+            onClick={handleAllocate}
+            sx={{
+              minHeight: 40,
+              minWidth: 88,
+              borderRadius: 2,
+              fontWeight: "bold",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Save
+          </Button>
+        </Box>
+      </Box>
 
     </Paper>
   );

@@ -83,6 +83,7 @@ export default function MaterialSearch({
 
   return (
     <Autocomplete
+      size="small"
       options={mergedOptions}
       value={value}
       inputValue={inputValue}
@@ -97,11 +98,27 @@ export default function MaterialSearch({
       filterOptions={(x) => x}
       blurOnSelect
       clearOnBlur={false}
+      slotProps={{
+        listbox: {
+          sx: {
+            maxHeight: 280,
+            "& .MuiAutocomplete-option": {
+              minHeight: 44,
+              py: 0.75,
+            },
+          },
+        },
+      }}
       renderInput={(params) => (
         <TextField
           {...params}
           label={label}
           fullWidth
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              borderRadius: 2,
+            },
+          }}
         />
       )}
     />

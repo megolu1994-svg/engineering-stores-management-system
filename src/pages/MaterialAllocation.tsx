@@ -63,7 +63,6 @@ const TAB_ADJUSTMENT = 3;
 export default function MaterialAllocation() {
   const theme = useTheme();
   const fullScreenDialogs = useMediaQuery(theme.breakpoints.down("sm"));
-  const mobileTabs = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [activeTab, setActiveTab] = useState(TAB_ALLOCATION);
 
@@ -311,13 +310,12 @@ export default function MaterialAllocation() {
   }
 
   return (
-    <Box sx={{ pb: 4 }}>
+    <Box sx={{ pb: 3 }}>
       <Typography
-        variant="h5"
         sx={{
-          mb: 2,
-          fontWeight: "bold",
-          fontSize: { xs: "1.25rem", sm: "1.5rem", md: "2rem" },
+          mb: 1,
+          fontWeight: 700,
+          fontSize: { xs: "1.05rem", sm: "1.25rem" },
         }}
       >
         Material Allocation
@@ -326,39 +324,50 @@ export default function MaterialAllocation() {
       <Tabs
         value={activeTab}
         onChange={(_, value) => setActiveTab(value)}
-        variant={mobileTabs ? "scrollable" : "standard"}
-        scrollButtons={mobileTabs ? "auto" : false}
-        allowScrollButtonsMobile
+        variant="fullWidth"
         sx={{
+          minHeight: 56,
           borderBottom: 1,
           borderColor: "divider",
-          mb: 3,
+          mb: 1.5,
+          borderRadius: 2,
+          bgcolor: "grey.50",
           "& .MuiTab-root": {
             fontWeight: 700,
             textTransform: "none",
-            minHeight: 52,
+            minHeight: 56,
+            minWidth: 0,
+            fontSize: "0.68rem",
+            lineHeight: 1.15,
+            px: 0.5,
+            py: 0.5,
+            gap: 0.25,
+          },
+          "& .MuiTabs-indicator": {
+            height: 3,
+            borderRadius: 3,
           },
         }}
       >
         <Tab
-          icon={<Inventory2Icon fontSize="small" />}
-          iconPosition="start"
-          label="Current Stock"
+          icon={<Inventory2Icon sx={{ fontSize: 18 }} />}
+          iconPosition="top"
+          label="Stock"
         />
         <Tab
-          icon={<SwapHorizIcon fontSize="small" />}
-          iconPosition="start"
-          label="Allocation"
+          icon={<SwapHorizIcon sx={{ fontSize: 18 }} />}
+          iconPosition="top"
+          label="Allocate"
         />
         <Tab
-          icon={<PlaylistAddIcon fontSize="small" />}
-          iconPosition="start"
-          label="Opening Stock"
+          icon={<PlaylistAddIcon sx={{ fontSize: 18 }} />}
+          iconPosition="top"
+          label="Opening"
         />
         <Tab
-          icon={<TuneIcon fontSize="small" />}
-          iconPosition="start"
-          label="Adjustment"
+          icon={<TuneIcon sx={{ fontSize: 18 }} />}
+          iconPosition="top"
+          label="Adjust"
         />
       </Tabs>
 
@@ -366,7 +375,7 @@ export default function MaterialAllocation() {
 
       {activeTab === TAB_ALLOCATION && (
         <>
-          <Box sx={{ mb: 2 }}>
+          <Box sx={{ mb: 1.5 }}>
             <MaterialSearch value={material} onChange={setMaterial} />
           </Box>
 
@@ -375,19 +384,22 @@ export default function MaterialAllocation() {
           {material ? (
             <AllocationForm onAllocate={handleAllocate} />
           ) : (
-            <Alert severity="info" sx={{ mb: 2 }}>
+            <Alert severity="info" sx={{ mb: 1.5, py: 0.25 }}>
               Please select a material to allocate stock.
             </Alert>
           )}
 
           <Box ref={allocationsRef}>
-            <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1.5 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{ fontWeight: "bold", mb: 0.75, fontSize: "0.85rem" }}
+            >
               Current Allocations
             </Typography>
 
             {loadingAllocations ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                <CircularProgress />
+              <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+                <CircularProgress size={28} />
               </Box>
             ) : (
               <AllocationTable
@@ -437,7 +449,7 @@ export default function MaterialAllocation() {
                 onClick={closeEditDialog}
                 disabled={savingAllocation}
                 fullWidth={fullScreenDialogs}
-                sx={{ minHeight: 48 }}
+                sx={{ minHeight: 44 }}
               >
                 Cancel
               </Button>
@@ -446,7 +458,7 @@ export default function MaterialAllocation() {
                 onClick={handleEditSave}
                 disabled={savingAllocation}
                 fullWidth={fullScreenDialogs}
-                sx={{ minHeight: 48 }}
+                sx={{ minHeight: 44 }}
               >
                 Save
               </Button>
@@ -475,7 +487,7 @@ export default function MaterialAllocation() {
                 onClick={closeDeleteDialog}
                 disabled={savingAllocation}
                 fullWidth={fullScreenDialogs}
-                sx={{ minHeight: 48 }}
+                sx={{ minHeight: 44 }}
               >
                 Cancel
               </Button>
@@ -485,7 +497,7 @@ export default function MaterialAllocation() {
                 onClick={handleDeleteConfirm}
                 disabled={savingAllocation}
                 fullWidth={fullScreenDialogs}
-                sx={{ minHeight: 48 }}
+                sx={{ minHeight: 44 }}
               >
                 Delete
               </Button>

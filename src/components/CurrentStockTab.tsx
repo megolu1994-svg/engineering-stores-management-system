@@ -4,10 +4,9 @@ import * as XLSX from "xlsx";
 import {
   Alert,
   Box,
-  Button,
   Card,
-  CardContent,
   CircularProgress,
+  IconButton,
   InputAdornment,
   Paper,
   Snackbar,
@@ -18,6 +17,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -126,18 +126,22 @@ export default function CurrentStockTab() {
   }
 
   return (
-    <Box sx={{ mt: 2.5 }}>
+    <Box sx={{ mt: 1.5 }}>
       <Box
         sx={{
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          bgcolor: "background.default",
           display: "flex",
-          flexDirection: { xs: "column", sm: "row" },
-          gap: 2,
-          mb: 2.5,
+          alignItems: "center",
+          gap: 1,
+          py: 1,
         }}
       >
         <TextField
-          label="Search Current Stock"
-          placeholder="Search by Material Code, Description or Location"
+          size="small"
+          placeholder="Search Material Code, Description or Location"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           fullWidth
@@ -145,80 +149,89 @@ export default function CurrentStockTab() {
             input: {
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon color="action" />
+                  <SearchIcon fontSize="small" color="action" />
                 </InputAdornment>
               ),
             },
           }}
           sx={{
             "& .MuiOutlinedInput-root": {
-              borderRadius: 3,
-              minHeight: 56,
+              borderRadius: 2,
+              bgcolor: "background.paper",
             },
           }}
         />
 
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<DownloadIcon />}
-          onClick={handleExport}
-          sx={{
-            minHeight: 56,
-            borderRadius: 3,
-            fontWeight: 700,
-            width: { xs: "100%", sm: "auto" },
-            whiteSpace: "nowrap",
-          }}
-        >
-          Export to Excel
-        </Button>
+        <Tooltip title="Export to Excel">
+          <IconButton
+            onClick={handleExport}
+            sx={{
+              flexShrink: 0,
+              width: 40,
+              height: 40,
+              borderRadius: 2,
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              "&:hover": { bgcolor: "primary.dark" },
+            }}
+          >
+            <DownloadIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress />
+        <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+          <CircularProgress size={28} />
         </Box>
       ) : filteredRows.length === 0 ? (
-        <Card variant="outlined" sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
-          <Typography color="text.secondary">
+        <Card variant="outlined" sx={{ p: 3, textAlign: "center", borderRadius: 2, mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
             No current stock records found.
           </Typography>
         </Card>
       ) : mobile ? (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, mt: 0.5 }}>
           {filteredRows.map((row, index) => (
             <Card
               key={`${row.material_code}-${row.location_code}-${index}`}
               variant="outlined"
-              sx={{ borderRadius: 3 }}
+              sx={{ borderRadius: 2, px: 1.25, py: 0.75 }}
             >
-              <CardContent>
-                <Typography sx={{ fontWeight: 700 }} noWrap>
-                  {row.material_code}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {row.short_description}
-                </Typography>
-
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    mt: 1.5,
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    <PlaceIcon fontSize="small" color="action" />
-                    <Typography variant="body2">{row.location_code}</Typography>
-                  </Box>
-
-                  <Typography sx={{ fontWeight: 700 }} color="primary.main">
-                    {row.quantity}
+              <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.85rem" }} noWrap>
+                    {row.material_code}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {row.short_description}
                   </Typography>
                 </Box>
-              </CardContent>
+
+                <Typography
+                  sx={{ fontWeight: 800, fontSize: "1.15rem", flexShrink: 0 }}
+                  color="primary.main"
+                >
+                  {row.quantity}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.4, mt: 0.5 }}>
+                <PlaceIcon sx={{ fontSize: 14 }} color="action" />
+                <Typography variant="caption" color="text.secondary">
+                  {row.location_code}
+                </Typography>
+              </Box>
             </Card>
           ))}
         </Box>
@@ -227,8 +240,9 @@ export default function CurrentStockTab() {
           component={Paper}
           elevation={0}
           sx={{
-            borderRadius: 3,
+            borderRadius: 2,
             boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)",
+            mt: 1,
           }}
         >
           <Table size="small">

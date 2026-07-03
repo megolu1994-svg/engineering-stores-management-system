@@ -3,9 +3,6 @@ import { useEffect, useState } from "react";
 import {
   Box,
   Card,
-  CardActions,
-  CardContent,
-  Divider,
   IconButton,
   Stack,
   Typography,
@@ -64,7 +61,7 @@ export default function AllocationTable({
 
   if (allocations.length === 0) {
     return (
-      <Card variant="outlined" sx={{ p: 3, textAlign: "center", mb: 2, borderRadius: 2 }}>
+      <Card variant="outlined" sx={{ p: 2, textAlign: "center", mb: 1.5, borderRadius: 2 }}>
         <Typography variant="body2" color="text.secondary">
           No allocations yet for this material.
         </Typography>
@@ -73,78 +70,64 @@ export default function AllocationTable({
   }
 
   return (
-    <Stack spacing={1.5} sx={{ mb: 2 }}>
+    <Stack spacing={0.75} sx={{ mb: 1.5 }}>
       {allocations.map((allocation) => (
         <Card
           key={allocation.id}
           variant="outlined"
-          sx={{ borderRadius: 2 }}
+          sx={{
+            borderRadius: 2,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.25,
+            py: 0.75,
+          }}
         >
-          <CardContent sx={{ pb: 1.5 }}>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 1,
-              }}
-            >
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} noWrap>
-                  {allocation.location_code}
-                </Typography>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: "bold" }} noWrap>
+              {allocation.location_code}
+            </Typography>
 
-                {locationMap[allocation.location_code] && (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ overflowWrap: "break-word" }}
-                  >
-                    {locationMap[allocation.location_code]}
-                  </Typography>
-                )}
-              </Box>
+            {locationMap[allocation.location_code] && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                sx={{ display: "block" }}
+              >
+                {locationMap[allocation.location_code]}
+              </Typography>
+            )}
+          </Box>
 
-              <Box sx={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block" }}
-                >
-                  Allocated
-                </Typography>
-                <Typography
-                  variant="subtitle1"
-                  sx={{ fontWeight: "bold" }}
-                  color="primary.main"
-                >
-                  {allocation.quantity}
-                </Typography>
-              </Box>
-            </Box>
-          </CardContent>
+          <Typography
+            variant="body1"
+            sx={{ fontWeight: "bold", flexShrink: 0 }}
+            color="primary.main"
+          >
+            {allocation.quantity}
+          </Typography>
 
-          <Divider />
+          <IconButton
+            color="primary"
+            size="small"
+            onClick={() => onEdit(allocation)}
+            aria-label="Edit allocation"
+            sx={{ minWidth: 40, minHeight: 40 }}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
 
-          <CardActions sx={{ justifyContent: "flex-end", px: 1.5, py: 1 }}>
-            <IconButton
-              color="primary"
-              onClick={() => onEdit(allocation)}
-              aria-label="Edit allocation"
-              sx={{ minWidth: 48, minHeight: 48 }}
-            >
-              <EditIcon />
-            </IconButton>
-
-            <IconButton
-              color="error"
-              onClick={() => onDelete(allocation.id as number)}
-              aria-label="Delete allocation"
-              sx={{ minWidth: 48, minHeight: 48 }}
-            >
-              <DeleteIcon />
-            </IconButton>
-          </CardActions>
+          <IconButton
+            color="error"
+            size="small"
+            onClick={() => onDelete(allocation.id as number)}
+            aria-label="Delete allocation"
+            sx={{ minWidth: 40, minHeight: 40 }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
         </Card>
       ))}
     </Stack>
