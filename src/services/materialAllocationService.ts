@@ -1,6 +1,11 @@
 import { supabase } from "../config/supabase";
 import type { MaterialAllocation } from "../types/materialAllocation";
 
+import {
+  applyStockMovement,
+  reverseStockMovement,
+} from "./inventoryTransactionService";
+
 export async function getAllocations(
   materialCode: string
 ): Promise<MaterialAllocation[]> {
@@ -17,35 +22,89 @@ export async function getAllocations(
   return data as MaterialAllocation[];
 }
 
+/**
+ * Creates a new allocation row. Routes the actual write through the
+ * Inventory Engine (applyStockMovement) so it is logged the same way as
+ * every other stock movement. Preserves the original fire-and-forget
+ * error handling (log to console, never throw) so existing callers
+ * behave exactly as before.
+ */
 export async function addAllocation(
   allocation: Omit<MaterialAllocation, "id">
 ): Promise<void> {
-  const { error } = await supabase
-    .from("material_allocation")
-    .insert([allocation]);
-
-  if (error) console.error(error);
+  try {
+    await applyStockMovement({
+      materialCode: allocation.material_code,
+      locationCode: allocation.location_code,
+      prevQuantity: 0,
+      newQuantity: allocation.quantity,
+      transactionType: "ALLOCATION",
+      referenceType: "ALLOCATION",
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }
 
+/**
+ * Updates an existing allocation's quantity. Routes the actual write
+ * through the Inventory Engine (applyStockMovement) so it is logged the
+ * same way as every other stock movement. Preserves the original
+ * fire-and-forget error handling (log to console, never throw).
+ */
 export async function updateAllocation(
   id: number,
   quantity: number
 ): Promise<void> {
-  const { error } = await supabase
-    .from("material_allocation")
-    .update({ quantity })
-    .eq("id", id);
+  try {
+    const { data, error: fetchError } = await supabase
+      .from("material_allocation")
+      .select("material_code, location_code, quantity")
+      .eq("id", id)
+      .maybeSingle();
 
-  if (error) console.error(error);
+    if (fetchError) throw fetchError;
+
+    await applyStockMovement({
+      materialCode: data?.material_code ?? "",
+      locationCode: data?.location_code ?? "",
+      prevQuantity: data ? Number(data.quantity) : 0,
+      newQuantity: quantity,
+      allocationId: id,
+      transactionType: "ALLOCATION",
+      referenceType: "ALLOCATION",
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }
 
+/**
+ * Deletes an allocation row. Routes the removal through the Inventory
+ * Engine (reverseStockMovement) so it is logged as an OUT movement down
+ * to zero. Preserves the original fire-and-forget error handling.
+ */
 export async function deleteAllocation(id: number): Promise<void> {
-  const { error } = await supabase
-    .from("material_allocation")
-    .delete()
-    .eq("id", id);
+  try {
+    const { data, error: fetchError } = await supabase
+      .from("material_allocation")
+      .select("material_code, location_code, quantity")
+      .eq("id", id)
+      .maybeSingle();
 
-  if (error) console.error(error);
+    if (fetchError) throw fetchError;
+
+    await reverseStockMovement({
+      materialCode: data?.material_code ?? "",
+      locationCode: data?.location_code ?? "",
+      allocationId: id,
+      prevQuantity: data ? Number(data.quantity) : 0,
+      transactionType: "ALLOCATION",
+      referenceType: "ALLOCATION",
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 /* =========================================================================
@@ -128,103 +187,41 @@ export async function getCurrentStock(): Promise<CurrentStockRow[]> {
 }
 
 /* =========================================================================
- * Stock transactions (Opening Balance / Adjustment audit trail)
- * ========================================================================= */
-
-export type StockTransactionType = "OPENING_BALANCE" | "ADJUSTMENT";
-
-export interface StockTransactionEntry {
-  material_code: string;
-  location_code: string;
-  quantity: number;
-  type: StockTransactionType;
-  reason?: string;
-  remarks?: string;
-}
-
-/**
- * Best-effort audit log for Opening Balance and Adjustment activity.
- *
- * There is currently no dedicated transactions table in the schema, so
- * this is intentionally a placeholder: it tries to insert into
- * `stock_transactions` and, if that table doesn't exist yet (or the
- * insert otherwise fails), it logs a warning instead of throwing. The
- * actual stock quantity change always goes through the existing
- * addAllocation/updateAllocation functions above, so core functionality
- * never depends on this table being present.
- *
- * Suggested table, to be created manually in Supabase when ready:
- *
- *   create table stock_transactions (
- *     id bigint generated always as identity primary key,
- *     material_code text not null,
- *     location_code text not null,
- *     quantity numeric not null,
- *     type text not null,
- *     reason text,
- *     remarks text,
- *     created_at timestamptz not null default now()
- *   );
- */
-export async function recordStockTransaction(
-  entry: StockTransactionEntry
-): Promise<void> {
-  try {
-    const { error } = await supabase
-      .from("stock_transactions")
-      .insert([entry]);
-
-    if (error) {
-      console.warn(
-        "Stock transaction log skipped (stock_transactions table may not exist yet):",
-        error.message
-      );
-    }
-  } catch (err) {
-    console.warn("Stock transaction log skipped:", err);
-  }
-}
-
-/* =========================================================================
  * Opening Stock
  * ========================================================================= */
 
 /**
  * Applies an opening balance for a material at a location: adds the given
  * quantity to any existing allocation for that material/location, or
- * creates a new allocation if none exists yet. Uses the same
- * addAllocation/updateAllocation mechanism as the Allocation tab, and
- * records a best-effort OPENING_BALANCE transaction.
+ * creates a new allocation if none exists yet. Routed entirely through
+ * the Inventory Engine (applyStockMovement), which performs the write and
+ * logs an OPENING_STOCK transaction.
  */
 export async function applyOpeningStock(
   materialCode: string,
   locationCode: string,
   quantity: number,
-  _remarks?: string
+  remarks?: string
 ): Promise<void> {
   const existing = await getAllocations(materialCode);
   const existingRow = existing.find(
     (a) => a.location_code === locationCode
   );
 
-  if (existingRow && existingRow.id !== undefined) {
-    await updateAllocation(existingRow.id, existingRow.quantity + quantity);
-  } else {
-    await addAllocation({
-      material_code: materialCode,
-      location_code: locationCode,
-      quantity,
-    });
-  }
+  const prevQuantity = existingRow ? existingRow.quantity : 0;
+  const newQuantity = prevQuantity + quantity;
 
-  /*await recordStockTransaction({
-    material_code: materialCode,
-    location_code: locationCode,
-    quantity,
-    type: "OPENING_BALANCE",
+  await applyStockMovement({
+    materialCode,
+    locationCode,
+    prevQuantity,
+    newQuantity,
+    allocationId: existingRow?.id,
+    transactionType: "OPENING_STOCK",
+    referenceType: "OPENING_STOCK",
     reason: "Opening Balance",
     remarks,
-  });*/
+  });
 }
 
 export interface OpeningStockImportRow {
@@ -439,41 +436,34 @@ export async function bulkApplyOpeningStock(
 
 /**
  * Sets a material/location allocation to a new absolute quantity (manual
- * stock adjustment), creating the allocation if it doesn't exist yet, and
- * records a best-effort ADJUSTMENT transaction capturing the delta, the
- * reason, and any remarks.
+ * stock adjustment), creating the allocation if it doesn't exist yet.
+ * Routed entirely through the Inventory Engine (applyStockMovement),
+ * which performs the write and logs an ADJUSTMENT transaction capturing
+ * the delta, the reason, and any remarks.
  */
 export async function applyAdjustment(
   materialCode: string,
   locationCode: string,
   newQuantity: number,
-  _reason: string,
-  _remarks?: string
+  reason: string,
+  remarks?: string
 ): Promise<void> {
   const existing = await getAllocations(materialCode);
   const existingRow = existing.find(
     (a) => a.location_code === locationCode
   );
 
-  // const previousQuantity = existingRow?.quantity ?? 0;
-  //const delta = newQuantity - previousQuantity;
+  const prevQuantity = existingRow?.quantity ?? 0;
 
-  if (existingRow && existingRow.id !== undefined) {
-    await updateAllocation(existingRow.id, newQuantity);
-  } else {
-    await addAllocation({
-      material_code: materialCode,
-      location_code: locationCode,
-      quantity: newQuantity,
-    });
-  }
-
-  /*await recordStockTransaction({
-    material_code: materialCode,
-    location_code: locationCode,
-    quantity: delta,
-    type: "ADJUSTMENT",
+  await applyStockMovement({
+    materialCode,
+    locationCode,
+    prevQuantity,
+    newQuantity,
+    allocationId: existingRow?.id,
+    transactionType: "ADJUSTMENT",
+    referenceType: "ADJUSTMENT",
     reason,
     remarks,
-  });*/
+  });
 }
