@@ -323,7 +323,18 @@ export async function createReceipt(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("========== SUPABASE ERROR ==========");
+    console.error(error);
+    console.error("Payload:");
+    console.error(JSON.stringify(payload, null, 2));
+    alert(
+      error.message +
+      "\n\nDetails: " + (error.details ?? "") +
+      "\nHint: " + (error.hint ?? "")
+    );
+    throw error;
+  }
 
   return data as ReceiptHeader;
 }
@@ -377,7 +388,18 @@ export async function updateReceipt(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("========== SUPABASE ERROR ==========");
+    console.error(error);
+    console.error("Payload:");
+    console.error(JSON.stringify(payload, null, 2));
+    alert(
+      error.message +
+      "\n\nDetails: " + (error.details ?? "") +
+      "\nHint: " + (error.hint ?? "")
+    );
+    throw error;
+  }
 
   return data as ReceiptHeader;
 }
