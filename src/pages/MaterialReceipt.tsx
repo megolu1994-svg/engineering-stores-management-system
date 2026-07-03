@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import * as XLSX from "xlsx";
 
 import {
@@ -18,6 +18,7 @@ import {
   IconButton,
   InputAdornment,
   LinearProgress,
+  Menu,
   MenuItem,
   Paper,
   Radio,
@@ -53,13 +54,17 @@ import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import HistoryIcon from "@mui/icons-material/History";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import DescriptionIcon from "@mui/icons-material/Description";
 
 import {
   createReceipt,
   updateReceipt,
   getReceipts,
   getReceiptSummary,
-  PACKAGE_TYPES,
+  uploadReceiptPhotos,
   // Sprint 2
   submitInspection,
   getInspectionHistory,
@@ -72,12 +77,14 @@ import {
   type ReceiptFormInput,
   type ReceiptSummary,
   type ReceiptMode,
-  type PackageType,
   type InspectionStatus,
   type InspectionHistoryEntry,
   type GrnImportRow,
   type GrnFormatInvalidRow,
   type GrnHistoryEntry,
+  // Sprint 3
+  type PackageDetailRow,
+  type AttachmentFile,
 } from "../services/receiptService";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
@@ -89,16 +96,21 @@ const INSPECTION_STATUSES: InspectionStatus[] = [
   "Accepted with Remarks",
 ];
 
-
+const emptyPackageRow: PackageDetailRow = {
+  quantity: 1,
+  package_type: "",
+  description: "",
+};
 
 const emptyForm: ReceiptFormInput = {
   receipt_mode: "Vehicle",
   vehicle_number: "",
-  package_count: 1,
-  package_type: "Boxes",
+  package_details: [{ ...emptyPackageRow }],
   vendor_name: "",
-  po_number: "",
-  po_date: "",
+  sap_po_number: "",
+  sap_po_date: "",
+  gem_order_number: "",
+  gem_order_date: "",
   invoice_number: "",
   invoice_date: "",
   challan_number: "",
@@ -218,6 +230,17 @@ export default function MaterialReceipt() {
   const [newPhotoPreviews, setNewPhotoPreviews] = useState<string[]>([]);
   const [keptPhotoUrls, setKeptPhotoUrls] = useState<string[]>([]);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [photoMenuAnchor, setPhotoMenuAnchor] = useState<HTMLElement | null>(
+    null
+  );
+  const [capturingPhoto, setCapturingPhoto] = useState(false);
+
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
+  const [newDocumentFiles, setNewDocumentFiles] = useState<File[]>([]);
+  const [keptAttachments, setKeptAttachments] = useState<AttachmentFile[]>(
+    []
+  );
 
   function updateField<K extends keyof ReceiptFormInput>(
     field: K,
@@ -226,12 +249,44 @@ export default function MaterialReceipt() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function updatePackageRow(
+    index: number,
+    field: keyof PackageDetailRow,
+    value: string | number
+  ) {
+    setForm((prev) => {
+      const rows = [...prev.package_details];
+      rows[index] = { ...rows[index], [field]: value };
+      return { ...prev, package_details: rows };
+    });
+  }
+
+  function addPackageRow() {
+    setForm((prev) => ({
+      ...prev,
+      package_details: [...prev.package_details, { ...emptyPackageRow }],
+    }));
+  }
+
+  function removePackageRow(index: number) {
+    setForm((prev) => {
+      const rows = prev.package_details.filter((_, i) => i !== index);
+      // At least one row must always exist.
+      return {
+        ...prev,
+        package_details: rows.length > 0 ? rows : [{ ...emptyPackageRow }],
+      };
+    });
+  }
+
   function openCreateForm() {
     setEditingReceipt(null);
     setForm(emptyForm);
     setNewPhotoFiles([]);
     setNewPhotoPreviews([]);
     setKeptPhotoUrls([]);
+    setNewDocumentFiles([]);
+    setKeptAttachments([]);
     setFormOpen(true);
   }
 
@@ -240,11 +295,15 @@ export default function MaterialReceipt() {
     setForm({
       receipt_mode: receipt.receipt_mode,
       vehicle_number: receipt.vehicle_number ?? "",
-      package_count: receipt.package_count,
-      package_type: receipt.package_type,
+      package_details:
+        receipt.package_details && receipt.package_details.length > 0
+          ? receipt.package_details
+          : [{ ...emptyPackageRow }],
       vendor_name: receipt.vendor_name,
-      po_number: receipt.po_number ?? "",
-      po_date: receipt.po_date ?? "",
+      sap_po_number: receipt.sap_po_number ?? "",
+      sap_po_date: receipt.sap_po_date ?? "",
+      gem_order_number: receipt.gem_order_number ?? "",
+      gem_order_date: receipt.gem_order_date ?? "",
       invoice_number: receipt.invoice_number ?? "",
       invoice_date: receipt.invoice_date ?? "",
       challan_number: receipt.challan_number ?? "",
@@ -256,6 +315,8 @@ export default function MaterialReceipt() {
     setNewPhotoFiles([]);
     setNewPhotoPreviews([]);
     setKeptPhotoUrls(receipt.photo_urls ?? []);
+    setNewDocumentFiles([]);
+    setKeptAttachments(receipt.attachment_paths ?? []);
     setFormOpen(true);
   }
 
@@ -268,10 +329,57 @@ export default function MaterialReceipt() {
     setForm(emptyForm);
     setNewPhotoFiles([]);
     setNewPhotoPreviews([]);
+    setNewDocumentFiles([]);
     if (editingReceipt) {
       setKeptPhotoUrls(editingReceipt.photo_urls ?? []);
+      setKeptAttachments(editingReceipt.attachment_paths ?? []);
     } else {
       setKeptPhotoUrls([]);
+      setKeptAttachments([]);
+    }
+  }
+
+  // ---- Photo capture: Take Photo (camera, uploads immediately) or
+  // Choose From Gallery (staged, uploaded together with the DRC on Save,
+  // same as before). On desktop, both options simply open the normal
+  // file picker since the browser ignores the camera "capture" hint.
+  function openPhotoMenu(e: MouseEvent<HTMLElement>) {
+    setPhotoMenuAnchor(e.currentTarget);
+  }
+
+  function closePhotoMenu() {
+    setPhotoMenuAnchor(null);
+  }
+
+  function handleTakePhoto() {
+    closePhotoMenu();
+    cameraInputRef.current?.click();
+  }
+
+  function handleChooseFromGallery() {
+    closePhotoMenu();
+    photoInputRef.current?.click();
+  }
+
+  async function handleCameraCapture(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!file) return;
+
+    setCapturingPhoto(true);
+
+    try {
+      const urls = await uploadReceiptPhotos([file]);
+      if (urls.length > 0) {
+        setKeptPhotoUrls((prev) => [...prev, ...urls]);
+        showSnackbar("Photo captured and uploaded.", "success");
+      } else {
+        showSnackbar("Photo upload failed.", "error");
+      }
+    } catch {
+      showSnackbar("Photo upload failed.", "error");
+    } finally {
+      setCapturingPhoto(false);
     }
   }
 
@@ -296,15 +404,34 @@ export default function MaterialReceipt() {
     setKeptPhotoUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // ---- Document attachments ----
+  function handleDocumentSelect(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
+    setNewDocumentFiles((prev) => [...prev, ...files]);
+    e.target.value = "";
+  }
+
+  function removeNewDocument(index: number) {
+    setNewDocumentFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function removeKeptAttachment(index: number) {
+    setKeptAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function validateForm(): string | null {
     if (!form.vendor_name.trim()) return "Vendor Name is required.";
     if (form.receipt_mode === "Vehicle" && !form.vehicle_number.trim()) {
       return "Vehicle Number is required for receipt by vehicle.";
     }
-    if (!form.package_count || form.package_count <= 0) {
-      return "Package Count must be greater than zero.";
+    const validPackageRows = form.package_details.filter(
+      (row) => row.quantity > 0 && row.package_type.trim()
+    );
+    if (validPackageRows.length === 0) {
+      return "Please enter at least one Package Details row with a Quantity and Package Type.";
     }
-    if (!form.package_type) return "Package Type is required.";
     return null;
   }
 
@@ -323,11 +450,13 @@ export default function MaterialReceipt() {
           editingReceipt.id,
           form,
           newPhotoFiles,
-          keptPhotoUrls
+          keptPhotoUrls,
+          newDocumentFiles,
+          keptAttachments
         );
         showSnackbar(`DRC ${updated.drc_number} updated.`, "success");
       } else {
-        const created = await createReceipt(form, newPhotoFiles);
+        const created = await createReceipt(form, newPhotoFiles, newDocumentFiles);
         showSnackbar(`DRC ${created.drc_number} created.`, "success");
       }
 
@@ -585,17 +714,27 @@ export default function MaterialReceipt() {
     const printWindow = window.open("", "_blank", "width=700,height=900");
     if (!printWindow) return;
 
+    const packageSummary =
+      receipt.package_details && receipt.package_details.length > 0
+        ? receipt.package_details
+            .map((p) => `${p.quantity} x ${p.package_type}${p.description ? ` (${p.description})` : ""}`)
+            .join("; ")
+        : receipt.package_count && receipt.package_type
+        ? `${receipt.package_count} x ${receipt.package_type}`
+        : "-";
+
     const rows: [string, string][] = [
       ["DRC Number", receipt.drc_number],
       ["Status", receipt.status],
       ["Receipt Date/Time", formatDateTime(receipt.receipt_datetime)],
       ["Receipt Mode", receipt.receipt_mode],
       ["Vehicle Number", receipt.vehicle_number ?? "-"],
-      ["Package Count", String(receipt.package_count)],
-      ["Package Type", receipt.package_type],
+      ["Package Details", packageSummary],
       ["Vendor Name", receipt.vendor_name],
-      ["SAP PO / GeM Number", receipt.po_number ?? "-"],
-      ["PO Date", formatDate(receipt.po_date)],
+      ["SAP PO Number", receipt.sap_po_number ?? "-"],
+      ["SAP PO Date", formatDate(receipt.sap_po_date)],
+      ["GeM Order Number", receipt.gem_order_number ?? "-"],
+      ["GeM Order Date", formatDate(receipt.gem_order_date)],
       ["Invoice Number", receipt.invoice_number ?? "-"],
       ["Invoice Date", formatDate(receipt.invoice_date)],
       ["Challan Number", receipt.challan_number ?? "-"],
@@ -965,39 +1104,87 @@ export default function MaterialReceipt() {
 
             {/* Package Details */}
             <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                Package Details
-              </Typography>
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <TextField
-                  label="Package Count"
-                  type="number"
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 0.75,
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Package Details
+                </Typography>
+                <Button
                   size="small"
-                  fullWidth
-                  value={form.package_count}
-                  onChange={(e) =>
-                    updateField("package_count", Number(e.target.value))
-                  }
-                  slotProps={{ htmlInput: { inputMode: "numeric", min: 1 } }}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-                <TextField
-                  select
-                  label="Package Type"
-                  size="small"
-                  fullWidth
-                  value={form.package_type}
-                  onChange={(e) =>
-                    updateField("package_type", e.target.value as PackageType)
-                  }
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  startIcon={<AddIcon fontSize="small" />}
+                  onClick={addPackageRow}
+                  sx={{ fontWeight: 600, textTransform: "none" }}
                 >
-                  {PACKAGE_TYPES.map((type) => (
-                    <MenuItem key={type} value={type}>
-                      {type}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  Add Row
+                </Button>
+              </Box>
+
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {form.package_details.map((row, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.75,
+                      p: 1,
+                      borderRadius: 2,
+                      bgcolor: "grey.50",
+                    }}
+                  >
+                    <TextField
+                      label="Qty"
+                      type="number"
+                      size="small"
+                      value={row.quantity}
+                      onChange={(e) =>
+                        updatePackageRow(index, "quantity", Number(e.target.value))
+                      }
+                      slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
+                      sx={{
+                        width: 84,
+                        flexShrink: 0,
+                        "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                      }}
+                    />
+                    <TextField
+                      label="Package Type"
+                      placeholder="e.g. Boxes, Drums, Tanker"
+                      size="small"
+                      fullWidth
+                      value={row.package_type}
+                      onChange={(e) =>
+                        updatePackageRow(index, "package_type", e.target.value)
+                      }
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                    <TextField
+                      label="Description"
+                      placeholder="Optional"
+                      size="small"
+                      fullWidth
+                      value={row.description}
+                      onChange={(e) =>
+                        updatePackageRow(index, "description", e.target.value)
+                      }
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                    <IconButton
+                      size="small"
+                      onClick={() => removePackageRow(index)}
+                      aria-label="Delete row"
+                      sx={{ flexShrink: 0 }}
+                    >
+                      <DeleteIcon fontSize="small" color="error" />
+                    </IconButton>
+                  </Box>
+                ))}
               </Box>
             </Box>
 
@@ -1026,25 +1213,50 @@ export default function MaterialReceipt() {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Purchase
               </Typography>
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <TextField
-                  label="SAP PO / GeM Order Number"
-                  size="small"
-                  fullWidth
-                  value={form.po_number}
-                  onChange={(e) => updateField("po_number", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-                <TextField
-                  label="PO Date"
-                  type="date"
-                  size="small"
-                  fullWidth
-                  value={form.po_date}
-                  onChange={(e) => updateField("po_date", e.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+                Enter SAP PO, GeM Order, or both.
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    label="SAP PO Number"
+                    size="small"
+                    fullWidth
+                    value={form.sap_po_number}
+                    onChange={(e) => updateField("sap_po_number", e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                  <TextField
+                    label="SAP PO Date"
+                    type="date"
+                    size="small"
+                    fullWidth
+                    value={form.sap_po_date}
+                    onChange={(e) => updateField("sap_po_date", e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                </Box>
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    label="GeM Order Number"
+                    size="small"
+                    fullWidth
+                    value={form.gem_order_number}
+                    onChange={(e) => updateField("gem_order_number", e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                  <TextField
+                    label="GeM Order Date"
+                    type="date"
+                    size="small"
+                    fullWidth
+                    value={form.gem_order_date}
+                    onChange={(e) => updateField("gem_order_date", e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                </Box>
               </Box>
             </Box>
 
@@ -1161,6 +1373,7 @@ export default function MaterialReceipt() {
                 Photos
               </Typography>
 
+              {/* Gallery picker (staged, uploaded on Save - unchanged) */}
               <input
                 ref={photoInputRef}
                 type="file"
@@ -1170,14 +1383,46 @@ export default function MaterialReceipt() {
                 onChange={handlePhotoSelect}
               />
 
+              {/* Camera capture (uploads immediately) */}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={handleCameraCapture}
+              />
+
               <Button
                 variant="outlined"
-                startIcon={<AddPhotoAlternateIcon fontSize="small" />}
-                onClick={() => photoInputRef.current?.click()}
+                startIcon={
+                  capturingPhoto ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <AddPhotoAlternateIcon fontSize="small" />
+                  )
+                }
+                onClick={openPhotoMenu}
+                disabled={capturingPhoto}
                 sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
               >
-                Add Photos
+                Add Photo
               </Button>
+
+              <Menu
+                anchorEl={photoMenuAnchor}
+                open={!!photoMenuAnchor}
+                onClose={closePhotoMenu}
+              >
+                <MenuItem onClick={handleTakePhoto}>
+                  <PhotoCameraIcon fontSize="small" sx={{ mr: 1 }} />
+                  Take Photo
+                </MenuItem>
+                <MenuItem onClick={handleChooseFromGallery}>
+                  <PhotoLibraryIcon fontSize="small" sx={{ mr: 1 }} />
+                  Choose From Gallery
+                </MenuItem>
+              </Menu>
 
               {(keptPhotoUrls.length > 0 || newPhotoPreviews.length > 0) && (
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
@@ -1227,6 +1472,100 @@ export default function MaterialReceipt() {
                         }}
                       >
                         <DeleteIcon sx={{ fontSize: 14 }} color="error" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+
+            <Divider />
+
+            {/* Attachments */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Attachments
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+                Invoice, Challan, E-Way Bill, Inspection Certificate, OEM/Vendor documents, etc. (PDF, DOC, DOCX, XLS, XLSX, JPG, PNG)
+              </Typography>
+
+              <input
+                ref={documentInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                multiple
+                hidden
+                onChange={handleDocumentSelect}
+              />
+
+              <Button
+                variant="outlined"
+                startIcon={<AttachFileIcon fontSize="small" />}
+                onClick={() => documentInputRef.current?.click()}
+                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+              >
+                Add Document
+              </Button>
+
+              {(keptAttachments.length > 0 || newDocumentFiles.length > 0) && (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 1 }}>
+                  {keptAttachments.map((doc, index) => (
+                    <Box
+                      key={`kept-doc-${index}`}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 0.75,
+                        borderRadius: 2,
+                        bgcolor: "grey.50",
+                      }}
+                    >
+                      <DescriptionIcon fontSize="small" color="action" />
+                      <Typography
+                        variant="body2"
+                        sx={{ flex: 1, minWidth: 0 }}
+                        noWrap
+                        component="a"
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {doc.name}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => removeKeptAttachment(index)}
+                        aria-label="Remove document"
+                      >
+                        <DeleteIcon sx={{ fontSize: 16 }} color="error" />
+                      </IconButton>
+                    </Box>
+                  ))}
+
+                  {newDocumentFiles.map((file, index) => (
+                    <Box
+                      key={`new-doc-${index}`}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 0.75,
+                        borderRadius: 2,
+                        bgcolor: "grey.50",
+                      }}
+                    >
+                      <DescriptionIcon fontSize="small" color="action" />
+                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
+                        {file.name}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => removeNewDocument(index)}
+                        aria-label="Remove document"
+                      >
+                        <DeleteIcon sx={{ fontSize: 16 }} color="error" />
                       </IconButton>
                     </Box>
                   ))}
@@ -1318,11 +1657,11 @@ export default function MaterialReceipt() {
                   ["Receipt Date/Time", formatDateTime(viewReceipt.receipt_datetime)],
                   ["Receipt Mode", viewReceipt.receipt_mode],
                   ["Vehicle Number", viewReceipt.vehicle_number ?? "-"],
-                  ["Package Count", String(viewReceipt.package_count)],
-                  ["Package Type", viewReceipt.package_type],
                   ["Vendor Name", viewReceipt.vendor_name],
-                  ["SAP PO / GeM Number", viewReceipt.po_number ?? "-"],
-                  ["PO Date", formatDate(viewReceipt.po_date)],
+                  ["SAP PO Number", viewReceipt.sap_po_number ?? "-"],
+                  ["SAP PO Date", formatDate(viewReceipt.sap_po_date)],
+                  ["GeM Order Number", viewReceipt.gem_order_number ?? "-"],
+                  ["GeM Order Date", formatDate(viewReceipt.gem_order_date)],
                   ["Invoice Number", viewReceipt.invoice_number ?? "-"],
                   ["Invoice Date", formatDate(viewReceipt.invoice_date)],
                   ["Challan Number", viewReceipt.challan_number ?? "-"],
@@ -1345,6 +1684,35 @@ export default function MaterialReceipt() {
                 ))}
               </Box>
 
+              {viewReceipt.package_details && viewReceipt.package_details.length > 0 && (
+                <>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                    Package Details
+                  </Typography>
+                  <TableContainer sx={{ borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Qty</TableCell>
+                          <TableCell>Package Type</TableCell>
+                          <TableCell>Description</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {viewReceipt.package_details.map((row, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{row.quantity}</TableCell>
+                            <TableCell>{row.package_type || "-"}</TableCell>
+                            <TableCell>{row.description || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
+
               {viewReceipt.photo_urls.length > 0 && (
                 <>
                   <Divider sx={{ my: 1.5 }} />
@@ -1359,6 +1727,43 @@ export default function MaterialReceipt() {
                         variant="rounded"
                         sx={{ width: 64, height: 64 }}
                       />
+                    ))}
+                  </Box>
+                </>
+              )}
+
+              {viewReceipt.attachment_paths && viewReceipt.attachment_paths.length > 0 && (
+                <>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                    Attachments
+                  </Typography>
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                    {viewReceipt.attachment_paths.map((doc, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          p: 0.75,
+                          borderRadius: 2,
+                          bgcolor: "grey.50",
+                        }}
+                      >
+                        <DescriptionIcon fontSize="small" color="action" />
+                        <Typography
+                          variant="body2"
+                          component="a"
+                          href={doc.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          sx={{ flex: 1, minWidth: 0 }}
+                          noWrap
+                        >
+                          {doc.name}
+                        </Typography>
+                      </Box>
                     ))}
                   </Box>
                 </>

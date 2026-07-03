@@ -39,16 +39,39 @@ export type InspectionStatus =
   | "Rejected"
   | "Accepted with Remarks";
 
+export interface PackageDetailRow {
+  quantity: number;
+  package_type: string;
+  description: string;
+}
+
+export interface AttachmentFile {
+  name: string;
+  url: string;
+  uploaded_at: string;
+}
+
 export interface ReceiptHeader {
   id: number;
   drc_number: string;
   receipt_mode: ReceiptMode;
   vehicle_number: string | null;
-  package_count: number;
-  package_type: PackageType;
+  /** @deprecated use package_details. Kept populated (derived) for
+   * backward compatibility with anything still reading these columns. */
+  package_count: number | null;
+  /** @deprecated use package_details. */
+  package_type: PackageType | string | null;
+  package_details: PackageDetailRow[];
   vendor_name: string;
+  /** @deprecated use sap_po_number / gem_order_number. Kept populated
+   * (derived) for backward compatibility. */
   po_number: string | null;
+  /** @deprecated use sap_po_date / gem_order_date. */
   po_date: string | null;
+  sap_po_number: string | null;
+  sap_po_date: string | null;
+  gem_order_number: string | null;
+  gem_order_date: string | null;
   invoice_number: string | null;
   invoice_date: string | null;
   challan_number: string | null;
@@ -57,6 +80,8 @@ export interface ReceiptHeader {
   eway_bill_date: string | null;
   remarks: string | null;
   photo_urls: string[];
+  photo_paths: AttachmentFile[];
+  attachment_paths: AttachmentFile[];
   status: ReceiptStatus;
   receipt_datetime: string;
   created_at: string;
@@ -83,11 +108,12 @@ export interface ReceiptHeader {
 export interface ReceiptFormInput {
   receipt_mode: ReceiptMode;
   vehicle_number: string;
-  package_count: number;
-  package_type: PackageType;
+  package_details: PackageDetailRow[];
   vendor_name: string;
-  po_number: string;
-  po_date: string;
+  sap_po_number: string;
+  sap_po_date: string;
+  gem_order_number: string;
+  gem_order_date: string;
   invoice_number: string;
   invoice_date: string;
   challan_number: string;
@@ -98,22 +124,73 @@ export interface ReceiptFormInput {
 }
 
 const RECEIPT_PHOTOS_BUCKET = "receipt-photos";
+const RECEIPT_FILES_BUCKET = "receipt-files";
+
+const ALLOWED_DOCUMENT_EXTENSIONS = [
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "jpg",
+  "jpeg",
+  "png",
+];
 
 function toNullable(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
 
+/**
+ * Cleans up a Package Details table: drops fully-empty rows, and coerces
+ * quantity to a non-negative number.
+ */
+function cleanPackageDetails(rows: PackageDetailRow[]): PackageDetailRow[] {
+  return rows
+    .map((row) => ({
+      quantity: Number.isFinite(row.quantity) ? Number(row.quantity) : 0,
+      package_type: row.package_type.trim(),
+      description: row.description.trim(),
+    }))
+    .filter(
+      (row) => row.quantity > 0 || row.package_type || row.description
+    );
+}
+
 function buildPayload(input: ReceiptFormInput) {
+  const packageDetails = cleanPackageDetails(input.package_details);
+
+  const sapPoNumber = toNullable(input.sap_po_number);
+  const sapPoDate = toNullable(input.sap_po_date);
+  const gemOrderNumber = toNullable(input.gem_order_number);
+  const gemOrderDate = toNullable(input.gem_order_date);
+
   return {
     receipt_mode: input.receipt_mode,
     vehicle_number:
       input.receipt_mode === "Vehicle" ? toNullable(input.vehicle_number) : null,
-    package_count: input.package_count,
-    package_type: input.package_type,
+
+    package_details: packageDetails,
+    // Legacy columns, derived for backward compatibility with anything
+    // still reading package_count / package_type directly.
+    package_count:
+      packageDetails.length > 0
+        ? packageDetails.reduce((sum, r) => sum + r.quantity, 0)
+        : null,
+    package_type: packageDetails[0]?.package_type || null,
+
     vendor_name: input.vendor_name.trim(),
-    po_number: toNullable(input.po_number),
-    po_date: toNullable(input.po_date),
+
+    sap_po_number: sapPoNumber,
+    sap_po_date: sapPoDate,
+    gem_order_number: gemOrderNumber,
+    gem_order_date: gemOrderDate,
+    // Legacy columns, derived so any existing search/report relying on
+    // po_number / po_date still finds a value (SAP PO takes precedence).
+    po_number: sapPoNumber ?? gemOrderNumber,
+    po_date: sapPoDate ?? gemOrderDate,
+
     invoice_number: toNullable(input.invoice_number),
     invoice_date: toNullable(input.invoice_date),
     challan_number: toNullable(input.challan_number),
@@ -160,19 +237,84 @@ export async function uploadReceiptPhotos(files: File[]): Promise<string[]> {
 }
 
 /**
+ * Uploads supporting documents (invoice, challan, e-way bill, inspection
+ * certificate, OEM/vendor documents, etc.) to the `receipt-files`
+ * Supabase Storage bucket. Only allow-listed file types are uploaded;
+ * anything else is skipped (logged) rather than blocking the rest.
+ */
+export async function uploadReceiptDocuments(
+  files: File[]
+): Promise<AttachmentFile[]> {
+  const attachments: AttachmentFile[] = [];
+
+  for (const file of files) {
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+    if (!ALLOWED_DOCUMENT_EXTENSIONS.includes(extension)) {
+      console.error(
+        `Document upload skipped - unsupported file type: ${file.name}`
+      );
+      continue;
+    }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(RECEIPT_FILES_BUCKET)
+      .upload(path, file);
+
+    if (uploadError) {
+      console.error("Document upload failed:", uploadError.message);
+      continue;
+    }
+
+    const { data } = supabase.storage
+      .from(RECEIPT_FILES_BUCKET)
+      .getPublicUrl(path);
+
+    if (data?.publicUrl) {
+      attachments.push({
+        name: file.name,
+        url: data.publicUrl,
+        uploaded_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  return attachments;
+}
+
+/**
  * Creates a new DRC. drc_number, status, and receipt_datetime are left
  * unset here so the database trigger generates them.
  */
 export async function createReceipt(
   input: ReceiptFormInput,
-  photoFiles: File[]
+  photoFiles: File[],
+  documentFiles: File[] = []
 ): Promise<ReceiptHeader> {
   const photoUrls =
     photoFiles.length > 0 ? await uploadReceiptPhotos(photoFiles) : [];
 
+  const photoPaths: AttachmentFile[] = photoUrls.map((url, index) => ({
+    name: photoFiles[index]?.name ?? `photo-${index + 1}`,
+    url,
+    uploaded_at: new Date().toISOString(),
+  }));
+
+  const attachmentPaths =
+    documentFiles.length > 0
+      ? await uploadReceiptDocuments(documentFiles)
+      : [];
+
   const payload = {
     ...buildPayload(input),
     photo_urls: photoUrls,
+    photo_paths: photoPaths,
+    attachment_paths: attachmentPaths,
   };
 
   const { data, error } = await supabase
@@ -194,14 +336,38 @@ export async function updateReceipt(
   id: number,
   input: ReceiptFormInput,
   newPhotoFiles: File[],
-  keptPhotoUrls: string[]
+  keptPhotoUrls: string[],
+  newDocumentFiles: File[] = [],
+  keptAttachments: AttachmentFile[] = []
 ): Promise<ReceiptHeader> {
   const uploadedUrls =
     newPhotoFiles.length > 0 ? await uploadReceiptPhotos(newPhotoFiles) : [];
 
+  const newPhotoPaths: AttachmentFile[] = uploadedUrls.map((url, index) => ({
+    name: newPhotoFiles[index]?.name ?? `photo-${index + 1}`,
+    url,
+    uploaded_at: new Date().toISOString(),
+  }));
+
+  const newAttachments =
+    newDocumentFiles.length > 0
+      ? await uploadReceiptDocuments(newDocumentFiles)
+      : [];
+
+  const photoUrls = [...keptPhotoUrls, ...uploadedUrls];
+
   const payload = {
     ...buildPayload(input),
-    photo_urls: [...keptPhotoUrls, ...uploadedUrls],
+    photo_urls: photoUrls,
+    photo_paths: photoUrls.map(
+      (url) =>
+        newPhotoPaths.find((p) => p.url === url) ?? {
+          name: url.split("/").pop() ?? url,
+          url,
+          uploaded_at: new Date().toISOString(),
+        }
+    ),
+    attachment_paths: [...keptAttachments, ...newAttachments],
   };
 
   const { data, error } = await supabase
@@ -240,7 +406,7 @@ export async function getReceipts(
   if (search) {
     const safe = search.replace(/[%_]/g, (match) => `\\${match}`);
     query = query.or(
-      `drc_number.ilike.%${safe}%,vendor_name.ilike.%${safe}%,po_number.ilike.%${safe}%,invoice_number.ilike.%${safe}%,vehicle_number.ilike.%${safe}%`
+      `drc_number.ilike.%${safe}%,vendor_name.ilike.%${safe}%,po_number.ilike.%${safe}%,sap_po_number.ilike.%${safe}%,gem_order_number.ilike.%${safe}%,invoice_number.ilike.%${safe}%,vehicle_number.ilike.%${safe}%`
     );
   }
 
@@ -857,4 +1023,63 @@ export function buildGrnTemplateRows(): { headers: string[]; rows: (string | num
       ["9000000002", 25],
     ],
   };
+}
+
+/* =========================================================================
+ * Sprint 3: Email Templates (HTML generation only - no SMTP, no sending)
+ * ========================================================================= */
+
+function formatMailDate(value: string | null): string {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Builds the HTML body for an "inspection required" email addressed to
+ * the user department responsible for inspecting a DRC. Returns an HTML
+ * string only - this function never sends anything.
+ */
+export function generateInspectionMail(receipt: ReceiptHeader): string {
+  return `
+    <div style="font-family: Arial, sans-serif; color: #1a1a1a; line-height: 1.6;">
+      <h2 style="margin-bottom: 4px;">Inspection Required</h2>
+      <table style="border-collapse: collapse; margin: 12px 0;">
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${receipt.drc_number}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${receipt.vendor_name}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Receipt Date</td><td style="padding: 4px 0;">${formatMailDate(receipt.receipt_datetime)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">SAP PO Number</td><td style="padding: 4px 0;">${receipt.sap_po_number ?? "-"}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">GeM Order Number</td><td style="padding: 4px 0;">${receipt.gem_order_number ?? "-"}</td></tr>
+      </table>
+      <p>Please complete inspection within 7 days.</p>
+    </div>
+  `.trim();
+}
+
+/**
+ * Builds the HTML body for a "resolve this issue" email addressed to a
+ * supplier, based on an inspection outcome. Returns an HTML string only -
+ * this function never sends anything.
+ */
+export function generateSupplierIssueMail(
+  receipt: ReceiptHeader,
+  issueType: string
+): string {
+  return `
+    <div style="font-family: Arial, sans-serif; color: #1a1a1a; line-height: 1.6;">
+      <h2 style="margin-bottom: 4px;">Material Receipt Issue</h2>
+      <table style="border-collapse: collapse; margin: 12px 0;">
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${receipt.drc_number}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${receipt.vendor_name}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Issue Type</td><td style="padding: 4px 0;">${issueType}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Inspection Remarks</td><td style="padding: 4px 0;">${receipt.inspection_remarks ?? "-"}</td></tr>
+      </table>
+      <p>Please resolve the above issue at the earliest.</p>
+    </div>
+  `.trim();
 }
