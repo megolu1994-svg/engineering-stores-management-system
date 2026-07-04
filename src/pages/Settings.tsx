@@ -145,7 +145,7 @@ export default function Settings() {
 
       {/* ---- Inventory ---- */}
       <SectionCard icon={<Inventory2Icon color="primary" />} title="Inventory">
-        <Grid container spacing={2} alignItems="center">
+        <Grid container spacing={2} sx={{ alignItems: "center" }}>
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormControlLabel
               control={
