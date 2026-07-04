@@ -38,6 +38,12 @@ export default function LocationSearch({
 
   return (
     <Autocomplete
+      // Remounts whenever the selected location changes (including back
+      // to null after a caller resets the form post-save) so the
+      // displayed text always matches `value` - MUI's Autocomplete does
+      // not reliably re-sync its own displayed input text to an
+      // externally-reset value otherwise.
+      key={value?.location_code ?? "__none__"}
       size="small"
       options={locations}
       value={value}
