@@ -33,6 +33,8 @@ import {
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 type Direction = "increase" | "decrease";
 
+const UNALLOCATED_LOCATION = "UNALLOCATED";
+
 const ADJUSTMENT_REASONS = [
   "Physical Count Variance",
   "Damage",
@@ -64,8 +66,16 @@ export default function AdjustmentTab() {
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // A location is only mandatory for Decrease (you have to say where the
+  // stock is coming out of). For Increase, no location means "add this
+  // now, allocate it to a location later" - it goes to UNALLOCATED,
+  // exactly like an unassigned Material Receipt.
+  const effectiveLocationCode =
+    location?.location_code ??
+    (direction === "increase" ? UNALLOCATED_LOCATION : null);
+
   useEffect(() => {
-    if (!material || !location) {
+    if (!material || !effectiveLocationCode) {
       setCurrentQuantity(null);
       return;
     }
@@ -78,7 +88,7 @@ export default function AdjustmentTab() {
         if (cancelled) return;
 
         const existing = allocations.find(
-          (a) => a.location_code === location.location_code
+          (a) => a.location_code === effectiveLocationCode
         );
 
         setCurrentQuantity(existing ? existing.quantity : 0);
@@ -92,7 +102,7 @@ export default function AdjustmentTab() {
     return () => {
       cancelled = true;
     };
-  }, [material, location]);
+  }, [material, effectiveLocationCode]);
 
   // The underlying adjustment mechanism (applyAdjustment) still takes a
   // single absolute "new quantity" - the Increase/Decrease toggle is a
@@ -113,7 +123,15 @@ export default function AdjustmentTab() {
       return;
     }
 
-    if (!location) {
+    if (direction === "decrease" && !location) {
+      showSnackbar(
+        "Please select a location to decrease stock from.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!effectiveLocationCode) {
       showSnackbar("Please select a location.", "warning");
       return;
     }
@@ -138,14 +156,16 @@ export default function AdjustmentTab() {
     try {
       await applyAdjustment(
         material.material_code,
-        location.location_code,
+        effectiveLocationCode,
         computedNewQuantity,
         reason,
         remarks || undefined
       );
 
       showSnackbar(
-        `Stock adjusted to ${computedNewQuantity} for ${material.material_code} at ${location.location_code}.`,
+        location
+          ? `Stock adjusted to ${computedNewQuantity} for ${material.material_code} at ${location.location_code}.`
+          : `Stock adjusted to ${computedNewQuantity} for ${material.material_code} (Unallocated).`,
         "success"
       );
 
@@ -171,9 +191,23 @@ export default function AdjustmentTab() {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <MaterialSearch value={material} onChange={setMaterial} />
 
-            <LocationSearch value={location} onChange={setLocation} />
+            <LocationSearch
+              value={location}
+              onChange={setLocation}
+              label={
+                direction === "increase"
+                  ? "Search Location (optional - leave blank for Unallocated)"
+                  : "Search Location"
+              }
+            />
 
-            {material && location && (
+            {direction === "decrease" && !location && (
+              <Alert severity="warning" sx={{ py: 0.25 }}>
+                Select a location to decrease stock from.
+              </Alert>
+            )}
+
+            {material && effectiveLocationCode && (
               <Box
                 sx={{
                   display: "flex",
@@ -186,7 +220,7 @@ export default function AdjustmentTab() {
                 }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  Current Quantity
+                  Current Quantity {location ? `at ${location.location_code}` : "(Unallocated)"}
                 </Typography>
 
                 {loadingCurrent ? (
