@@ -571,7 +571,7 @@ export default function Dashboard() {
             value={activeTab}
             onChange={(_e, value) => setActiveTab(value)}
             textColor="inherit"
-            centered
+            variant="fullWidth"
             sx={{
               mt: 2,
               minHeight: 44,
