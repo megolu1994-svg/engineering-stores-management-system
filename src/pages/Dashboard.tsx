@@ -12,11 +12,16 @@ import {
   Chip,
   CircularProgress,
   Grid,
+  InputAdornment,
+  Tab,
+  Tabs,
+  TextField,
   Typography,
 } from "@mui/material";
 
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import PlaceIcon from "@mui/icons-material/Place";
+import InboxIcon from "@mui/icons-material/Inbox";
 import StackedLineChartIcon from "@mui/icons-material/StackedLineChart";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
@@ -26,14 +31,18 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import HistoryIcon from "@mui/icons-material/History";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
-import AssessmentIcon from "@mui/icons-material/Assessment";
+import BarChartIcon from "@mui/icons-material/BarChart";
+import AssignmentReturnedIcon from "@mui/icons-material/AssignmentReturned";
+import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
+import SearchIcon from "@mui/icons-material/Search";
 
 import { supabase } from "../config/supabase";
 import {
   getRecentActivity,
   type InventoryOverviewRow,
 } from "../services/inventoryOverviewService";
+import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const LOW_STOCK_THRESHOLD = 10;
@@ -62,6 +71,8 @@ function formatDateTime(value: string): string {
 interface DashboardStats {
   totalMaterials: number;
   totalLocations: number;
+  occupiedLocations: number;
+  emptyLocations: number;
   totalStock: number;
   allocatedQty: number;
   unallocatedQty: number;
@@ -74,6 +85,8 @@ interface DashboardStats {
 const emptyStats: DashboardStats = {
   totalMaterials: 0,
   totalLocations: 0,
+  occupiedLocations: 0,
+  emptyLocations: 0,
   totalStock: 0,
   allocatedQty: 0,
   unallocatedQty: 0,
@@ -90,14 +103,17 @@ interface LowStockRow {
 }
 
 const quickActions = [
-  { label: "Material Receipt", path: "/material-receipt", icon: <LocalShippingIcon /> },
-  { label: "Material Issue", path: "/material-issue", icon: <OutputIcon /> },
   { label: "Inventory", path: "/allocation", icon: <Inventory2Icon /> },
-  { label: "Reports", path: "/reports", icon: <AssessmentIcon /> },
+  { label: "Material Receipt", path: "/material-receipt", icon: <AssignmentReturnedIcon /> },
+  { label: "Material Issue", path: "/material-issue", icon: <AssignmentReturnIcon /> },
+  { label: "Reports", path: "/reports", icon: <BarChartIcon /> },
 ];
 
 export default function Dashboard() {
   const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState(0);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -171,9 +187,24 @@ export default function Dashboard() {
           .filter((r) => r.location_code === UNALLOCATED_LOCATION)
           .reduce((sum, r) => sum + safeNumber(r.quantity), 0);
 
+        const occupiedLocationCodes = new Set(
+          allocationRows
+            .filter(
+              (r) =>
+                r.location_code !== UNALLOCATED_LOCATION &&
+                safeNumber(r.quantity) > 0
+            )
+            .map((r) => r.location_code)
+        );
+        const totalLocations = safeNumber(locationCountResult.count);
+        const occupiedLocations = occupiedLocationCodes.size;
+        const emptyLocations = Math.max(totalLocations - occupiedLocations, 0);
+
         setStats({
           totalMaterials: safeNumber(materialCountResult.count),
-          totalLocations: safeNumber(locationCountResult.count),
+          totalLocations,
+          occupiedLocations,
+          emptyLocations,
           totalStock: safeNumber(totalStock),
           allocatedQty: safeNumber(totalStock - unallocatedQty),
           unallocatedQty: safeNumber(unallocatedQty),
@@ -286,9 +317,13 @@ export default function Dashboard() {
     };
   }, []);
 
-  const summaryCards = [
-    { label: "Total Materials", value: stats.totalMaterials, icon: <Inventory2Icon />, color: "primary.main" },
-    { label: "Total Locations", value: stats.totalLocations, icon: <PlaceIcon />, color: "info.main" },
+  const liveOverview = [
+    { label: "Total no. Of Materials", value: stats.totalMaterials, icon: <Inventory2Icon /> },
+    { label: "Number of materials allocated locations", value: stats.occupiedLocations, icon: <PlaceIcon /> },
+    { label: "Empty locations", value: stats.emptyLocations, icon: <InboxIcon /> },
+  ];
+
+  const secondaryStats = [
     { label: "Total Stock", value: stats.totalStock, icon: <StackedLineChartIcon />, color: "success.main" },
     { label: "Allocated Qty", value: stats.allocatedQty, icon: <CheckCircleIcon />, color: "secondary.main" },
     { label: "Unallocated Qty", value: stats.unallocatedQty, icon: <WarningAmberIcon />, color: "warning.main" },
@@ -298,181 +333,274 @@ export default function Dashboard() {
     { label: "Pending DRC", value: stats.pendingDrc, icon: <PendingActionsIcon />, color: "info.main" },
   ];
 
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    navigate("/materials");
+  }
+
   return (
     <Box sx={{ pb: 4 }}>
-      <Typography
-        variant="h5"
+
+      {/* ---- Purple hero: search + tabs ---- */}
+      <Box
         sx={{
-          mb: 0.5,
-          fontWeight: 800,
-          letterSpacing: -0.5,
-          fontSize: { xs: "1.4rem", sm: "1.75rem", md: "2.1rem" },
+          bgcolor: BRAND_PURPLE,
+          mx: { xs: -2, md: -3 },
+          mt: { xs: -2, md: -3 },
+          mb: 3,
+          px: { xs: 2, md: 3 },
+          pt: 2.5,
+          pb: 0,
         }}
       >
-        Dashboard
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Engineering Stores Management System
-      </Typography>
+        <Box component="form" onSubmit={handleSearchSubmit}>
+          <TextField
+            fullWidth
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search material..."
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: BRAND_PURPLE }} />
+                  </InputAdornment>
+                ),
+                sx: {
+                  bgcolor: "#FFFFFF",
+                  borderRadius: "24px",
+                  "& fieldset": { border: "none" },
+                },
+              },
+            }}
+          />
+        </Box>
 
-      {/* ---- Summary cards ---- */}
-      <Grid container spacing={1.5} sx={{ mb: 3 }}>
-        {summaryCards.map((card) => (
-          <Grid key={card.label} size={{ xs: 6, sm: 4, md: 3 }}>
-            <Card
-              elevation={0}
-              sx={{
-                borderRadius: 3,
-                boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)",
-                p: 1.5,
-                display: "flex",
-                alignItems: "center",
-                gap: 1.25,
-                height: "100%",
-              }}
-            >
-              <Avatar sx={{ bgcolor: card.color, width: 40, height: 40 }}>
-                {card.icon}
-              </Avatar>
-              <Box sx={{ minWidth: 0 }}>
-                {loadingStats ? (
-                  <CircularProgress size={18} />
-                ) : (
-                  <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-                    {card.value}
-                  </Typography>
-                )}
-                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                  {card.label}
-                </Typography>
-              </Box>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-
-      {/* ---- Quick Actions ---- */}
-      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
-        Quick Actions
-      </Typography>
-      <Grid container spacing={1.5} sx={{ mb: 3 }}>
-        {quickActions.map((action) => (
-          <Grid key={action.label} size={{ xs: 6, sm: 3 }}>
-            <Card elevation={0} sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)" }}>
-              <CardActionArea onClick={() => navigate(action.path)} sx={{ p: 1.75, textAlign: "center" }}>
-                <Avatar sx={{ bgcolor: "primary.main", mx: "auto", mb: 1, width: 40, height: 40 }}>
-                  {action.icon}
-                </Avatar>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {action.label}
-                </Typography>
-              </CardActionArea>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-
-      <Grid container spacing={2}>
-        {/* ---- Recent Activity ---- */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card elevation={0} sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", height: "100%" }}>
-            <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5 }}>
-                <HistoryIcon color="action" />
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Recent Activity
-                </Typography>
-              </Box>
-
-              {loadingRecent ? (
-                <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : recentActivity.length === 0 ? (
-                <Alert severity="info">No inventory activity recorded yet.</Alert>
-              ) : (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {recentActivity.map((row) => (
-                    <Box
-                      key={row.material_code}
-                      sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 1, borderRadius: 2, bgcolor: "grey.50" }}
-                    >
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                          {row.material_code} - {row.short_description}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                          {row.locationDisplay}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: "right", flexShrink: 0 }}>
-                        <Chip size="small" label={row.lastTransactionType.replace("_", " ")} sx={{ fontWeight: 700 }} />
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-                          {formatDateTime(row.lastTransactionTime)}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* ---- Low Stock ---- */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card elevation={0} sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", height: "100%" }}>
-            <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5 }}>
-                <ReportProblemIcon color="warning" />
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Low Stock Materials
-                </Typography>
-              </Box>
-
-              {loadingLowStock ? (
-                <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : lowStock.length === 0 ? (
-                <Alert severity="success">No low stock materials found.</Alert>
-              ) : (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {lowStock.map((row) => (
-                    <Box
-                      key={row.material_code}
-                      sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 1, borderRadius: 2, bgcolor: "warning.50" }}
-                    >
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                          {row.material_code}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                          {row.short_description}
-                        </Typography>
-                      </Box>
-                      <Typography variant="body1" sx={{ fontWeight: 800 }} color="warning.main">
-                        {safeNumber(row.quantity)}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
-        <Button
-          variant="outlined"
-          startIcon={<SwapHorizIcon />}
-          onClick={() => navigate("/allocation")}
-          sx={{ borderRadius: 2.5, fontWeight: 600 }}
+        <Tabs
+          value={activeTab}
+          onChange={(_e, value) => setActiveTab(value)}
+          textColor="inherit"
+          sx={{
+            mt: 2,
+            minHeight: 44,
+            "& .MuiTab-root": {
+              color: "#FFFFFF",
+              fontWeight: 700,
+              minHeight: 44,
+            },
+            "& .Mui-selected": {
+              color: "#FFFFFF !important",
+            },
+            "& .MuiTabs-indicator": {
+              backgroundColor: "#FFFFFF",
+              height: 2,
+            },
+          }}
         >
-          Go to Inventory
-        </Button>
+          <Tab label="DASHBOARD" />
+          <Tab label="ACTIVITIES" />
+        </Tabs>
       </Box>
+
+      {activeTab === 0 && (
+        <>
+          {/* ---- Live Overview ---- */}
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
+            Live Overview
+          </Typography>
+          <Grid container spacing={1.5} sx={{ mb: 3 }}>
+            {liveOverview.map((card) => (
+              <Grid key={card.label} size={{ xs: 4 }}>
+                <Card elevation={0} sx={{ height: "100%", p: 1.5, textAlign: "center" }}>
+                  <Avatar
+                    sx={{
+                      bgcolor: BRAND_PURPLE_SOFT,
+                      color: BRAND_PURPLE,
+                      width: 44,
+                      height: 44,
+                      mx: "auto",
+                      mb: 1,
+                    }}
+                  >
+                    {card.icon}
+                  </Avatar>
+                  {loadingStats ? (
+                    <CircularProgress size={18} />
+                  ) : (
+                    <Typography sx={{ fontWeight: 800, color: BRAND_PURPLE, fontSize: { xs: "1.1rem", sm: "1.4rem" } }}>
+                      {card.value}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.primary" sx={{ display: "block", fontWeight: 500 }}>
+                    {card.label}
+                  </Typography>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* ---- Quick Actions ---- */}
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
+            Quick Actions
+          </Typography>
+          <Grid container spacing={1.5} sx={{ mb: 3 }}>
+            {quickActions.map((action) => (
+              <Grid key={action.label} size={{ xs: 6 }}>
+                <Card elevation={0} sx={{ height: "100%" }}>
+                  <CardActionArea onClick={() => navigate(action.path)} sx={{ p: 2.5, textAlign: "center" }}>
+                    <Box sx={{ color: BRAND_PURPLE, mb: 1, "& svg": { fontSize: 36 } }}>
+                      {action.icon}
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {action.label}
+                    </Typography>
+                  </CardActionArea>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </>
+      )}
+
+      {activeTab === 1 && (
+        <>
+          {/* ---- Additional stats ---- */}
+          <Grid container spacing={1.5} sx={{ mb: 3 }}>
+            {secondaryStats.map((card) => (
+              <Grid key={card.label} size={{ xs: 6, sm: 4, md: 3 }}>
+                <Card
+                  elevation={0}
+                  sx={{
+                    p: 1.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.25,
+                    height: "100%",
+                  }}
+                >
+                  <Avatar sx={{ bgcolor: card.color, width: 40, height: 40 }}>
+                    {card.icon}
+                  </Avatar>
+                  <Box sx={{ minWidth: 0 }}>
+                    {loadingStats ? (
+                      <CircularProgress size={18} />
+                    ) : (
+                      <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
+                        {card.value}
+                      </Typography>
+                    )}
+                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                      {card.label}
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Grid container spacing={2}>
+            {/* ---- Recent Activity ---- */}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card elevation={0} sx={{ height: "100%" }}>
+                <CardContent>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5 }}>
+                    <HistoryIcon sx={{ color: BRAND_PURPLE }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      Recent Activity
+                    </Typography>
+                  </Box>
+
+                  {loadingRecent ? (
+                    <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : recentActivity.length === 0 ? (
+                    <Alert severity="info">No inventory activity recorded yet.</Alert>
+                  ) : (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      {recentActivity.map((row) => (
+                        <Box
+                          key={row.material_code}
+                          sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 1, borderRadius: 2, bgcolor: "grey.50" }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                              {row.material_code} - {row.short_description}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                              {row.locationDisplay}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+                            <Chip size="small" label={row.lastTransactionType.replace("_", " ")} sx={{ fontWeight: 700 }} />
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                              {formatDateTime(row.lastTransactionTime)}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* ---- Low Stock ---- */}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card elevation={0} sx={{ height: "100%" }}>
+                <CardContent>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5 }}>
+                    <ReportProblemIcon color="warning" />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      Low Stock Materials
+                    </Typography>
+                  </Box>
+
+                  {loadingLowStock ? (
+                    <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : lowStock.length === 0 ? (
+                    <Alert severity="success">No low stock materials found.</Alert>
+                  ) : (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      {lowStock.map((row) => (
+                        <Box
+                          key={row.material_code}
+                          sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 1, borderRadius: 2, bgcolor: "warning.50" }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                              {row.material_code}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                              {row.short_description}
+                            </Typography>
+                          </Box>
+                          <Typography variant="body1" sx={{ fontWeight: 800 }} color="warning.main">
+                            {safeNumber(row.quantity)}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
+            <Button
+              variant="outlined"
+              startIcon={<SwapHorizIcon />}
+              onClick={() => navigate("/allocation")}
+              sx={{ borderRadius: 2.5, fontWeight: 600 }}
+            >
+              Go to Inventory
+            </Button>
+          </Box>
+        </>
+      )}
     </Box>
   );
 }
