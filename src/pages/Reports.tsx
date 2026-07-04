@@ -7,8 +7,10 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Divider,
+  Grid,
   InputAdornment,
   Stack,
   Tab,
@@ -21,7 +23,9 @@ import {
   Tabs,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -170,6 +174,9 @@ function ExportPrintBar({
 }
 
 export default function Reports() {
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   const [activeTab, setActiveTab] = useState(TAB_MATERIAL_SUMMARY);
 
   // ---------------- Material Summary ----------------
@@ -636,6 +643,28 @@ export default function Reports() {
                     No allocations found for this material.
                   </Typography>
                 </Card>
+              ) : mobile ? (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {allocations
+                    .filter((a) => a.location_code !== UNALLOCATED_LOCATION)
+                    .map((allocation) => (
+                      <Card key={allocation.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                              {allocation.location_code}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" noWrap>
+                              {safeText(locationMap[allocation.location_code])}
+                            </Typography>
+                          </Box>
+                          <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
+                            {safeNumber(allocation.quantity)}
+                          </Typography>
+                        </Box>
+                      </Card>
+                    ))}
+                </Box>
               ) : (
                 <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
                   <Table size="small">
@@ -699,6 +728,64 @@ export default function Reports() {
                 No movement history found.
               </Typography>
             </Card>
+          ) : mobile ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {movementRows.map((row) => {
+                const { from, to } = movementFromTo(row);
+                return (
+                  <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                          {row.material_code}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                          {safeText(row.reference_number)}
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label={row.transaction_type.replace("_", " ")}
+                        sx={{ fontWeight: 700, fontSize: "0.65rem" }}
+                      />
+                    </Box>
+
+                    <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Qty
+                        </Typography>
+                        <Typography variant="body2" noWrap>{safeNumber(row.quantity)}</Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Date
+                        </Typography>
+                        <Typography variant="body2" noWrap>{formatReportDateTime(row.created_at)}</Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          From
+                        </Typography>
+                        <Typography variant="body2" noWrap>{from}</Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          To
+                        </Typography>
+                        <Typography variant="body2" noWrap>{to}</Typography>
+                      </Grid>
+                      <Grid size={12}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          User
+                        </Typography>
+                        <Typography variant="body2" noWrap>{safeText(row.created_by)}</Typography>
+                      </Grid>
+                    </Grid>
+                  </Card>
+                );
+              })}
+            </Box>
           ) : (
             <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
               <Table size="small">
@@ -751,6 +838,41 @@ export default function Reports() {
                 No receipts found.
               </Typography>
             </Card>
+          ) : mobile ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {receiptRows.map((row) => (
+                <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                        {row.drc_number}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {row.vendor_name}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
+                      {safeNumber(row.package_qty)}
+                    </Typography>
+                  </Box>
+
+                  <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                        PO
+                      </Typography>
+                      <Typography variant="body2" noWrap>{safeText(row.po_number)}</Typography>
+                    </Grid>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                        Date
+                      </Typography>
+                      <Typography variant="body2" noWrap>{formatReportDate(row.receipt_datetime)}</Typography>
+                    </Grid>
+                  </Grid>
+                </Card>
+              ))}
+            </Box>
           ) : (
             <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
               <Table size="small">
@@ -794,6 +916,30 @@ export default function Reports() {
                 No issues found.
               </Typography>
             </Card>
+          ) : mobile ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {issueRows.map((row) => (
+                <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                        {row.issue_number}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {row.department}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
+                      {safeNumber(row.total_quantity)}
+                    </Typography>
+                  </Box>
+
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                    {formatReportDate(row.issue_datetime)}
+                  </Typography>
+                </Card>
+              ))}
+            </Box>
           ) : (
             <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
               <Table size="small">
