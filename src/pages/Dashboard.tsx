@@ -64,10 +64,50 @@ const LOW_STOCK_THRESHOLD = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 const MIN_SEARCH_LENGTH = 2;
 const MAX_EXPANDED_RESULTS = 10;
+const SUPABASE_PAGE_SIZE = 1000;
 
 function safeNumber(value: number | null | undefined): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+interface AllocationRow {
+  material_code: string;
+  location_code: string;
+  quantity: number;
+}
+
+/**
+ * A plain `.select()` on material_allocation silently caps out at
+ * Supabase/PostgREST's default 1000-row page, which was quietly
+ * truncating every dashboard stat derived from this table (Total
+ * Stock, Allocated/Unallocated Qty, occupied locations, Low Stock) once
+ * the table grew past 1000 rows. Pages through the full table instead.
+ */
+async function fetchAllAllocationRows(): Promise<AllocationRow[]> {
+  const rows: AllocationRow[] = [];
+  let from = 0;
+
+  for (;;) {
+    const { data, error } = await supabase
+      .from("material_allocation")
+      .select("material_code, location_code, quantity")
+      .range(from, from + SUPABASE_PAGE_SIZE - 1);
+
+    if (error) {
+      console.error(error);
+      break;
+    }
+
+    const page = (data ?? []) as AllocationRow[];
+    rows.push(...page);
+
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 function startOfTodayIso(): string {
@@ -172,7 +212,7 @@ export default function Dashboard() {
         const [
           materialCountResult,
           locationCountResult,
-          allocationResult,
+          allocationRows,
           receiptsTodayResult,
           issuesTodayResult,
           transfersTodayResult,
@@ -186,7 +226,7 @@ export default function Dashboard() {
             .from("location_master")
             .select("location_code", { count: "exact", head: true })
             .eq("is_active", true),
-          supabase.from("material_allocation").select("location_code, quantity"),
+          fetchAllAllocationRows(),
           supabase
             .from("inventory_transactions")
             .select("id", { count: "exact", head: true })
@@ -209,11 +249,6 @@ export default function Dashboard() {
         ]);
 
         if (cancelled) return;
-
-        const allocationRows = (allocationResult.data ?? []) as {
-          location_code: string;
-          quantity: number;
-        }[];
 
         const totalStock = allocationRows.reduce(
           (sum, r) => sum + safeNumber(r.quantity),
@@ -286,14 +321,11 @@ export default function Dashboard() {
 
     async function loadLowStock() {
       try {
-        const { data, error } = await supabase
-          .from("material_allocation")
-          .select("material_code, quantity")
-          .neq("location_code", UNALLOCATED_LOCATION);
+        const allocationRows = await fetchAllAllocationRows();
 
-        if (error) throw error;
-
-        const rows = (data ?? []) as { material_code: string; quantity: number }[];
+        const rows = allocationRows.filter(
+          (r) => r.location_code !== UNALLOCATED_LOCATION
+        );
 
         const totals = new Map<string, number>();
         rows.forEach((r) => {
