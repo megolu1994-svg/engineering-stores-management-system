@@ -526,7 +526,7 @@ export default function Reports() {
         <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Issues" />
       </Tabs>
 
-      <Box onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+      <Box {...swipeHandlers}>
 
       {activeTab === TAB_MATERIAL_SUMMARY && (
         <>

@@ -12,8 +12,17 @@ const SWIPE_IGNORE_SELECTOR =
 /**
  * Lets the currently-active tab be changed with a left/right swipe, in
  * addition to tapping the tab strip - mirrors the swipe-between-tabs
- * behavior of native mobile apps. Spread the returned handlers onto the
- * Box that wraps the tab panels (not the Tabs strip itself).
+ * behavior of native mobile apps.
+ *
+ * Spread the returned handlers onto the Box that wraps the tab panels
+ * (not the Tabs strip itself). Two things make this resilient to the
+ * tab content being full of interactive MUI components (Autocomplete,
+ * CardActionArea ripples, etc.):
+ *  - the handlers use the *capture* phase, so they see the gesture
+ *    before any descendant can stop it from propagating;
+ *  - the swipe is detected during touchmove, not on touchend - so it
+ *    doesn't depend on touchend actually firing, which some WebViews
+ *    skip (firing touchcancel instead) once a scroll gesture engages.
  */
 export function useSwipeTabs(
   value: number,
@@ -22,38 +31,47 @@ export function useSwipeTabs(
 ) {
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
+  const triggered = useRef(false);
 
-  function onTouchStart(e: TouchEvent) {
+  function reset() {
+    startX.current = null;
+    startY.current = null;
+    triggered.current = false;
+  }
+
+  function onTouchStartCapture(e: TouchEvent) {
     if (e.touches.length !== 1) {
-      startX.current = null;
-      startY.current = null;
+      reset();
       return;
     }
 
     const target = e.target as HTMLElement;
 
     if (target.closest(SWIPE_IGNORE_SELECTOR)) {
-      startX.current = null;
-      startY.current = null;
+      reset();
       return;
     }
 
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
+    triggered.current = false;
   }
 
-  function onTouchEnd(e: TouchEvent) {
-    if (startX.current === null || startY.current === null) return;
+  function onTouchMoveCapture(e: TouchEvent) {
+    if (startX.current === null || startY.current === null || triggered.current) {
+      return;
+    }
 
-    const touch = e.changedTouches[0];
+    if (e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
     const deltaX = touch.clientX - startX.current;
     const deltaY = touch.clientY - startY.current;
 
-    startX.current = null;
-    startY.current = null;
-
     if (Math.abs(deltaX) < SWIPE_DISTANCE_THRESHOLD) return;
     if (Math.abs(deltaX) < Math.abs(deltaY)) return;
+
+    triggered.current = true;
 
     if (deltaX < 0 && value < count - 1) {
       onChange(value + 1);
@@ -62,5 +80,10 @@ export function useSwipeTabs(
     }
   }
 
-  return { onTouchStart, onTouchEnd };
+  return {
+    onTouchStartCapture,
+    onTouchMoveCapture,
+    onTouchEndCapture: reset,
+    onTouchCancelCapture: reset,
+  };
 }
