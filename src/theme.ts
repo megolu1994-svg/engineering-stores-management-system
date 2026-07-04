@@ -57,6 +57,17 @@ const theme = createTheme({
         },
       },
     },
+    MuiInputBase: {
+      styleOverrides: {
+        // Mobile browsers/WebViews auto-zoom the whole page when a focused
+        // input's font-size is under 16px, and never zoom back out - this
+        // keeps every text field at 16px (regardless of MUI's "small" size)
+        // so tapping into a field never triggers that zoom.
+        input: {
+          fontSize: 16,
+        },
+      },
+    },
   },
 });
 
