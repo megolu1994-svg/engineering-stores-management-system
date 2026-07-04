@@ -37,7 +37,6 @@ const menuItems = [
   { text: "Material Receipt", path: "/material-receipt" },
   { text: "Material Issue", path: "/material-issue" },
   { text: "Reports", path: "/reports" },
-  { text: "Import / Export", path: "/import-export" },
   { text: "Settings", path: "/settings" },
 ];
 

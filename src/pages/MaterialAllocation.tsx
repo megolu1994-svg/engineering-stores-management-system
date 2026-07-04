@@ -450,7 +450,9 @@ export default function MaterialAllocation() {
               </Box>
             ) : (
               <AllocationTable
-                allocations={allocations}
+                allocations={allocations.filter(
+                  (a) => a.location_code !== UNALLOCATED_LOCATION
+                )}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
               />

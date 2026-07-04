@@ -1,17 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import * as XLSX from "xlsx";
 import {
   Alert,
   Box,
   Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
+  IconButton,
+  LinearProgress,
   Snackbar,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from "@mui/material";
+
+import DownloadIcon from "@mui/icons-material/Download";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 import LocationForm from "../components/LocationForm";
 import LocationTable from "../components/LocationTable";
@@ -21,6 +41,10 @@ import {
   deleteLocation,
   searchLocations,
   updateLocation,
+  parseLocationExcelRows,
+  bulkImportLocations,
+  type LocationValidationResult,
+  type LocationImportSummary,
 } from "../services/locationService";
 
 import type { Location } from "../types/location";
@@ -29,6 +53,35 @@ const SEARCH_DEBOUNCE_MS = 300;
 const BROWSE_PAGE_SIZE = 50;
 const SEARCH_PAGE_SIZE = 20;
 const MIN_SEARCH_LENGTH = 2;
+const IMPORT_BATCH_SIZE = 500;
+const PREVIEW_ROW_LIMIT = 20;
+
+function isDuplicateError(errors: string[]) {
+  return errors.some((e) => e.toLowerCase().includes("duplicate"));
+}
+
+async function readExcelFile(file: File): Promise<Record<string, unknown>[]> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const firstSheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[firstSheetName];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "" }) as Record<
+    string,
+    unknown
+  >[];
+}
+
+function downloadWorkbook(
+  headers: string[],
+  rows: (string | number)[][],
+  filename: string
+) {
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+  XLSX.writeFile(workbook, filename);
+}
 
 export default function LocationMaster() {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -48,10 +101,162 @@ export default function LocationMaster() {
   const [snackbarMessage, setSnackbarMessage] = useState("");
 
   const [snackbarSeverity, setSnackbarSeverity] = useState<
-    "success" | "error"
+    "success" | "error" | "warning"
   >("success");
 
   const requestId = useRef(0);
+
+  // ---------------- Import Excel ----------------
+  const [importOpen, setImportOpen] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreviewLoading, setImportPreviewLoading] = useState(false);
+  const [importValidation, setImportValidation] =
+    useState<LocationValidationResult | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importSummary, setImportSummary] =
+    useState<LocationImportSummary | null>(null);
+
+  function openImport() {
+    setImportOpen(true);
+    setImportFile(null);
+    setImportValidation(null);
+    setImportSummary(null);
+    setImportProgress(0);
+  }
+
+  function closeImport() {
+    setImportOpen(false);
+    setImportFile(null);
+    setImportValidation(null);
+    setImportSummary(null);
+    setImportProgress(0);
+  }
+
+  function handleDownloadTemplate() {
+    downloadWorkbook(
+      ["Location Code", "Description"],
+      [
+        ["WH-A-01-01", "Warehouse A, Rack 1, Bin 1"],
+        ["WH-A-01-02", "Warehouse A, Rack 1, Bin 2"],
+        ["WH-B-02-05", "Warehouse B, Rack 2, Bin 5"],
+      ],
+      "ESMS_Location_Template.xlsx"
+    );
+    setSnackbarSeverity("success");
+    setSnackbarMessage("Location template downloaded.");
+    setSnackbarOpen(true);
+  }
+
+  function handleImportFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setImportFile(file);
+    setImportValidation(null);
+    setImportSummary(null);
+    setImportProgress(0);
+    e.target.value = "";
+  }
+
+  async function handleImportPreview() {
+    if (!importFile) {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Please choose an Excel file first.");
+      setSnackbarOpen(true);
+      return;
+    }
+
+    setImportPreviewLoading(true);
+    setImportSummary(null);
+
+    try {
+      const rows = await readExcelFile(importFile);
+      const result = parseLocationExcelRows(rows);
+
+      setImportValidation(result);
+
+      setSnackbarSeverity(result.validRows.length === 0 ? "error" : "success");
+      setSnackbarMessage(
+        result.validRows.length === 0
+          ? "No valid records found in the file."
+          : `Preview ready. ${result.validRows.length} valid record(s) found.`
+      );
+      setSnackbarOpen(true);
+    } catch {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Failed to read the Excel file.");
+      setSnackbarOpen(true);
+    } finally {
+      setImportPreviewLoading(false);
+    }
+  }
+
+  async function handleImportRun() {
+    if (!importValidation || importValidation.validRows.length === 0) {
+      setSnackbarSeverity("warning");
+      setSnackbarMessage("Please preview the file before importing.");
+      setSnackbarOpen(true);
+      return;
+    }
+
+    setImporting(true);
+    setImportProgress(0);
+    setImportSummary(null);
+
+    try {
+      const summary = await bulkImportLocations(
+        importValidation.validRows,
+        IMPORT_BATCH_SIZE,
+        (processed, total) =>
+          setImportProgress(Math.round((processed / total) * 100))
+      );
+
+      setImportSummary(summary);
+
+      setSnackbarSeverity(summary.failed > 0 ? "error" : "success");
+      setSnackbarMessage(
+        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}.`
+      );
+      setSnackbarOpen(true);
+
+      await loadCurrentView(search);
+    } catch {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Import failed unexpectedly.");
+      setSnackbarOpen(true);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const importPreviewRows = importValidation
+    ? [
+        ...importValidation.validRows.map((row) => ({
+          rowNumber: row.rowNumber,
+          status: "Valid" as const,
+          location_code: row.location_code,
+          location_description: row.location_description,
+          errors: [] as string[],
+        })),
+        ...importValidation.invalidRows.map((row) => ({
+          rowNumber: row.rowNumber,
+          status: isDuplicateError(row.errors)
+            ? ("Duplicate" as const)
+            : ("Invalid" as const),
+          location_code: row.fields.location_code,
+          location_description: row.fields.location_description,
+          errors: row.errors,
+        })),
+      ]
+        .sort((a, b) => a.rowNumber - b.rowNumber)
+        .slice(0, PREVIEW_ROW_LIMIT)
+    : [];
+
+  function importStatusColor(status: "Valid" | "Duplicate" | "Invalid") {
+    if (status === "Valid") return "success";
+    if (status === "Duplicate") return "warning";
+    return "error";
+  }
 
   // Loads whatever is currently "in view": either the first browse page
   // (no search text) or the current search results (>= 2 characters).
@@ -201,6 +406,188 @@ export default function LocationMaster() {
           Add Location
         </Button>
       </Box>
+
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, mb: 2 }}>
+        <Button
+          variant="outlined"
+          color="inherit"
+          fullWidth
+          startIcon={<DownloadIcon />}
+          onClick={handleDownloadTemplate}
+          sx={{ minHeight: 48, fontWeight: 600, borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+        >
+          Download Template
+        </Button>
+
+        <Button
+          variant="outlined"
+          fullWidth
+          startIcon={<CloudUploadIcon />}
+          onClick={openImport}
+          sx={{ minHeight: 48, fontWeight: 600, borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+        >
+          Import Excel
+        </Button>
+      </Box>
+
+      <Collapse in={importOpen} timeout="auto" unmountOnExit>
+        <Card elevation={0} sx={{ borderRadius: 3, mb: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)" }}>
+          <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.25 }}>
+              <IconButton
+                onClick={closeImport}
+                size="small"
+                aria-label="Back"
+                sx={{ minWidth: 40, minHeight: 40 }}
+              >
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Import Location Excel
+              </Typography>
+            </Box>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Columns: Location Code, Description.
+            </Typography>
+
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.75 }}>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                hidden
+                onChange={handleImportFileChange}
+              />
+
+              <Button
+                variant="outlined"
+                size="large"
+                fullWidth
+                startIcon={<UploadFileIcon />}
+                onClick={() => importInputRef.current?.click()}
+                sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 600 }}
+              >
+                Choose Excel File
+              </Button>
+
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {importFile ? importFile.name : "No file selected"}
+              </Typography>
+
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                startIcon={
+                  importPreviewLoading ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : (
+                    <VisibilityIcon />
+                  )
+                }
+                onClick={handleImportPreview}
+                disabled={!importFile || importPreviewLoading}
+                sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+              >
+                Preview
+              </Button>
+
+              {importValidation && (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                  <Chip label={`Total Rows: ${importValidation.totalRecords}`} />
+                  <Chip
+                    label={`Valid Rows: ${importValidation.validRows.length}`}
+                    color="success"
+                  />
+                  <Chip
+                    label={`Invalid Rows: ${importValidation.invalidRows.length}`}
+                    color="error"
+                  />
+                </Box>
+              )}
+
+              {importValidation && importPreviewRows.length > 0 && (
+                <TableContainer sx={{ maxHeight: 320, overflowX: "auto", borderRadius: 2 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Row</TableCell>
+                        <TableCell>Location Code</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {importPreviewRows.map((row) => (
+                        <TableRow key={row.rowNumber}>
+                          <TableCell>{row.rowNumber}</TableCell>
+                          <TableCell>{row.location_code}</TableCell>
+                          <TableCell>{row.location_description}</TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={row.status}
+                              color={importStatusColor(row.status)}
+                              title={row.errors.join(", ")}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                fullWidth
+                startIcon={
+                  importing ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : (
+                    <CloudUploadIcon />
+                  )
+                }
+                onClick={handleImportRun}
+                disabled={
+                  !importValidation ||
+                  importValidation.validRows.length === 0 ||
+                  importing
+                }
+                sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700 }}
+              >
+                Import
+              </Button>
+
+              {importing && (
+                <Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={importProgress}
+                    sx={{ height: 8, borderRadius: 4 }}
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                    {importProgress}% complete
+                  </Typography>
+                </Box>
+              )}
+
+              {importSummary && (
+                <Alert
+                  severity={importSummary.failed > 0 ? "warning" : "success"}
+                  sx={{ borderRadius: 2 }}
+                >
+                  Import complete. Imported: {importSummary.imported}, Updated:{" "}
+                  {importSummary.updated}, Failed: {importSummary.failed}
+                </Alert>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      </Collapse>
 
       {showForm && (
         <LocationForm

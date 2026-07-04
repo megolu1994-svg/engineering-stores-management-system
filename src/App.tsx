@@ -9,7 +9,6 @@ import MaterialAllocation from "./pages/MaterialAllocation";
 import MaterialReceipt from "./pages/MaterialReceipt";
 import MaterialIssue from "./pages/MaterialIssue";
 import Reports from "./pages/Reports";
-import ImportExport from "./pages/ImportExport";
 import Settings from "./pages/Settings";
 
 export default function App() {
@@ -29,8 +28,6 @@ export default function App() {
         <Route path="material-issue" element={<MaterialIssue />} />
 
         <Route path="reports" element={<Reports />} />
-
-        <Route path="import-export" element={<ImportExport />} />
 
         <Route path="settings" element={<Settings />} />
       </Route>

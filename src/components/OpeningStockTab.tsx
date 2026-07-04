@@ -27,6 +27,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import DownloadIcon from "@mui/icons-material/Download";
 
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
@@ -57,6 +58,18 @@ async function readExcelFile(
     string,
     unknown
   >[];
+}
+
+function downloadWorkbook(
+  headers: string[],
+  rows: (string | number)[][],
+  filename: string
+) {
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet["!cols"] = headers.map(() => ({ wch: 22 }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+  XLSX.writeFile(workbook, filename);
 }
 
 export default function OpeningStockTab() {
@@ -133,6 +146,18 @@ export default function OpeningStockTab() {
   const [summary, setSummary] = useState<OpeningStockImportSummary | null>(
     null
   );
+
+  function handleDownloadTemplate() {
+    downloadWorkbook(
+      ["Material Code", "Location Code", "Quantity"],
+      [
+        ["9000000001", "CS/HD35 BIN A", 10],
+        ["9000000002", "CS/HD35 BIN B", 25],
+      ],
+      "ESMS_Opening_Stock_Template.xlsx"
+    );
+    showSnackbar("Opening stock template downloaded.", "success");
+  }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0] ?? null;
@@ -308,6 +333,17 @@ export default function OpeningStockTab() {
             </Typography>
 
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Button
+                variant="outlined"
+                color="inherit"
+                fullWidth
+                startIcon={<DownloadIcon fontSize="small" />}
+                onClick={handleDownloadTemplate}
+                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600, borderColor: "divider" }}
+              >
+                Download Opening Stock Template
+              </Button>
+
               <input
                 ref={fileInputRef}
                 type="file"

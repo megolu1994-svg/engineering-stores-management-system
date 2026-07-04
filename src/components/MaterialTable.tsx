@@ -116,8 +116,6 @@ export default function MaterialTable({
 
               <Box sx={{ display: "flex", gap: 1 }}>
                 <StatBlock label="UOM" value={material.uom} />
-                <StatBlock label="GROUP" value={material.material_group} />
-                <StatBlock label="HSN" value={material.hsn_code} />
               </Box>
             </CardContent>
 
@@ -169,18 +167,6 @@ export default function MaterialTable({
       field: "uom",
       headerName: "UoM",
       width: 100,
-    },
-
-    {
-      field: "material_group",
-      headerName: "Group",
-      width: 120,
-    },
-
-    {
-      field: "hsn_code",
-      headerName: "HSN Code",
-      width: 130,
     },
 
     {
