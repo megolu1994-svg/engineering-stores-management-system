@@ -33,6 +33,7 @@ import CurrentStockTab from "../components/CurrentStockTab";
 import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
 import LocationTransfer from "./LocationTransfer";
+import { useSwipeTabs } from "../hooks/useSwipeTabs";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation as MaterialAllocationType } from "../types/materialAllocation";
@@ -76,6 +77,8 @@ export default function MaterialAllocation() {
   const fullScreenDialogs = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [activeTab, setActiveTab] = useState(TAB_ALLOCATION);
+
+  const swipeHandlers = useSwipeTabs(activeTab, setActiveTab, 5);
 
   const [material, setMaterial] = useState<Material | null>(null);
 
@@ -411,6 +414,8 @@ export default function MaterialAllocation() {
         />
       </Tabs>
 
+      <Box onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+
       {activeTab === TAB_CURRENT_STOCK && (
         <CurrentStockTab onSelectMaterial={handleSelectMaterialFromCurrentStock} />
       )}
@@ -575,6 +580,8 @@ export default function MaterialAllocation() {
       {activeTab === TAB_OPENING_STOCK && <OpeningStockTab />}
 
       {activeTab === TAB_ADJUSTMENT && <AdjustmentTab />}
+
+      </Box>
     </Box>
   );
 }

@@ -37,6 +37,7 @@ import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import OutputIcon from "@mui/icons-material/Output";
 
 import MaterialSearch from "../components/MaterialSearch";
+import { useSwipeTabs } from "../hooks/useSwipeTabs";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
@@ -178,6 +179,8 @@ export default function Reports() {
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [activeTab, setActiveTab] = useState(TAB_MATERIAL_SUMMARY);
+
+  const swipeHandlers = useSwipeTabs(activeTab, setActiveTab, 4);
 
   // ---------------- Material Summary ----------------
   const [material, setMaterial] = useState<Material | null>(null);
@@ -492,21 +495,38 @@ export default function Reports() {
       <Tabs
         value={activeTab}
         onChange={(_, value) => setActiveTab(value)}
-        variant="scrollable"
-        scrollButtons="auto"
-        allowScrollButtonsMobile
+        variant="fullWidth"
         sx={{
-          mb: 2.5,
+          minHeight: 56,
           borderBottom: 1,
           borderColor: "divider",
-          "& .MuiTab-root": { fontWeight: 700, textTransform: "none", minHeight: 48 },
+          mb: 2.5,
+          borderRadius: 2,
+          bgcolor: "grey.50",
+          "& .MuiTab-root": {
+            fontWeight: 700,
+            textTransform: "none",
+            minHeight: 56,
+            minWidth: 0,
+            fontSize: "0.68rem",
+            lineHeight: 1.15,
+            px: 0.5,
+            py: 0.5,
+            gap: 0.25,
+          },
+          "& .MuiTabs-indicator": {
+            height: 3,
+            borderRadius: 3,
+          },
         }}
       >
-        <Tab icon={<Inventory2Icon sx={{ fontSize: 18 }} />} iconPosition="start" label="Material Summary" />
-        <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Movement History" />
-        <Tab icon={<LocalShippingIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Receipt History" />
-        <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Issue History" />
+        <Tab icon={<Inventory2Icon sx={{ fontSize: 18 }} />} iconPosition="top" label="Summary" />
+        <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Movement" />
+        <Tab icon={<LocalShippingIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Receipts" />
+        <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Issues" />
       </Tabs>
+
+      <Box onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
 
       {activeTab === TAB_MATERIAL_SUMMARY && (
         <>
@@ -966,6 +986,8 @@ export default function Reports() {
           )}
         </>
       )}
+
+      </Box>
     </Box>
   );
 }
