@@ -26,6 +26,11 @@ const emptyMaterial: Material = {
   is_active: true,
 };
 
+// Quantity is owned exclusively by the Inventory Engine and must never
+// be entered or edited here - this keeps material_master.current_quantity
+// out of the Add/Edit form entirely while leaving the field on the
+// Material type/database untouched.
+
 const fieldSx = {
   "& .MuiOutlinedInput-root": {
     borderRadius: 2,
@@ -153,22 +158,6 @@ export default function MaterialForm({
             value={formData.uom}
             onChange={(e) =>
               updateField("uom", e.target.value)
-            }
-            sx={fieldSx}
-          />
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 6 }}>
-          <TextField
-            fullWidth
-            type="number"
-            label="Quantity"
-            value={formData.current_quantity}
-            onChange={(e) =>
-              updateField(
-                "current_quantity",
-                Number(e.target.value)
-              )
             }
             sx={fieldSx}
           />

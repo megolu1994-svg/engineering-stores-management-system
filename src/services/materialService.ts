@@ -34,7 +34,7 @@ export async function getMaterials(): Promise<Material[]> {
 }
 
 const MATERIAL_SEARCH_COLUMNS =
-  "material_code, short_description, uom, current_quantity, hsn_code, material_group, is_active";
+  "material_code, short_description, uom, hsn_code, material_group, is_active";
 
 /**
  * Escapes PostgREST `ilike` wildcard characters (% and _) in user-provided
@@ -121,7 +121,6 @@ export async function addMaterial(
       material_code: material.material_code,
       short_description: material.short_description,
       uom: material.uom,
-      current_quantity: material.current_quantity,
       hsn_code: material.hsn_code,
       material_group: material.material_group,
       is_active: true,
@@ -139,7 +138,6 @@ export async function updateMaterial(
     .update({
       short_description: material.short_description,
       uom: material.uom,
-      current_quantity: material.current_quantity,
       hsn_code: material.hsn_code,
       material_group: material.material_group,
     })
@@ -166,7 +164,6 @@ export interface MaterialPreviewFields {
   material_code: string;
   short_description: string;
   uom: string;
-  current_quantity: string;
   hsn_code: string;
   material_group: string;
 }
@@ -176,7 +173,6 @@ export interface MaterialImportRow {
   material_code: string;
   short_description: string;
   uom: string;
-  current_quantity: number;
   hsn_code: string;
   material_group: string;
 }
@@ -239,38 +235,12 @@ export function extractMaterialFields(
       "Material Description",
     ]),
     uom: getFieldValue(row, ["UoM", "UOM", "Unit", "uom", "EUn"]),
-    current_quantity: getFieldValue(row, [
-      "Current Quantity",
-      "Current Stock",
-      "current_quantity",
-      "Stock",
-      "Quantity",
-      "Qty",
-      "Qty in UnE",
-      "Qty in unit of entry",
-    ]),
     hsn_code: getFieldValue(row, ["HSN Code", "HSN", "hsn_code"]),
     material_group: getFieldValue(row, [
       "Material Group",
       "material_group",
     ]),
   };
-}
-
-/**
- * Parses a quantity string that may contain thousand separators and/or
- * decimal places (e.g. "10", "10.00", "1,250", "1,250.50") into a number.
- * A blank value resolves to 0. A value that cannot be parsed resolves to NaN
- * so the caller can flag it as invalid.
- */
-function parseQuantity(raw: string): number {
-  const cleaned = raw.replace(/,/g, "").trim();
-
-  if (!cleaned) {
-    return 0;
-  }
-
-  return Number(cleaned);
 }
 
 /**
@@ -292,7 +262,6 @@ function deriveMaterialGroup(
 interface StagedRow {
   rowNumber: number;
   fields: MaterialPreviewFields;
-  quantity: number;
 }
 
 /**
@@ -349,12 +318,6 @@ export function parseMaterialExcelRows(
       errors.push("UoM is required.");
     }
 
-    const quantity = parseQuantity(fields.current_quantity);
-
-    if (fields.current_quantity && Number.isNaN(quantity)) {
-      errors.push("Current Quantity must be a number.");
-    }
-
     if (errors.length > 0) {
       invalidRows.push({ rowNumber, fields, errors });
       return;
@@ -363,7 +326,6 @@ export function parseMaterialExcelRows(
     staged.push({
       rowNumber,
       fields,
-      quantity: Number.isNaN(quantity) ? 0 : quantity,
     });
   });
 
@@ -405,11 +367,6 @@ export function parseMaterialExcelRows(
       return;
     }
 
-    const totalQuantity = groupRows.reduce(
-      (sum, r) => sum + r.quantity,
-      0
-    );
-
     const materialGroup = deriveMaterialGroup(
       first.fields.material_code,
       first.fields.material_group
@@ -420,7 +377,6 @@ export function parseMaterialExcelRows(
       material_code: first.fields.material_code,
       short_description: first.fields.short_description,
       uom: first.fields.uom,
-      current_quantity: totalQuantity,
       hsn_code: first.fields.hsn_code,
       material_group: materialGroup,
     });
@@ -441,7 +397,6 @@ export interface MaterialImportFailure {
   rowNumber: number;
   short_description: string;
   uom: string;
-  current_quantity: number;
   hsn_code: string;
   material_group: string;
   error: string;
@@ -590,7 +545,6 @@ export async function bulkImportMaterials(
               material_code: row.material_code,
               short_description: row.short_description,
               uom: row.uom,
-              current_quantity: row.current_quantity,
               hsn_code: row.hsn_code,
               material_group: row.material_group,
               is_active: true,
@@ -613,7 +567,6 @@ export async function bulkImportMaterials(
           rowNumber: row.rowNumber,
           short_description: row.short_description,
           uom: row.uom,
-          current_quantity: row.current_quantity,
           hsn_code: row.hsn_code,
           material_group: row.material_group,
           error: extractErrorMessage(err),

@@ -21,7 +21,8 @@ export type InventoryTransactionType =
   | "ADJUSTMENT"
   | "ALLOCATION"
   | "MATERIAL_RECEIPT"
-  | "MATERIAL_ISSUE";
+  | "MATERIAL_ISSUE"
+  | "LOCATION_TRANSFER";
 
 export interface InventoryTransactionRecord {
   transaction_no: string;
@@ -44,6 +45,7 @@ const TRANSACTION_PREFIX: Record<InventoryTransactionType, string> = {
   ALLOCATION: "ALC",
   MATERIAL_RECEIPT: "GRN",
   MATERIAL_ISSUE: "ISS",
+  LOCATION_TRANSFER: "TRF",
 };
 
 function generateTransactionNumber(type: InventoryTransactionType): string {

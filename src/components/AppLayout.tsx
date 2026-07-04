@@ -34,6 +34,7 @@ const menuItems = [
   { text: "Material Master", path: "/materials" },
   { text: "Location Master", path: "/locations" },
   { text: "Material Allocation", path: "/allocation" },
+  { text: "Location Transfer", path: "/location-transfer" },
   { text: "Material Receipt", path: "/material-receipt" },
   { text: "Material Issue", path: "/material-issue" },
   { text: "Reports", path: "/reports" },

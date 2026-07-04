@@ -94,47 +94,24 @@ export default function MaterialTable({
             <CardContent sx={{ p: 2.25, pb: 2 }}>
               <Box
                 sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: 1.5,
                   mb: 1.5,
                 }}
               >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography
-                    variant="subtitle1"
-                    sx={{ fontWeight: 700, fontSize: "1.05rem" }}
-                    noWrap
-                  >
-                    {material.material_code}
-                  </Typography>
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: 700, fontSize: "1.05rem" }}
+                  noWrap
+                >
+                  {material.material_code}
+                </Typography>
 
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ overflowWrap: "break-word", mt: 0.25 }}
-                  >
-                    {material.short_description}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ textAlign: "right", whiteSpace: "nowrap", flexShrink: 0 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: "block", fontWeight: 600 }}
-                  >
-                    Stock
-                  </Typography>
-                  <Typography
-                    variant="h6"
-                    sx={{ fontWeight: 800 }}
-                    color="primary.main"
-                  >
-                    {material.current_quantity}
-                  </Typography>
-                </Box>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ overflowWrap: "break-word", mt: 0.25 }}
+                >
+                  {material.short_description}
+                </Typography>
               </Box>
 
               <Box sx={{ display: "flex", gap: 1 }}>
@@ -191,20 +168,13 @@ export default function MaterialTable({
     {
       field: "uom",
       headerName: "UoM",
-      width: 90,
-    },
-
-    {
-      field: "current_quantity",
-      headerName: "Qty",
       width: 100,
-      type: "number",
     },
 
     {
       field: "material_group",
       headerName: "Group",
-      width: 110,
+      width: 120,
     },
 
     {

@@ -158,11 +158,11 @@ export default function ImportExport() {
 
   function handleDownloadMaterialTemplate() {
     downloadWorkbook(
-      ["Material Code", "Description", "UoM", "Quantity", "HSN Code"],
+      ["Material Code", "Description", "UoM", "HSN Code"],
       [
-        ["9000000001", "SAMPLE BEARING 6205 2RS", "EA", 10, "84821000"],
-        ["9000000002", "SAMPLE GASKET SET", "EA", 25, "40169300"],
-        ["9000000003", "SAMPLE HYDRAULIC OIL 68", "L", 200, "27101983"],
+        ["9000000001", "SAMPLE BEARING 6205 2RS", "EA", "84821000"],
+        ["9000000002", "SAMPLE GASKET SET", "EA", "40169300"],
+        ["9000000003", "SAMPLE HYDRAULIC OIL 68", "L", "27101983"],
       ],
       "ESMS_Material_Template.xlsx"
     );
@@ -253,7 +253,6 @@ export default function ImportExport() {
         "Material Code",
         "Description",
         "UoM",
-        "Quantity",
         "HSN",
         "Material Group",
         "Error",
@@ -263,7 +262,6 @@ export default function ImportExport() {
         failure.material_code,
         failure.short_description,
         failure.uom,
-        failure.current_quantity,
         failure.hsn_code,
         failure.material_group,
         `${failure.errorCategory}: ${failure.error}`,
@@ -397,7 +395,6 @@ export default function ImportExport() {
           material_code: row.material_code,
           short_description: row.short_description,
           uom: row.uom,
-          current_quantity: String(row.current_quantity),
           hsn_code: row.hsn_code,
           errors: [] as string[],
         })),
@@ -409,7 +406,6 @@ export default function ImportExport() {
           material_code: row.fields.material_code,
           short_description: row.fields.short_description,
           uom: row.fields.uom,
-          current_quantity: row.fields.current_quantity,
           hsn_code: row.fields.hsn_code,
           errors: row.errors,
         })),
@@ -640,7 +636,6 @@ export default function ImportExport() {
                             <TableCell>Material Code</TableCell>
                             <TableCell>Description</TableCell>
                             <TableCell>UoM</TableCell>
-                            <TableCell>Qty</TableCell>
                             <TableCell>HSN</TableCell>
                             <TableCell>Status</TableCell>
                           </TableRow>
@@ -652,7 +647,6 @@ export default function ImportExport() {
                               <TableCell>{row.material_code}</TableCell>
                               <TableCell>{row.short_description}</TableCell>
                               <TableCell>{row.uom}</TableCell>
-                              <TableCell>{row.current_quantity}</TableCell>
                               <TableCell>{row.hsn_code}</TableCell>
                               <TableCell>
                                 <Chip
