@@ -129,7 +129,11 @@ function formatDateTime(value: string): string {
 interface DashboardStats {
   totalMaterials: number;
   totalLocations: number;
-  occupiedLocations: number;
+  /** Materials with at least one non-UNALLOCATED allocation row with
+   * quantity > 0 - i.e. materials that are fully OR partially allocated
+   * to real locations (UNALLOCATED is a sentinel bucket, not a location,
+   * so it never counts here). Fully-unallocated materials are excluded. */
+  materialsAllocatedCount: number;
   emptyLocations: number;
   totalStock: number;
   allocatedQty: number;
@@ -143,7 +147,7 @@ interface DashboardStats {
 const emptyStats: DashboardStats = {
   totalMaterials: 0,
   totalLocations: 0,
-  occupiedLocations: 0,
+  materialsAllocatedCount: 0,
   emptyLocations: 0,
   totalStock: 0,
   allocatedQty: 0,
@@ -258,23 +262,34 @@ export default function Dashboard() {
           .filter((r) => r.location_code === UNALLOCATED_LOCATION)
           .reduce((sum, r) => sum + safeNumber(r.quantity), 0);
 
-        const occupiedLocationCodes = new Set(
-          allocationRows
-            .filter(
-              (r) =>
-                r.location_code !== UNALLOCATED_LOCATION &&
-                safeNumber(r.quantity) > 0
-            )
-            .map((r) => r.location_code)
+        // Real (non-UNALLOCATED) allocation rows with actual quantity on
+        // them - the shared basis for both "occupied locations" (distinct
+        // locations touched) and "materials allocated to locations"
+        // (distinct materials touched), which are two different counts
+        // over the same rows, not the same number.
+        const realAllocatedRows = allocationRows.filter(
+          (r) =>
+            r.location_code !== UNALLOCATED_LOCATION &&
+            safeNumber(r.quantity) > 0
         );
+
+        const occupiedLocationCodes = new Set(
+          realAllocatedRows.map((r) => r.location_code)
+        );
+        const materialsAllocatedCodes = new Set(
+          realAllocatedRows.map((r) => r.material_code)
+        );
+
         const totalLocations = safeNumber(locationCountResult.count);
-        const occupiedLocations = occupiedLocationCodes.size;
-        const emptyLocations = Math.max(totalLocations - occupiedLocations, 0);
+        const emptyLocations = Math.max(
+          totalLocations - occupiedLocationCodes.size,
+          0
+        );
 
         setStats({
           totalMaterials: safeNumber(materialCountResult.count),
           totalLocations,
-          occupiedLocations,
+          materialsAllocatedCount: materialsAllocatedCodes.size,
           emptyLocations,
           totalStock: safeNumber(totalStock),
           allocatedQty: safeNumber(totalStock - unallocatedQty),
@@ -500,7 +515,7 @@ export default function Dashboard() {
 
   const liveOverview = [
     { label: "Total no. Of Materials", value: stats.totalMaterials, icon: <Inventory2Icon /> },
-    { label: "Number of materials allocated locations", value: stats.occupiedLocations, icon: <PlaceIcon /> },
+    { label: "Number of materials allocated locations", value: stats.materialsAllocatedCount, icon: <PlaceIcon /> },
     { label: "Empty locations", value: stats.emptyLocations, icon: <InboxIcon /> },
   ];
 
