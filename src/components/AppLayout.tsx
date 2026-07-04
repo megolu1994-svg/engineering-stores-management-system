@@ -6,6 +6,7 @@ import {
   CssBaseline,
   Divider,
   Drawer,
+  GlobalStyles,
   IconButton,
   List,
   ListItemButton,
@@ -96,9 +97,18 @@ export default function AppLayout() {
 
   return (
 
-    <Box sx={{ display: "flex" }}>
+    <Box sx={{ display: "flex", width: "100%", overflowX: "hidden" }}>
 
       <CssBaseline />
+
+      <GlobalStyles
+        styles={{
+          "html, body, #root": {
+            maxWidth: "100%",
+            overflowX: "hidden",
+          },
+        }}
+      />
 
       <AppBar
         position="fixed"
@@ -109,7 +119,7 @@ export default function AppLayout() {
         }}
       >
 
-        <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT }}>
+        <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT, overflow: "hidden" }}>
 
           {mobile && (
 
@@ -128,7 +138,7 @@ export default function AppLayout() {
 
           <Typography
             variant="subtitle1"
-            sx={{ fontWeight: "bold" }}
+            sx={{ fontWeight: "bold", minWidth: 0, flex: 1 }}
             noWrap
             component="div"
           >
@@ -182,6 +192,9 @@ export default function AppLayout() {
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
+          maxWidth: "100%",
+          overflowX: "hidden",
           bgcolor: "#f4f6f8",
           minHeight: "100vh",
 
