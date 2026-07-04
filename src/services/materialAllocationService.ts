@@ -6,6 +6,36 @@ import {
   reverseStockMovement,
 } from "./inventoryTransactionService";
 
+const UNALLOCATED_LOCATION = "UNALLOCATED";
+
+interface UnallocatedRow {
+  id: number;
+  quantity: number;
+}
+
+/**
+ * Looks up the material's UNALLOCATED row (id + quantity), or null if it
+ * doesn't have one. Shared by every allocation write below, since moving
+ * stock into/out of/back to a real location always means the mirror
+ * image happens to this same row.
+ */
+async function getUnallocatedRow(
+  materialCode: string
+): Promise<UnallocatedRow | null> {
+  const { data, error } = await supabase
+    .from("material_allocation")
+    .select("id, quantity")
+    .eq("material_code", materialCode)
+    .eq("location_code", UNALLOCATED_LOCATION)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data
+    ? { id: data.id as number, quantity: Number(data.quantity) }
+    : null;
+}
+
 export async function getAllocations(
   materialCode: string
 ): Promise<MaterialAllocation[]> {
@@ -23,87 +53,153 @@ export async function getAllocations(
 }
 
 /**
- * Creates a new allocation row. Routes the actual write through the
- * Inventory Engine (applyStockMovement) so it is logged the same way as
- * every other stock movement. Preserves the original fire-and-forget
- * error handling (log to console, never throw) so existing callers
- * behave exactly as before.
+ * Allocates stock to a real location by MOVING it out of the material's
+ * UNALLOCATED balance - a paired OUT (UNALLOCATED) + IN (target location)
+ * movement, exactly like Location Transfer moves stock between two real
+ * locations. Total stock for the material is unchanged; only Opening
+ * Stock, Adjustment, Material Receipt and Material Issue are allowed to
+ * change it. Throws on failure (including insufficient unallocated
+ * balance) instead of swallowing errors, so the caller's error handling
+ * actually runs instead of silently reporting success.
  */
 export async function addAllocation(
   allocation: Omit<MaterialAllocation, "id">
 ): Promise<void> {
-  try {
-    await applyStockMovement({
-      materialCode: allocation.material_code,
-      locationCode: allocation.location_code,
-      prevQuantity: 0,
-      newQuantity: allocation.quantity,
-      transactionType: "ALLOCATION",
-      referenceType: "ALLOCATION",
-    });
-  } catch (error) {
-    console.error(error);
+  const unallocatedRow = await getUnallocatedRow(allocation.material_code);
+  const unallocatedQty = unallocatedRow?.quantity ?? 0;
+
+  if (allocation.quantity > unallocatedQty) {
+    throw new Error(
+      `Cannot allocate more than the unallocated balance (${unallocatedQty}).`
+    );
   }
+
+  // OUT of UNALLOCATED.
+  await applyStockMovement({
+    materialCode: allocation.material_code,
+    locationCode: UNALLOCATED_LOCATION,
+    prevQuantity: unallocatedQty,
+    newQuantity: unallocatedQty - allocation.quantity,
+    allocationId: unallocatedRow?.id,
+    transactionType: "ALLOCATION",
+    referenceType: "ALLOCATION",
+  });
+
+  // IN to the target location.
+  await applyStockMovement({
+    materialCode: allocation.material_code,
+    locationCode: allocation.location_code,
+    prevQuantity: 0,
+    newQuantity: allocation.quantity,
+    transactionType: "ALLOCATION",
+    referenceType: "ALLOCATION",
+  });
 }
 
 /**
- * Updates an existing allocation's quantity. Routes the actual write
- * through the Inventory Engine (applyStockMovement) so it is logged the
- * same way as every other stock movement. Preserves the original
- * fire-and-forget error handling (log to console, never throw).
+ * Changes an existing allocation to a new absolute quantity by moving
+ * the difference to/from the material's UNALLOCATED balance: raising the
+ * quantity pulls the increase out of UNALLOCATED (failing if there isn't
+ * enough spare balance), lowering it returns the decrease back to
+ * UNALLOCATED. Total stock for the material is unchanged. Throws on
+ * failure instead of swallowing errors.
  */
 export async function updateAllocation(
   id: number,
   quantity: number
 ): Promise<void> {
-  try {
-    const { data, error: fetchError } = await supabase
-      .from("material_allocation")
-      .select("material_code, location_code, quantity")
-      .eq("id", id)
-      .maybeSingle();
+  const { data, error: fetchError } = await supabase
+    .from("material_allocation")
+    .select("material_code, location_code, quantity")
+    .eq("id", id)
+    .maybeSingle();
 
-    if (fetchError) throw fetchError;
+  if (fetchError) throw fetchError;
+  if (!data) throw new Error("Allocation not found.");
+  if (data.location_code === UNALLOCATED_LOCATION) {
+    throw new Error("Cannot directly edit the unallocated balance.");
+  }
+
+  const materialCode = data.material_code as string;
+  const prevQuantity = Number(data.quantity);
+  const delta = quantity - prevQuantity;
+
+  if (delta !== 0) {
+    const unallocatedRow = await getUnallocatedRow(materialCode);
+    const unallocatedQty = unallocatedRow?.quantity ?? 0;
+
+    if (delta > unallocatedQty) {
+      throw new Error(
+        `Cannot allocate more than the unallocated balance (${unallocatedQty}).`
+      );
+    }
 
     await applyStockMovement({
-      materialCode: data?.material_code ?? "",
-      locationCode: data?.location_code ?? "",
-      prevQuantity: data ? Number(data.quantity) : 0,
-      newQuantity: quantity,
-      allocationId: id,
+      materialCode,
+      locationCode: UNALLOCATED_LOCATION,
+      prevQuantity: unallocatedQty,
+      newQuantity: unallocatedQty - delta,
+      allocationId: unallocatedRow?.id,
       transactionType: "ALLOCATION",
       referenceType: "ALLOCATION",
     });
-  } catch (error) {
-    console.error(error);
   }
+
+  await applyStockMovement({
+    materialCode,
+    locationCode: data.location_code,
+    prevQuantity,
+    newQuantity: quantity,
+    allocationId: id,
+    transactionType: "ALLOCATION",
+    referenceType: "ALLOCATION",
+  });
 }
 
 /**
- * Deletes an allocation row. Routes the removal through the Inventory
- * Engine (reverseStockMovement) so it is logged as an OUT movement down
- * to zero. Preserves the original fire-and-forget error handling.
+ * Deletes an allocation row and returns its quantity to the material's
+ * UNALLOCATED balance - removing an allocation un-assigns that stock
+ * from the location, it does not destroy it. Total stock for the
+ * material is unchanged. Throws on failure instead of swallowing errors.
  */
 export async function deleteAllocation(id: number): Promise<void> {
-  try {
-    const { data, error: fetchError } = await supabase
-      .from("material_allocation")
-      .select("material_code, location_code, quantity")
-      .eq("id", id)
-      .maybeSingle();
+  const { data, error: fetchError } = await supabase
+    .from("material_allocation")
+    .select("material_code, location_code, quantity")
+    .eq("id", id)
+    .maybeSingle();
 
-    if (fetchError) throw fetchError;
+  if (fetchError) throw fetchError;
+  if (!data) throw new Error("Allocation not found.");
+  if (data.location_code === UNALLOCATED_LOCATION) {
+    throw new Error("Cannot directly delete the unallocated balance.");
+  }
 
-    await reverseStockMovement({
-      materialCode: data?.material_code ?? "",
-      locationCode: data?.location_code ?? "",
-      allocationId: id,
-      prevQuantity: data ? Number(data.quantity) : 0,
+  const materialCode = data.material_code as string;
+  const prevQuantity = Number(data.quantity);
+
+  await reverseStockMovement({
+    materialCode,
+    locationCode: data.location_code,
+    allocationId: id,
+    prevQuantity,
+    transactionType: "ALLOCATION",
+    referenceType: "ALLOCATION",
+  });
+
+  if (prevQuantity > 0) {
+    const unallocatedRow = await getUnallocatedRow(materialCode);
+    const unallocatedQty = unallocatedRow?.quantity ?? 0;
+
+    await applyStockMovement({
+      materialCode,
+      locationCode: UNALLOCATED_LOCATION,
+      prevQuantity: unallocatedQty,
+      newQuantity: unallocatedQty + prevQuantity,
+      allocationId: unallocatedRow?.id,
       transactionType: "ALLOCATION",
       referenceType: "ALLOCATION",
     });
-  } catch (error) {
-    console.error(error);
   }
 }
 
