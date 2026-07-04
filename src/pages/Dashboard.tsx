@@ -57,6 +57,7 @@ import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
+import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const LOW_STOCK_THRESHOLD = 10;
@@ -140,7 +141,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(0);
-  const swipeHandlers = useSwipeTabs(activeTab, setActiveTab, 2);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
   const [searchTerm, setSearchTerm] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<DashboardSearchResult[]>([]);
@@ -611,7 +612,7 @@ export default function Dashboard() {
           )}
         </Box>
       ) : (
-        <Box {...swipeHandlers}>
+        <SwipeableTabPanel activeTab={activeTab} direction={direction}>
       {activeTab === 0 && (
         <>
           {/* ---- Live Overview ---- */}
@@ -811,7 +812,7 @@ export default function Dashboard() {
           </Box>
         </>
       )}
-        </Box>
+        </SwipeableTabPanel>
       )}
 
       {/* ---- Material Details (from the inventory search above) ---- */}

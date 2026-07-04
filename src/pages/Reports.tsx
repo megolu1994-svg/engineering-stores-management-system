@@ -38,6 +38,7 @@ import OutputIcon from "@mui/icons-material/Output";
 
 import MaterialSearch from "../components/MaterialSearch";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
+import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
@@ -180,7 +181,7 @@ export default function Reports() {
 
   const [activeTab, setActiveTab] = useState(TAB_MATERIAL_SUMMARY);
 
-  const swipeHandlers = useSwipeTabs(activeTab, setActiveTab, 4);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 4);
 
   // ---------------- Material Summary ----------------
   const [material, setMaterial] = useState<Material | null>(null);
@@ -526,7 +527,7 @@ export default function Reports() {
         <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Issues" />
       </Tabs>
 
-      <Box {...swipeHandlers}>
+      <SwipeableTabPanel activeTab={activeTab} direction={direction}>
 
       {activeTab === TAB_MATERIAL_SUMMARY && (
         <>
@@ -987,7 +988,7 @@ export default function Reports() {
         </>
       )}
 
-      </Box>
+      </SwipeableTabPanel>
     </Box>
   );
 }

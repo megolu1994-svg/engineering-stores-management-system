@@ -34,6 +34,7 @@ import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
 import LocationTransfer from "./LocationTransfer";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
+import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation as MaterialAllocationType } from "../types/materialAllocation";
@@ -78,7 +79,7 @@ export default function MaterialAllocation() {
 
   const [activeTab, setActiveTab] = useState(TAB_ALLOCATION);
 
-  const swipeHandlers = useSwipeTabs(activeTab, setActiveTab, 5);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 5);
 
   const [material, setMaterial] = useState<Material | null>(null);
 
@@ -414,7 +415,7 @@ export default function MaterialAllocation() {
         />
       </Tabs>
 
-      <Box {...swipeHandlers}>
+      <SwipeableTabPanel activeTab={activeTab} direction={direction}>
 
       {activeTab === TAB_CURRENT_STOCK && (
         <CurrentStockTab onSelectMaterial={handleSelectMaterialFromCurrentStock} />
@@ -581,7 +582,7 @@ export default function MaterialAllocation() {
 
       {activeTab === TAB_ADJUSTMENT && <AdjustmentTab />}
 
-      </Box>
+      </SwipeableTabPanel>
     </Box>
   );
 }
