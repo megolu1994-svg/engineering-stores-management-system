@@ -865,7 +865,7 @@ export default function MaterialReceipt() {
     const rowsHtml = rows
       .map(
         ([label, value]) =>
-          `<tr><td style="padding:6px 10px;font-weight:600;border:1px solid #ddd;">${label}</td><td style="padding:6px 10px;border:1px solid #ddd;">${value}</td></tr>`
+          `<tr><td style="padding:6px 10px;font-weight:600;border:1px solid #ddd;word-break:break-word;">${label}</td><td style="padding:6px 10px;border:1px solid #ddd;word-break:break-word;">${value}</td></tr>`
       )
       .join("");
 
@@ -873,11 +873,12 @@ export default function MaterialReceipt() {
       <html>
         <head>
           <title>${receipt.drc_number}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
         </head>
         <body style="font-family: Arial, sans-serif; padding: 24px;">
           <h2 style="margin-bottom: 4px;">Delivery Receipt Challan</h2>
           <p style="margin-top: 0; color: #555;">${receipt.drc_number}</p>
-          <table style="border-collapse: collapse; width: 100%;">${rowsHtml}</table>
+          <table style="border-collapse: collapse; width: 100%; table-layout: fixed;">${rowsHtml}</table>
         </body>
       </html>
     `);
@@ -1847,12 +1848,15 @@ export default function MaterialReceipt() {
                 ].map(([label, value]) => (
                   <Box
                     key={label}
-                    sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}
+                    sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}
                   >
                     <Typography variant="caption" color="text.secondary">
                       {label}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, textAlign: "right" }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 600, textAlign: "right", minWidth: 0, wordBreak: "break-word" }}
+                    >
                       {value}
                     </Typography>
                   </Box>
@@ -2015,38 +2019,41 @@ export default function MaterialReceipt() {
                 </Box>
               ) : (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
                     <Typography variant="caption" color="text.secondary">
                       Status
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, wordBreak: "break-word" }}>
                       {viewReceipt.inspection_status ?? "-"}
                     </Typography>
                   </Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
                     <Typography variant="caption" color="text.secondary">
                       Inspected By
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, wordBreak: "break-word" }}>
                       {viewReceipt.inspection_by ?? "-"}
                     </Typography>
                   </Box>
-                  <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
                     <Typography variant="caption" color="text.secondary">
                       Inspection Date
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, wordBreak: "break-word" }}>
                       {viewReceipt.inspection_date
                         ? formatDateTime(viewReceipt.inspection_date)
                         : "-"}
                     </Typography>
                   </Box>
                   {viewReceipt.inspection_remarks && (
-                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
                       <Typography variant="caption" color="text.secondary">
                         Remarks
                       </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, textAlign: "right" }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: 600, textAlign: "right", minWidth: 0, wordBreak: "break-word" }}
+                      >
                         {viewReceipt.inspection_remarks}
                       </Typography>
                     </Box>
