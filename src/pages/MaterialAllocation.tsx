@@ -21,6 +21,7 @@ import {
 
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
 import TuneIcon from "@mui/icons-material/Tune";
 
@@ -31,16 +32,25 @@ import AllocationForm from "../components/AllocationForm";
 import CurrentStockTab from "../components/CurrentStockTab";
 import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
+import LocationTransfer from "./LocationTransfer";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation as MaterialAllocationType } from "../types/materialAllocation";
 
+import { searchMaterials } from "../services/materialService";
 import {
   getAllocations,
   addAllocation,
   updateAllocation,
   deleteAllocation,
 } from "../services/materialAllocationService";
+
+const UNALLOCATED_LOCATION = "UNALLOCATED";
+
+function safeNumber(value: number | null | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -57,8 +67,9 @@ interface DeleteDialogState {
 
 const TAB_CURRENT_STOCK = 0;
 const TAB_ALLOCATION = 1;
-const TAB_OPENING_STOCK = 2;
-const TAB_ADJUSTMENT = 3;
+const TAB_TRANSFER = 2;
+const TAB_OPENING_STOCK = 3;
+const TAB_ADJUSTMENT = 4;
 
 export default function MaterialAllocation() {
   const theme = useTheme();
@@ -72,7 +83,18 @@ export default function MaterialAllocation() {
     []
   );
 
-  const [allocatedQty, setAllocatedQty] = useState(0);
+  // Derived purely from the Inventory Engine's material_allocation rows -
+  // Material Master no longer carries a quantity, so these are the only
+  // source of truth for stock figures anywhere in this module.
+  const totalStock = safeNumber(
+    allocations.reduce((sum, a) => sum + safeNumber(a.quantity), 0)
+  );
+  const unallocatedQty = safeNumber(
+    allocations
+      .filter((a) => a.location_code === UNALLOCATED_LOCATION)
+      .reduce((sum, a) => sum + safeNumber(a.quantity), 0)
+  );
+  const allocatedQty = safeNumber(totalStock - unallocatedQty);
 
   const [loadingAllocations, setLoadingAllocations] = useState(false);
 
@@ -111,14 +133,6 @@ export default function MaterialAllocation() {
       const data = await getAllocations(materialCode);
 
       setAllocations(data);
-
-      let total = 0;
-
-      data.forEach((row) => {
-        total += Number(row.quantity);
-      });
-
-      setAllocatedQty(total);
     } finally {
       setLoadingAllocations(false);
     }
@@ -127,12 +141,35 @@ export default function MaterialAllocation() {
   useEffect(() => {
     if (!material) {
       setAllocations([]);
-      setAllocatedQty(0);
       return;
     }
 
     loadAllocations(material.material_code);
   }, [material]);
+
+  // Called when a Recent Activity / search card is tapped in the Current
+  // Stock tab: looks up the full Material record (reusing the existing
+  // searchMaterials service, a targeted lookup - not a full table load)
+  // and switches to the Allocation tab with it already selected, so the
+  // user doesn't have to search again.
+  async function handleSelectMaterialFromCurrentStock(materialCode: string) {
+    try {
+      const results = await searchMaterials(materialCode, 0, 1);
+      const exact =
+        results.find((m) => m.material_code === materialCode) ??
+        results[0] ??
+        null;
+
+      if (exact) {
+        setMaterial(exact);
+        setActiveTab(TAB_ALLOCATION);
+      } else {
+        showSnackbar("Could not load that material.", "error");
+      }
+    } catch {
+      showSnackbar("Could not load that material.", "error");
+    }
+  }
 
   function scrollToAllocations() {
     setTimeout(() => {
@@ -163,11 +200,11 @@ export default function MaterialAllocation() {
       (a) => a.location_code === locationCode
     );
 
-    const balance = material.current_quantity - allocatedQty;
+    const availableToAllocate = safeNumber(unallocatedQty);
 
-    if (quantity > balance) {
+    if (quantity > availableToAllocate) {
       showSnackbar(
-        `Cannot allocate more than available balance (${balance} ${material.uom}).`,
+        `Cannot allocate more than the unallocated balance (${availableToAllocate} ${material.uom}).`,
         "error"
       );
       return;
@@ -237,14 +274,12 @@ export default function MaterialAllocation() {
       return;
     }
 
-    const otherAllocatedQty =
-      allocatedQty - editDialog.allocation.quantity;
+    const currentQty = safeNumber(editDialog.allocation.quantity);
+    const availableBalance = safeNumber(unallocatedQty);
 
-    const availableBalance = material.current_quantity - otherAllocatedQty;
-
-    if (newQuantity > availableBalance) {
+    if (newQuantity - currentQty > availableBalance) {
       showSnackbar(
-        `Cannot allocate more than available balance (${availableBalance} ${material.uom}).`,
+        `Cannot allocate more than the unallocated balance (${availableBalance} ${material.uom}).`,
         "error"
       );
       return;
@@ -318,7 +353,7 @@ export default function MaterialAllocation() {
           fontSize: { xs: "1.05rem", sm: "1.25rem" },
         }}
       >
-        Material Allocation
+        Inventory
       </Typography>
 
       <Tabs
@@ -360,6 +395,11 @@ export default function MaterialAllocation() {
           label="Allocate"
         />
         <Tab
+          icon={<CompareArrowsIcon sx={{ fontSize: 18 }} />}
+          iconPosition="top"
+          label="Transfer"
+        />
+        <Tab
           icon={<PlaylistAddIcon sx={{ fontSize: 18 }} />}
           iconPosition="top"
           label="Opening"
@@ -371,7 +411,9 @@ export default function MaterialAllocation() {
         />
       </Tabs>
 
-      {activeTab === TAB_CURRENT_STOCK && <CurrentStockTab />}
+      {activeTab === TAB_CURRENT_STOCK && (
+        <CurrentStockTab onSelectMaterial={handleSelectMaterialFromCurrentStock} />
+      )}
 
       {activeTab === TAB_ALLOCATION && (
         <>
@@ -379,7 +421,12 @@ export default function MaterialAllocation() {
             <MaterialSearch value={material} onChange={setMaterial} />
           </Box>
 
-          <AllocationSummary material={material} allocatedQty={allocatedQty} />
+          <AllocationSummary
+            material={material}
+            totalStock={totalStock}
+            allocatedQty={allocatedQty}
+            unallocatedQty={unallocatedQty}
+          />
 
           {material ? (
             <AllocationForm onAllocate={handleAllocate} />
@@ -520,6 +567,8 @@ export default function MaterialAllocation() {
           </Snackbar>
         </>
       )}
+
+      {activeTab === TAB_TRANSFER && <LocationTransfer />}
 
       {activeTab === TAB_OPENING_STOCK && <OpeningStockTab />}
 

@@ -117,6 +117,12 @@ const emptyForm: ReceiptFormInput = {
   challan_date: "",
   eway_bill_number: "",
   eway_bill_date: "",
+  lorry_receipt_number: "",
+  lorry_receipt_date: "",
+  weightment_slip_number: "",
+  gross_weight: "",
+  tare_weight: "",
+  net_weight: "",
   remarks: "",
 };
 
@@ -150,6 +156,103 @@ function statusColor(
   if (status === "Pending GRN") return "info";
   if (status === "Closed") return "success";
   return "default";
+}
+
+// ---------------------------------------------------------------------
+// Manual date entry: DD.MM.YYYY via the numeric keyboard, no calendar
+// picker. Digits are auto-formatted with dots as the user types, and the
+// value is stored/exchanged with the rest of the form as an ISO
+// yyyy-mm-dd string (same shape the database columns already use).
+// ---------------------------------------------------------------------
+
+function isoToDigits(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return "";
+  return `${d}${m}${y}`;
+}
+
+function digitsToDisplay(digits: string): string {
+  const d = digits.slice(0, 2);
+  const m = digits.slice(2, 4);
+  const y = digits.slice(4, 8);
+  let out = d;
+  if (m) out += "." + m;
+  if (y) out += "." + y;
+  return out;
+}
+
+function digitsToIso(digits: string): string | null {
+  if (digits.length !== 8) return null;
+
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4, 8));
+
+  if (month < 1 || month > 12) return null;
+  if (year < 1900 || year > 2100) return null;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  if (day < 1 || day > daysInMonth) return null;
+
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+interface DateTextFieldProps {
+  label: string;
+  value: string;
+  onChange: (isoValue: string) => void;
+  required?: boolean;
+}
+
+function DateTextField({ label, value, onChange, required }: DateTextFieldProps) {
+  const [digits, setDigits] = useState(() => isoToDigits(value));
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    setDigits(isoToDigits(value));
+    setTouched(false);
+  }, [value]);
+
+  const isIncomplete = digits.length > 0 && digits.length < 8;
+  const isInvalid = digits.length === 8 && digitsToIso(digits) === null;
+  const showError = touched && (isIncomplete || isInvalid);
+
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value.replace(/\D/g, "").slice(0, 8);
+    setDigits(raw);
+
+    if (raw.length === 0) {
+      onChange("");
+      return;
+    }
+
+    if (raw.length === 8) {
+      const iso = digitsToIso(raw);
+      if (iso) {
+        onChange(iso);
+      }
+    }
+  }
+
+  return (
+    <TextField
+      label={label}
+      size="small"
+      fullWidth
+      required={required}
+      value={digitsToDisplay(digits)}
+      onChange={handleChange}
+      onBlur={() => setTouched(true)}
+      error={showError}
+      helperText={showError ? "Enter a valid date (DD.MM.YYYY)" : " "}
+      placeholder="DD.MM.YYYY"
+      slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 10 } }}
+      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+    />
+  );
 }
 
 export default function MaterialReceipt() {
@@ -310,6 +413,15 @@ export default function MaterialReceipt() {
       challan_date: receipt.challan_date ?? "",
       eway_bill_number: receipt.eway_bill_number ?? "",
       eway_bill_date: receipt.eway_bill_date ?? "",
+      lorry_receipt_number: receipt.lorry_receipt_number ?? "",
+      lorry_receipt_date: receipt.lorry_receipt_date ?? "",
+      weightment_slip_number: receipt.weightment_slip_number ?? "",
+      gross_weight:
+        receipt.gross_weight !== null ? String(receipt.gross_weight) : "",
+      tare_weight:
+        receipt.tare_weight !== null ? String(receipt.tare_weight) : "",
+      net_weight:
+        receipt.net_weight !== null ? String(receipt.net_weight) : "",
       remarks: receipt.remarks ?? "",
     });
     setNewPhotoFiles([]);
@@ -741,6 +853,12 @@ export default function MaterialReceipt() {
       ["Challan Date", formatDate(receipt.challan_date)],
       ["E-Way Bill Number", receipt.eway_bill_number ?? "-"],
       ["E-Way Bill Date", formatDate(receipt.eway_bill_date)],
+      ["Lorry Receipt Number", receipt.lorry_receipt_number ?? "-"],
+      ["Lorry Receipt Date", formatDate(receipt.lorry_receipt_date)],
+      ["Weightment Slip Number", receipt.weightment_slip_number ?? "-"],
+      ["Gross Weight", receipt.gross_weight !== null ? String(receipt.gross_weight) : "-"],
+      ["Tare Weight", receipt.tare_weight !== null ? String(receipt.tare_weight) : "-"],
+      ["Net Weight", receipt.net_weight !== null ? String(receipt.net_weight) : "-"],
       ["Remarks", receipt.remarks ?? "-"],
     ];
 
@@ -1226,15 +1344,10 @@ export default function MaterialReceipt() {
                     onChange={(e) => updateField("sap_po_number", e.target.value)}
                     sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                   />
-                  <TextField
+                  <DateTextField
                     label="SAP PO Date"
-                    type="date"
-                    size="small"
-                    fullWidth
                     value={form.sap_po_date}
-                    onChange={(e) => updateField("sap_po_date", e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    onChange={(iso) => updateField("sap_po_date", iso)}
                   />
                 </Box>
                 <Box sx={{ display: "flex", gap: 1 }}>
@@ -1246,15 +1359,10 @@ export default function MaterialReceipt() {
                     onChange={(e) => updateField("gem_order_number", e.target.value)}
                     sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                   />
-                  <TextField
+                  <DateTextField
                     label="GeM Order Date"
-                    type="date"
-                    size="small"
-                    fullWidth
                     value={form.gem_order_date}
-                    onChange={(e) => updateField("gem_order_date", e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    onChange={(iso) => updateField("gem_order_date", iso)}
                   />
                 </Box>
               </Box>
@@ -1276,15 +1384,10 @@ export default function MaterialReceipt() {
                   onChange={(e) => updateField("invoice_number", e.target.value)}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
-                <TextField
+                <DateTextField
                   label="Invoice Date"
-                  type="date"
-                  size="small"
-                  fullWidth
                   value={form.invoice_date}
-                  onChange={(e) => updateField("invoice_date", e.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  onChange={(iso) => updateField("invoice_date", iso)}
                 />
               </Box>
             </Box>
@@ -1305,15 +1408,10 @@ export default function MaterialReceipt() {
                   onChange={(e) => updateField("challan_number", e.target.value)}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
-                <TextField
+                <DateTextField
                   label="Challan Date"
-                  type="date"
-                  size="small"
-                  fullWidth
                   value={form.challan_date}
-                  onChange={(e) => updateField("challan_date", e.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  onChange={(iso) => updateField("challan_date", iso)}
                 />
               </Box>
             </Box>
@@ -1334,14 +1432,84 @@ export default function MaterialReceipt() {
                   onChange={(e) => updateField("eway_bill_number", e.target.value)}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
-                <TextField
+                <DateTextField
                   label="E-Way Bill Date"
-                  type="date"
+                  value={form.eway_bill_date}
+                  onChange={(iso) => updateField("eway_bill_date", iso)}
+                />
+              </Box>
+            </Box>
+
+            <Divider />
+
+            {/* Transport */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Transport
+              </Typography>
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <TextField
+                  label="Lorry Receipt Number"
                   size="small"
                   fullWidth
-                  value={form.eway_bill_date}
-                  onChange={(e) => updateField("eway_bill_date", e.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
+                  value={form.lorry_receipt_number}
+                  onChange={(e) => updateField("lorry_receipt_number", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                <DateTextField
+                  label="Lorry Receipt Date"
+                  value={form.lorry_receipt_date}
+                  onChange={(iso) => updateField("lorry_receipt_date", iso)}
+                />
+              </Box>
+            </Box>
+
+            <Divider />
+
+            {/* Weighbridge */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Weighbridge
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <TextField
+                  label="Weightment Slip Number"
+                  size="small"
+                  fullWidth
+                  value={form.weightment_slip_number}
+                  onChange={(e) => updateField("weightment_slip_number", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    label="Gross Weight"
+                    type="number"
+                    size="small"
+                    fullWidth
+                    value={form.gross_weight}
+                    onChange={(e) => updateField("gross_weight", e.target.value)}
+                    slotProps={{ htmlInput: { inputMode: "decimal" } }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                  <TextField
+                    label="Tare Weight"
+                    type="number"
+                    size="small"
+                    fullWidth
+                    value={form.tare_weight}
+                    onChange={(e) => updateField("tare_weight", e.target.value)}
+                    slotProps={{ htmlInput: { inputMode: "decimal" } }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                </Box>
+                <TextField
+                  label="Net Weight"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  value={form.net_weight}
+                  onChange={(e) => updateField("net_weight", e.target.value)}
+                  slotProps={{ htmlInput: { inputMode: "decimal" } }}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
               </Box>
@@ -1668,6 +1836,12 @@ export default function MaterialReceipt() {
                   ["Challan Date", formatDate(viewReceipt.challan_date)],
                   ["E-Way Bill Number", viewReceipt.eway_bill_number ?? "-"],
                   ["E-Way Bill Date", formatDate(viewReceipt.eway_bill_date)],
+                  ["Lorry Receipt Number", viewReceipt.lorry_receipt_number ?? "-"],
+                  ["Lorry Receipt Date", formatDate(viewReceipt.lorry_receipt_date)],
+                  ["Weightment Slip Number", viewReceipt.weightment_slip_number ?? "-"],
+                  ["Gross Weight", viewReceipt.gross_weight !== null ? String(viewReceipt.gross_weight) : "-"],
+                  ["Tare Weight", viewReceipt.tare_weight !== null ? String(viewReceipt.tare_weight) : "-"],
+                  ["Net Weight", viewReceipt.net_weight !== null ? String(viewReceipt.net_weight) : "-"],
                   ["Remarks", viewReceipt.remarks ?? "-"],
                 ].map(([label, value]) => (
                   <Box
@@ -1900,15 +2074,10 @@ export default function MaterialReceipt() {
                         onChange={(e) => setGrnNumber(e.target.value)}
                         sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                       />
-                      <TextField
+                      <DateTextField
                         label="GRN Date"
-                        type="date"
-                        size="small"
-                        fullWidth
                         value={grnDate}
-                        onChange={(e) => setGrnDate(e.target.value)}
-                        slotProps={{ inputLabel: { shrink: true } }}
-                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                        onChange={setGrnDate}
                       />
                     </Box>
 

@@ -6,7 +6,6 @@ import Dashboard from "./pages/Dashboard";
 import MaterialMaster from "./pages/MaterialMaster";
 import LocationMaster from "./pages/LocationMaster";
 import MaterialAllocation from "./pages/MaterialAllocation";
-import LocationTransfer from "./pages/LocationTransfer";
 import MaterialReceipt from "./pages/MaterialReceipt";
 import MaterialIssue from "./pages/MaterialIssue";
 import Reports from "./pages/Reports";
@@ -24,8 +23,6 @@ export default function App() {
         <Route path="locations" element={<LocationMaster />} />
 
         <Route path="allocation" element={<MaterialAllocation />} />
-
-        <Route path="location-transfer" element={<LocationTransfer />} />
 
         <Route path="material-receipt" element={<MaterialReceipt />} />
 

@@ -3,12 +3,27 @@ import type { Material } from "../types/material";
 
 interface Props {
   material: Material | null;
+  /** Sum of every material_allocation row for this material (all
+   * locations, including UNALLOCATED) - the Inventory Engine's Total
+   * Stock. Material Master no longer carries a quantity, so this must
+   * always come from the caller's own allocations query. */
+  totalStock: number;
+  /** Sum of material_allocation rows at real (non-UNALLOCATED) locations. */
   allocatedQty: number;
+  /** Quantity sitting in the UNALLOCATED sentinel location. */
+  unallocatedQty: number;
+}
+
+function safeNumber(value: number | null | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export default function AllocationSummary({
   material,
+  totalStock,
   allocatedQty,
+  unallocatedQty,
 }: Props) {
   if (!material) {
     return (
@@ -24,23 +39,25 @@ export default function AllocationSummary({
     );
   }
 
-  const stock = material.current_quantity;
-  const balance = stock - allocatedQty;
+  const stock = safeNumber(totalStock);
+  const allocated = safeNumber(allocatedQty);
+  const unallocated = safeNumber(unallocatedQty);
 
-  const allocatedPercent =
-    stock > 0 ? Math.min((allocatedQty / stock) * 100, 100) : 0;
+  const allocatedPercent = stock > 0 ? Math.min((allocated / stock) * 100, 100) : 0;
+  const unallocatedPercent = stock > 0 ? (unallocated / stock) * 100 : 0;
 
-  const balancePercent = stock > 0 ? (balance / stock) * 100 : 0;
-
-  let balanceColor = "success.main";
+  let unallocatedColor = "success.main";
   let progressColor: "success" | "warning" | "error" = "success";
 
-  if (balance <= 0) {
-    balanceColor = "error.main";
-    progressColor = "error";
-  } else if (balancePercent <= 20) {
-    balanceColor = "warning.main";
+  if (stock > 0 && unallocated <= 0) {
+    progressColor = "success";
+  } else if (unallocatedPercent <= 20) {
+    unallocatedColor = "warning.main";
     progressColor = "warning";
+  }
+
+  if (stock === 0) {
+    unallocatedColor = "text.secondary";
   }
 
   return (
@@ -116,7 +133,7 @@ export default function AllocationSummary({
             sx={{ fontWeight: "bold" }}
             color="primary.main"
           >
-            {allocatedQty}
+            {allocated}
           </Typography>
         </Grid>
 
@@ -130,9 +147,9 @@ export default function AllocationSummary({
           </Typography>
           <Typography
             variant="body2"
-            sx={{ fontWeight: "bold", color: balanceColor }}
+            sx={{ fontWeight: "bold", color: unallocatedColor }}
           >
-            {balance}
+            {unallocated}
           </Typography>
         </Grid>
       </Grid>
@@ -146,7 +163,7 @@ export default function AllocationSummary({
           }}
         >
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
-            {allocatedQty} / {stock}
+            {allocated} / {stock}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
             {allocatedPercent.toFixed(0)}%

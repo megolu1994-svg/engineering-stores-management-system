@@ -19,6 +19,28 @@ import type { Location } from "../types/location";
 
 import { getAllocations } from "../services/materialAllocationService";
 import { getLocations } from "../services/locationService";
+import {
+  getMaterialMovementDates,
+  type MaterialMovementDates,
+} from "../services/inventoryOverviewService";
+
+function safeNumber(value: number | null | undefined): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const UNALLOCATED_LOCATION = "UNALLOCATED";
+
+function formatReportDate(value: string | null): string {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function Reports() {
   const [material, setMaterial] = useState<Material | null>(null);
@@ -28,6 +50,12 @@ export default function Reports() {
   const [locationMap, setLocationMap] = useState<Record<string, string>>({});
 
   const [loadingAllocations, setLoadingAllocations] = useState(false);
+
+  const [movementDates, setMovementDates] = useState<MaterialMovementDates>({
+    lastReceiptDate: null,
+    lastIssueDate: null,
+    lastMovementDate: null,
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -60,6 +88,11 @@ export default function Reports() {
   useEffect(() => {
     if (!material) {
       setAllocations([]);
+      setMovementDates({
+        lastReceiptDate: null,
+        lastIssueDate: null,
+        lastMovementDate: null,
+      });
       return;
     }
 
@@ -69,10 +102,14 @@ export default function Reports() {
       setLoadingAllocations(true);
 
       try {
-        const data = await getAllocations(material!.material_code);
+        const [allocationData, dates] = await Promise.all([
+          getAllocations(material!.material_code),
+          getMaterialMovementDates(material!.material_code),
+        ]);
 
         if (isMounted) {
-          setAllocations(data);
+          setAllocations(allocationData);
+          setMovementDates(dates);
         }
       } finally {
         if (isMounted) {
@@ -88,12 +125,18 @@ export default function Reports() {
     };
   }, [material]);
 
-  const totalAllocated = allocations.reduce(
-    (sum, a) => sum + Number(a.quantity),
-    0
+  const totalStock = safeNumber(
+    allocations.reduce((sum, a) => sum + safeNumber(a.quantity), 0)
   );
-
-  const balance = material ? material.current_quantity - totalAllocated : 0;
+  const unallocatedQty = safeNumber(
+    allocations
+      .filter((a) => a.location_code === UNALLOCATED_LOCATION)
+      .reduce((sum, a) => sum + safeNumber(a.quantity), 0)
+  );
+  const allocatedQty = safeNumber(totalStock - unallocatedQty);
+  const numberOfLocations = allocations.filter(
+    (a) => a.location_code !== UNALLOCATED_LOCATION && safeNumber(a.quantity) > 0
+  ).length;
 
   return (
     <Box sx={{ pb: 4 }}>
@@ -208,7 +251,7 @@ export default function Reports() {
                       sx={{ fontWeight: "bold" }}
                       color="primary.main"
                     >
-                      {material.current_quantity}
+                      {totalStock}
                     </Typography>
                   </Box>
 
@@ -218,10 +261,10 @@ export default function Reports() {
                       color="text.secondary"
                       sx={{ display: "block" }}
                     >
-                      Total Allocated
+                      Allocated Qty
                     </Typography>
                     <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                      {totalAllocated}
+                      {allocatedQty}
                     </Typography>
                   </Box>
 
@@ -231,14 +274,77 @@ export default function Reports() {
                       color="text.secondary"
                       sx={{ display: "block" }}
                     >
-                      Balance
+                      Unallocated Qty
                     </Typography>
                     <Typography
                       variant="h6"
                       sx={{ fontWeight: "bold" }}
-                      color={balance > 0 ? "success.main" : "error.main"}
+                      color={unallocatedQty > 0 ? "warning.main" : "success.main"}
                     >
-                      {balance}
+                      {unallocatedQty}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Divider />
+
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      Number of Locations
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: "bold" }}>
+                      {numberOfLocations}
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      Last Receipt Date
+                    </Typography>
+                    <Typography variant="body1">
+                      {formatReportDate(movementDates.lastReceiptDate)}
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      Last Issue Date
+                    </Typography>
+                    <Typography variant="body1">
+                      {formatReportDate(movementDates.lastIssueDate)}
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      Last Movement Date
+                    </Typography>
+                    <Typography variant="body1">
+                      {formatReportDate(movementDates.lastMovementDate)}
                     </Typography>
                   </Box>
                 </Box>
@@ -254,7 +360,7 @@ export default function Reports() {
             <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
               <CircularProgress />
             </Box>
-          ) : allocations.length === 0 ? (
+          ) : allocations.filter((a) => a.location_code !== UNALLOCATED_LOCATION).length === 0 ? (
             <Card
               variant="outlined"
               sx={{ p: 3, textAlign: "center", borderRadius: 2 }}
@@ -265,7 +371,9 @@ export default function Reports() {
             </Card>
           ) : (
             <Stack spacing={1.5}>
-              {allocations.map((allocation) => (
+              {allocations
+                .filter((a) => a.location_code !== UNALLOCATED_LOCATION)
+                .map((allocation) => (
                 <Card
                   key={allocation.id}
                   variant="outlined"
@@ -305,14 +413,14 @@ export default function Reports() {
                         color="text.secondary"
                         sx={{ display: "block" }}
                       >
-                        Quantity
+                        Available Quantity
                       </Typography>
                       <Typography
                         variant="subtitle1"
                         sx={{ fontWeight: "bold" }}
                         color="primary.main"
                       >
-                        {allocation.quantity}
+                        {safeNumber(allocation.quantity)}
                       </Typography>
                     </Box>
                   </CardContent>

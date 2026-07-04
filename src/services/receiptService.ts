@@ -78,6 +78,12 @@ export interface ReceiptHeader {
   challan_date: string | null;
   eway_bill_number: string | null;
   eway_bill_date: string | null;
+  lorry_receipt_number: string | null;
+  lorry_receipt_date: string | null;
+  weightment_slip_number: string | null;
+  gross_weight: number | null;
+  tare_weight: number | null;
+  net_weight: number | null;
   remarks: string | null;
   photo_urls: string[];
   photo_paths: AttachmentFile[];
@@ -120,6 +126,12 @@ export interface ReceiptFormInput {
   challan_date: string;
   eway_bill_number: string;
   eway_bill_date: string;
+  lorry_receipt_number: string;
+  lorry_receipt_date: string;
+  weightment_slip_number: string;
+  gross_weight: string;
+  tare_weight: string;
+  net_weight: string;
   remarks: string;
 }
 
@@ -140,6 +152,13 @@ const ALLOWED_DOCUMENT_EXTENSIONS = [
 function toNullable(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function toNullableNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
@@ -197,6 +216,14 @@ function buildPayload(input: ReceiptFormInput) {
     challan_date: toNullable(input.challan_date),
     eway_bill_number: toNullable(input.eway_bill_number),
     eway_bill_date: toNullable(input.eway_bill_date),
+
+    lorry_receipt_number: toNullable(input.lorry_receipt_number),
+    lorry_receipt_date: toNullable(input.lorry_receipt_date),
+    weightment_slip_number: toNullable(input.weightment_slip_number),
+    gross_weight: toNullableNumber(input.gross_weight),
+    tare_weight: toNullableNumber(input.tare_weight),
+    net_weight: toNullableNumber(input.net_weight),
+
     remarks: toNullable(input.remarks),
   };
 }
