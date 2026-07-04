@@ -56,6 +56,7 @@ import AllocationTable from "../components/AllocationTable";
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
+import { useSwipeTabs } from "../hooks/useSwipeTabs";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const LOW_STOCK_THRESHOLD = 10;
@@ -139,6 +140,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(0);
+  const swipeHandlers = useSwipeTabs(activeTab, setActiveTab, 2);
   const [searchTerm, setSearchTerm] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<DashboardSearchResult[]>([]);
@@ -609,7 +611,7 @@ export default function Dashboard() {
           )}
         </Box>
       ) : (
-        <>
+        <Box onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
       {activeTab === 0 && (
         <>
           {/* ---- Live Overview ---- */}
@@ -809,7 +811,7 @@ export default function Dashboard() {
           </Box>
         </>
       )}
-        </>
+        </Box>
       )}
 
       {/* ---- Material Details (from the inventory search above) ---- */}
