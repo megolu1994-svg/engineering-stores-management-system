@@ -268,6 +268,13 @@ export default function AppLayout() {
         component="main"
         sx={{
           flexGrow: 1,
+          // A flex item defaults to min-width: auto, so without this it
+          // refuses to shrink below the intrinsic width of whatever it
+          // contains - one long, unwrapped string anywhere on the page
+          // (e.g. a location's full description) would otherwise widen
+          // the entire app and force horizontal scrolling everywhere.
+          minWidth: 0,
+          overflowX: "hidden",
           bgcolor: "#FFFFFF",
           minHeight: "100vh",
 
