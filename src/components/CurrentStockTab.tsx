@@ -256,9 +256,13 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
                       </Box>
 
                       {row.locationDisplay && (
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.4, mt: 0.5 }}>
-                          <PlaceIcon sx={{ fontSize: 14 }} color="action" />
-                          <Typography variant="caption" color="text.secondary" noWrap>
+                        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.4, mt: 0.5 }}>
+                          <PlaceIcon sx={{ fontSize: 14, mt: "1px" }} color="action" />
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ minWidth: 0, flex: 1, overflowWrap: "break-word" }}
+                          >
                             {row.locationDisplay}
                           </Typography>
                         </Box>

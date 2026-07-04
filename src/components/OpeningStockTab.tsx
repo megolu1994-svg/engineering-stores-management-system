@@ -362,7 +362,13 @@ export default function OpeningStockTab() {
                 Choose Excel File
               </Button>
 
-              <Typography variant="caption" color="text.secondary" noWrap>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                title={file ? file.name : undefined}
+                sx={{ minWidth: 0 }}
+              >
                 {file ? file.name : "No file selected"}
               </Typography>
 

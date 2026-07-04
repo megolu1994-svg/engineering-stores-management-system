@@ -66,11 +66,12 @@ export default function LocationForm({
 
   return (
 
-    <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+    <Paper elevation={3} sx={{ p: { xs: 2.5, sm: 4 }, mb: 3 }}>
 
       <Typography
         variant="h5"
         gutterBottom
+        sx={{ fontSize: { xs: "1.15rem", sm: "1.5rem" } }}
       >
         {location ? "Edit Location" : "Add Location"}
       </Typography>
@@ -111,6 +112,7 @@ export default function LocationForm({
       <Box
         sx={{
           display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
           gap: 2,
           mt: 3,
         }}
@@ -119,6 +121,9 @@ export default function LocationForm({
         <Button
           variant="contained"
           onClick={handleSave}
+          fullWidth
+          size="large"
+          sx={{ width: { xs: "100%", sm: "auto" } }}
         >
           {location ? "Update" : "Save"}
         </Button>
@@ -126,6 +131,9 @@ export default function LocationForm({
         <Button
           variant="outlined"
           onClick={onCancel}
+          fullWidth
+          size="large"
+          sx={{ width: { xs: "100%", sm: "auto" } }}
         >
           Cancel
         </Button>

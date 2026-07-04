@@ -558,7 +558,11 @@ export default function LocationTransfer() {
                       <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
                         {row.material.material_code}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", mb: 0.75 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", mb: 0.75, overflowWrap: "break-word" }}
+                      >
                         {row.material.short_description} ({row.material.uom})
                       </Typography>
 
@@ -913,7 +917,11 @@ export default function LocationTransfer() {
                       </Typography>
                     </Box>
                     {transfer.reason && (
-                      <Chip size="small" label={transfer.reason} sx={{ fontWeight: 700 }} />
+                      <Chip
+                        size="small"
+                        label={transfer.reason}
+                        sx={{ fontWeight: 700, maxWidth: "45%", flexShrink: 0 }}
+                      />
                     )}
                   </Box>
 
@@ -1038,7 +1046,7 @@ function TransferDetail({
           </Box>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
             {item.locations.map((loc) => (
-              <Box key={loc.id} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Box key={loc.id} sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 0.5, gap: 0.5 }}>
                 <Chip size="small" icon={<PlaceIcon />} label={loc.from_location_code} />
                 <ArrowForwardIcon sx={{ fontSize: 16 }} color="action" />
                 <Chip size="small" icon={<PlaceIcon />} label={loc.to_location_code} />

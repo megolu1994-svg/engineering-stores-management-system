@@ -25,7 +25,10 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+
+import { useTheme } from "@mui/material/styles";
 
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
@@ -84,6 +87,9 @@ function downloadWorkbook(
 }
 
 export default function LocationMaster() {
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   const [locations, setLocations] = useState<Location[]>([]);
 
   const [search, setSearch] = useState("");
@@ -390,7 +396,7 @@ export default function LocationMaster() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           fullWidth
-          sx={{ width: { xs: "100%", sm: 350 } }}
+          sx={{ width: "100%", flex: { sm: 1 }, maxWidth: { sm: 350 } }}
         />
 
         <Button
@@ -613,6 +619,7 @@ export default function LocationMaster() {
         onClose={() => setDeleteLocationData(null)}
         fullWidth
         maxWidth="xs"
+        fullScreen={mobile}
       >
         <DialogTitle>
           Delete Location
@@ -624,9 +631,10 @@ export default function LocationMaster() {
           </DialogContentText>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button
             onClick={() => setDeleteLocationData(null)}
+            fullWidth={mobile}
             sx={{ minHeight: 48 }}
           >
             Cancel
@@ -636,6 +644,7 @@ export default function LocationMaster() {
             color="error"
             variant="contained"
             onClick={confirmDelete}
+            fullWidth={mobile}
             sx={{ minHeight: 48 }}
           >
             Delete

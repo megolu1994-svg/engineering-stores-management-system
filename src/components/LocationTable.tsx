@@ -50,6 +50,7 @@ export default function LocationTable({
       onClose={() => setViewLocation(null)}
       fullWidth
       maxWidth="xs"
+      fullScreen={mobile}
     >
       <DialogTitle>Location Details</DialogTitle>
 
@@ -68,7 +69,7 @@ export default function LocationTable({
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               Description
             </Typography>
-            <Typography variant="body1">
+            <Typography variant="body1" sx={{ overflowWrap: "break-word" }}>
               {viewLocation?.location_description}
             </Typography>
           </Box>
@@ -88,7 +89,7 @@ export default function LocationTable({
       </DialogContent>
 
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={() => setViewLocation(null)} sx={{ minHeight: 48 }}>
+        <Button onClick={() => setViewLocation(null)} fullWidth={mobile} sx={{ minHeight: 48 }}>
           Close
         </Button>
       </DialogActions>
