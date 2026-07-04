@@ -26,9 +26,6 @@ import {
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import PlaceIcon from "@mui/icons-material/Place";
 import InboxIcon from "@mui/icons-material/Inbox";
-import StackedLineChartIcon from "@mui/icons-material/StackedLineChart";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import OutputIcon from "@mui/icons-material/Output";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
@@ -520,9 +517,6 @@ export default function Dashboard() {
   ];
 
   const secondaryStats = [
-    { label: "Total Stock", value: stats.totalStock, icon: <StackedLineChartIcon />, color: "success.main" },
-    { label: "Allocated Qty", value: stats.allocatedQty, icon: <CheckCircleIcon />, color: "secondary.main" },
-    { label: "Unallocated Qty", value: stats.unallocatedQty, icon: <WarningAmberIcon />, color: "warning.main" },
     { label: "Today's Receipts", value: stats.todaysReceipts, icon: <LocalShippingIcon />, color: "success.main" },
     { label: "Today's Issues", value: stats.todaysIssues, icon: <OutputIcon />, color: "error.main" },
     { label: "Today's Transfers", value: stats.todaysTransfers, icon: <CompareArrowsIcon />, color: "warning.main" },
@@ -577,6 +571,7 @@ export default function Dashboard() {
             value={activeTab}
             onChange={(_e, value) => setActiveTab(value)}
             textColor="inherit"
+            centered
             sx={{
               mt: 2,
               minHeight: 44,
