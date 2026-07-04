@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   AppBar,
@@ -35,6 +35,7 @@ import {
 } from "react-router-dom";
 
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
+import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 
 const drawerWidth = 280;
 
@@ -80,6 +81,20 @@ export default function AppLayout() {
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    function handleSwipeOpenDrawer() {
+      if (mobile) {
+        setMobileOpen(true);
+      }
+    }
+
+    window.addEventListener(SWIPE_OPEN_DRAWER_EVENT, handleSwipeOpenDrawer);
+
+    return () => {
+      window.removeEventListener(SWIPE_OPEN_DRAWER_EVENT, handleSwipeOpenDrawer);
+    };
+  }, [mobile]);
 
   function handleNavigate(path: string) {
     navigate(path);

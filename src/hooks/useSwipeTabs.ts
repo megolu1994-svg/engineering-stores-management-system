@@ -12,6 +12,11 @@ const SWIPE_IGNORE_SELECTOR =
 
 export type SwipeDirection = "left" | "right";
 
+/** Dispatched on `window` when a right swipe happens while already on the
+ * first tab (nowhere left to go) - AppLayout listens for this to open the
+ * navigation drawer, so swiping right "runs out" of tabs into the menu. */
+export const SWIPE_OPEN_DRAWER_EVENT = "esms:swipe-open-drawer";
+
 /**
  * Lets the currently-active tab be changed with a left/right swipe,
  * anywhere on the page - including empty background, not just on top of
@@ -89,6 +94,10 @@ export function useSwipeTabs(
         onChangeRef.current(current + 1);
       } else if (deltaX > 0 && current > 0) {
         onChangeRef.current(current - 1);
+      } else if (deltaX > 0 && current === 0) {
+        // Already on the first tab - nothing left to swipe back to, so
+        // hand the gesture off to open the drawer instead.
+        window.dispatchEvent(new CustomEvent(SWIPE_OPEN_DRAWER_EVENT));
       }
     }
 
