@@ -414,7 +414,7 @@ export default function MaterialAllocation() {
         />
       </Tabs>
 
-      <Box onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+      <Box {...swipeHandlers}>
 
       {activeTab === TAB_CURRENT_STOCK && (
         <CurrentStockTab onSelectMaterial={handleSelectMaterialFromCurrentStock} />

@@ -611,7 +611,7 @@ export default function Dashboard() {
           )}
         </Box>
       ) : (
-        <Box onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+        <Box {...swipeHandlers}>
       {activeTab === 0 && (
         <>
           {/* ---- Live Overview ---- */}
