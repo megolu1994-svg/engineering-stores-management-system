@@ -149,7 +149,7 @@ export default function AppLayout() {
         >
 
           <Box
-            sx={{ width: drawerWidth }}
+            sx={{ width: drawerWidth, maxWidth: "80vw" }}
           >
 
             {drawer}

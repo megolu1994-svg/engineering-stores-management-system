@@ -441,7 +441,7 @@ export default function MaterialIssue() {
                   ))}
                 </TextField>
 
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                   <TextField
                     label="Department"
                     size="small"
@@ -470,7 +470,7 @@ export default function MaterialIssue() {
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
 
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                   <TextField
                     label="Work Order / Notification"
                     size="small"
@@ -489,7 +489,7 @@ export default function MaterialIssue() {
                   />
                 </Box>
 
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                   <TextField
                     label="Issued By"
                     size="small"

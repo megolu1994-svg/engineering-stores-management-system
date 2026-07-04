@@ -620,38 +620,64 @@ export default function LocationTransfer() {
                                 borderColor: "divider",
                               }}
                             >
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.75 }}>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
-                                    <PlaceIcon sx={{ fontSize: 14 }} color="action" />
-                                    <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                                      {loc.from_location_code}
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexDirection: { xs: "column", sm: "row" },
+                                  alignItems: { xs: "stretch", sm: "center" },
+                                  gap: 0.75,
+                                  mb: 0.75,
+                                }}
+                              >
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+                                      <PlaceIcon sx={{ fontSize: 14 }} color="action" />
+                                      <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                                        {loc.from_location_code}
+                                      </Typography>
+                                    </Box>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Available: {loc.fromAvailableQty}
                                     </Typography>
                                   </Box>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Available: {loc.fromAvailableQty}
-                                  </Typography>
-                                </Box>
 
-                                <ArrowForwardIcon fontSize="small" color="action" />
-
-                                <Box sx={{ flex: 1.4, minWidth: 0 }}>
-                                  <LocationSearch
-                                    value={loc.to}
-                                    onChange={(to) =>
-                                      updateToLocation(row.rowKey, loc.rowKey, to)
-                                    }
-                                    label="To Location"
+                                  <ArrowForwardIcon
+                                    fontSize="small"
+                                    color="action"
+                                    sx={{ display: { xs: "none", sm: "inline-flex" } }}
                                   />
+
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => removeLocationRow(row.rowKey, loc.rowKey)}
+                                    aria-label="Remove location"
+                                    sx={{ display: { xs: "inline-flex", sm: "none" } }}
+                                  >
+                                    <DeleteIcon fontSize="small" color="error" />
+                                  </IconButton>
                                 </Box>
 
-                                <IconButton
-                                  size="small"
-                                  onClick={() => removeLocationRow(row.rowKey, loc.rowKey)}
-                                  aria-label="Remove location"
-                                >
-                                  <DeleteIcon fontSize="small" color="error" />
-                                </IconButton>
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                                  <Box sx={{ flex: 1.4, minWidth: 0 }}>
+                                    <LocationSearch
+                                      value={loc.to}
+                                      onChange={(to) =>
+                                        updateToLocation(row.rowKey, loc.rowKey, to)
+                                      }
+                                      label="To Location"
+                                    />
+                                  </Box>
+
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => removeLocationRow(row.rowKey, loc.rowKey)}
+                                    aria-label="Remove location"
+                                    sx={{ display: { xs: "none", sm: "inline-flex" } }}
+                                  >
+                                    <DeleteIcon fontSize="small" color="error" />
+                                  </IconButton>
+                                </Box>
                               </Box>
 
                               {sameLocation && (
@@ -660,7 +686,14 @@ export default function LocationTransfer() {
                                 </Alert>
                               )}
 
-                              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexDirection: { xs: "column", sm: "row" },
+                                  gap: 1,
+                                  alignItems: { xs: "stretch", sm: "center" },
+                                }}
+                              >
                                 <TextField
                                   label="Transfer Qty"
                                   type="number"
@@ -686,6 +719,7 @@ export default function LocationTransfer() {
                                     fontWeight: 700,
                                     textTransform: "none",
                                     whiteSpace: "nowrap",
+                                    width: { xs: "100%", sm: "auto" },
                                   }}
                                 >
                                   Transfer All

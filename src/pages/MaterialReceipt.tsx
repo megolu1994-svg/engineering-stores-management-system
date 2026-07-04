@@ -1018,7 +1018,7 @@ export default function MaterialReceipt() {
             sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
           />
 
-          <Box sx={{ display: "flex", gap: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
             <TextField
               size="small"
               type="date"
@@ -1249,7 +1249,8 @@ export default function MaterialReceipt() {
                     key={index}
                     sx={{
                       display: "flex",
-                      alignItems: "center",
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: { xs: "stretch", sm: "center" },
                       gap: 0.75,
                       p: 1,
                       borderRadius: 2,
@@ -1266,7 +1267,7 @@ export default function MaterialReceipt() {
                       }
                       slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
                       sx={{
-                        width: 84,
+                        width: { xs: "100%", sm: 84 },
                         flexShrink: 0,
                         "& .MuiOutlinedInput-root": { borderRadius: 2 },
                       }}
@@ -1297,7 +1298,7 @@ export default function MaterialReceipt() {
                       size="small"
                       onClick={() => removePackageRow(index)}
                       aria-label="Delete row"
-                      sx={{ flexShrink: 0 }}
+                      sx={{ flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } }}
                     >
                       <DeleteIcon fontSize="small" color="error" />
                     </IconButton>
@@ -1335,7 +1336,7 @@ export default function MaterialReceipt() {
                 Enter SAP PO, GeM Order, or both.
               </Typography>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                   <TextField
                     label="SAP PO Number"
                     size="small"
@@ -1350,7 +1351,7 @@ export default function MaterialReceipt() {
                     onChange={(iso) => updateField("sap_po_date", iso)}
                   />
                 </Box>
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                   <TextField
                     label="GeM Order Number"
                     size="small"
@@ -1375,7 +1376,7 @@ export default function MaterialReceipt() {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Invoice
               </Typography>
-              <Box sx={{ display: "flex", gap: 1 }}>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                 <TextField
                   label="Invoice Number"
                   size="small"
@@ -1399,7 +1400,7 @@ export default function MaterialReceipt() {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Challan
               </Typography>
-              <Box sx={{ display: "flex", gap: 1 }}>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                 <TextField
                   label="Challan Number"
                   size="small"
@@ -1423,7 +1424,7 @@ export default function MaterialReceipt() {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 E-Way Bill
               </Typography>
-              <Box sx={{ display: "flex", gap: 1 }}>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                 <TextField
                   label="E-Way Bill Number"
                   size="small"
@@ -1447,7 +1448,7 @@ export default function MaterialReceipt() {
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Transport
               </Typography>
-              <Box sx={{ display: "flex", gap: 1 }}>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                 <TextField
                   label="Lorry Receipt Number"
                   size="small"
@@ -1480,7 +1481,7 @@ export default function MaterialReceipt() {
                   onChange={(e) => updateField("weightment_slip_number", e.target.value)}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
-                <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                   <TextField
                     label="Gross Weight"
                     type="number"
@@ -2065,7 +2066,7 @@ export default function MaterialReceipt() {
                   </Box>
 
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    <Box sx={{ display: "flex", gap: 1 }}>
+                    <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                       <TextField
                         label="GRN Number"
                         size="small"
