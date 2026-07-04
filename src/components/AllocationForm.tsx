@@ -51,7 +51,7 @@ export default function AllocationForm({
   }
 
   return (
-    <Paper elevation={2} sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
+    <Paper elevation={2} sx={{ p: 1.5, mb: 1, borderRadius: 2 }}>
 
       <Typography
         variant="subtitle2"

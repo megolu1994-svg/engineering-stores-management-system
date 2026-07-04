@@ -417,7 +417,7 @@ export default function MaterialAllocation() {
 
       {activeTab === TAB_ALLOCATION && (
         <>
-          <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ mb: 1 }}>
             <MaterialSearch value={material} onChange={setMaterial} />
           </Box>
 
@@ -431,7 +431,7 @@ export default function MaterialAllocation() {
           {material ? (
             <AllocationForm onAllocate={handleAllocate} />
           ) : (
-            <Alert severity="info" sx={{ mb: 1.5, py: 0.25 }}>
+            <Alert severity="info" sx={{ mb: 1, py: 0.25 }}>
               Please select a material to allocate stock.
             </Alert>
           )}

@@ -11,7 +11,11 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Grid,
+  IconButton,
   InputAdornment,
   Tab,
   Tabs,
@@ -36,16 +40,28 @@ import AssignmentReturnedIcon from "@mui/icons-material/AssignmentReturned";
 import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
+import CloseIcon from "@mui/icons-material/Close";
 
 import { supabase } from "../config/supabase";
 import {
   getRecentActivity,
+  searchInventory,
   type InventoryOverviewRow,
 } from "../services/inventoryOverviewService";
+import { searchMaterials } from "../services/materialService";
+import { getAllocations } from "../services/materialAllocationService";
+import AllocationSummary from "../components/AllocationSummary";
+import AllocationTable from "../components/AllocationTable";
+import type { Material } from "../types/material";
+import type { MaterialAllocation } from "../types/materialAllocation";
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const LOW_STOCK_THRESHOLD = 10;
+const SEARCH_DEBOUNCE_MS = 300;
+const MIN_SEARCH_LENGTH = 2;
+const MAX_EXPANDED_RESULTS = 10;
 
 function safeNumber(value: number | null | undefined): number {
   const n = Number(value);
@@ -102,6 +118,16 @@ interface LowStockRow {
   quantity: number;
 }
 
+interface DashboardSearchResult {
+  material_code: string;
+  short_description: string;
+  uom: string;
+  totalQty: number;
+  allocatedQty: number;
+  unallocatedQty: number;
+  locations: { location_code: string; quantity: number }[];
+}
+
 const quickActions = [
   { label: "Inventory", path: "/allocation", icon: <Inventory2Icon /> },
   { label: "Material Receipt", path: "/material-receipt", icon: <AssignmentReturnedIcon /> },
@@ -114,6 +140,13 @@ export default function Dashboard() {
 
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<DashboardSearchResult[]>([]);
+
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsMaterial, setDetailsMaterial] = useState<Material | null>(null);
+  const [detailsAllocations, setDetailsAllocations] = useState<MaterialAllocation[]>([]);
 
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -317,6 +350,119 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Warehouse-style inventory search: searches material_allocation stock
+  // (via the existing searchInventory service) by Material Code or
+  // Description, then enriches each match with its allocation breakdown
+  // (also via the existing getAllocations service) so results show total,
+  // allocated, unallocated and every allocated location. This never touches
+  // Material Master search.
+  useEffect(() => {
+    const trimmed = searchTerm.trim();
+
+    if (trimmed.length < MIN_SEARCH_LENGTH) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearching(true);
+
+    const timer = setTimeout(() => {
+      searchInventory(trimmed)
+        .then(async (baseResults) => {
+          const limited = baseResults.slice(0, MAX_EXPANDED_RESULTS);
+
+          const expanded = await Promise.all(
+            limited.map(async (item) => {
+              const allocations = await getAllocations(item.material_code);
+
+              const totalQty = allocations.reduce(
+                (sum, a) => sum + safeNumber(a.quantity),
+                0
+              );
+              const unallocatedQty = allocations
+                .filter((a) => a.location_code === UNALLOCATED_LOCATION)
+                .reduce((sum, a) => sum + safeNumber(a.quantity), 0);
+              const locations = allocations
+                .filter(
+                  (a) =>
+                    a.location_code !== UNALLOCATED_LOCATION &&
+                    safeNumber(a.quantity) > 0
+                )
+                .map((a) => ({
+                  location_code: a.location_code,
+                  quantity: safeNumber(a.quantity),
+                }));
+
+              return {
+                material_code: item.material_code,
+                short_description: item.short_description,
+                uom: item.uom,
+                totalQty: safeNumber(totalQty),
+                allocatedQty: safeNumber(totalQty - unallocatedQty),
+                unallocatedQty: safeNumber(unallocatedQty),
+                locations,
+              };
+            })
+          );
+
+          if (!cancelled) setSearchResults(expanded);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchTerm]);
+
+  const isSearchMode = searchTerm.trim().length >= MIN_SEARCH_LENGTH;
+
+  // Opens the Material Details view for a search result, reusing the same
+  // AllocationSummary / AllocationTable components and services as the
+  // Inventory > Allocate tab - no new business logic or queries.
+  async function openMaterialDetails(materialCode: string) {
+    setDetailsOpen(true);
+    setDetailsLoading(true);
+
+    try {
+      const [materials, allocations] = await Promise.all([
+        searchMaterials(materialCode, 0, 1),
+        getAllocations(materialCode),
+      ]);
+
+      const exact =
+        materials.find((m) => m.material_code === materialCode) ??
+        materials[0] ??
+        null;
+
+      setDetailsMaterial(exact);
+      setDetailsAllocations(allocations);
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
+  function closeDetails() {
+    setDetailsOpen(false);
+    setDetailsMaterial(null);
+    setDetailsAllocations([]);
+  }
+
+  const detailsTotalStock = safeNumber(
+    detailsAllocations.reduce((sum, a) => sum + safeNumber(a.quantity), 0)
+  );
+  const detailsUnallocatedQty = safeNumber(
+    detailsAllocations
+      .filter((a) => a.location_code === UNALLOCATED_LOCATION)
+      .reduce((sum, a) => sum + safeNumber(a.quantity), 0)
+  );
+  const detailsAllocatedQty = safeNumber(detailsTotalStock - detailsUnallocatedQty);
+
   const liveOverview = [
     { label: "Total no. Of Materials", value: stats.totalMaterials, icon: <Inventory2Icon /> },
     { label: "Number of materials allocated locations", value: stats.occupiedLocations, icon: <PlaceIcon /> },
@@ -333,11 +479,6 @@ export default function Dashboard() {
     { label: "Pending DRC", value: stats.pendingDrc, icon: <PendingActionsIcon />, color: "info.main" },
   ];
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    navigate("/materials");
-  }
-
   return (
     <Box sx={{ pb: 4 }}>
 
@@ -353,55 +494,122 @@ export default function Dashboard() {
           pb: 0,
         }}
       >
-        <Box component="form" onSubmit={handleSearchSubmit}>
-          <TextField
-            fullWidth
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search material..."
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: BRAND_PURPLE }} />
-                  </InputAdornment>
-                ),
-                sx: {
-                  bgcolor: "#FFFFFF",
-                  borderRadius: "24px",
-                  "& fieldset": { border: "none" },
-                },
+        <TextField
+          fullWidth
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search material code or description..."
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: BRAND_PURPLE }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchTerm("")}>
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+              sx: {
+                bgcolor: "#FFFFFF",
+                borderRadius: "24px",
+                "& fieldset": { border: "none" },
               },
-            }}
-          />
-        </Box>
-
-        <Tabs
-          value={activeTab}
-          onChange={(_e, value) => setActiveTab(value)}
-          textColor="inherit"
-          sx={{
-            mt: 2,
-            minHeight: 44,
-            "& .MuiTab-root": {
-              color: "#FFFFFF",
-              fontWeight: 700,
-              minHeight: 44,
-            },
-            "& .Mui-selected": {
-              color: "#FFFFFF !important",
-            },
-            "& .MuiTabs-indicator": {
-              backgroundColor: "#FFFFFF",
-              height: 2,
             },
           }}
-        >
-          <Tab label="DASHBOARD" />
-          <Tab label="ACTIVITIES" />
-        </Tabs>
+        />
+
+        {!isSearchMode && (
+          <Tabs
+            value={activeTab}
+            onChange={(_e, value) => setActiveTab(value)}
+            textColor="inherit"
+            sx={{
+              mt: 2,
+              minHeight: 44,
+              "& .MuiTab-root": {
+                color: "#FFFFFF",
+                fontWeight: 700,
+                minHeight: 44,
+              },
+              "& .Mui-selected": {
+                color: "#FFFFFF !important",
+              },
+              "& .MuiTabs-indicator": {
+                backgroundColor: "#FFFFFF",
+                height: 2,
+              },
+            }}
+          >
+            <Tab label="DASHBOARD" />
+            <Tab label="ACTIVITIES" />
+          </Tabs>
+        )}
+
+        {isSearchMode && <Box sx={{ height: 16 }} />}
       </Box>
 
+      {isSearchMode ? (
+        <Box sx={{ mt: 2 }}>
+          {searching ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : searchResults.length === 0 ? (
+            <Alert severity="info">No materials found in inventory stock.</Alert>
+          ) : (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {searchResults.map((row) => (
+                <Card key={row.material_code} elevation={0}>
+                  <CardActionArea
+                    onClick={() => openMaterialDetails(row.material_code)}
+                    sx={{ p: 1.5 }}
+                  >
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 700 }} noWrap>
+                          {row.material_code}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {row.short_description}
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ fontWeight: 800, flexShrink: 0 }} color="primary.main">
+                        {row.totalQty} {row.uom}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ display: "flex", gap: 2, mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Allocated: <strong>{row.allocatedQty}</strong>
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Unallocated: <strong>{row.unallocatedQty}</strong>
+                      </Typography>
+                    </Box>
+
+                    {row.locations.length > 0 && (
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
+                        {row.locations.map((loc) => (
+                          <Chip
+                            key={loc.location_code}
+                            size="small"
+                            label={`${loc.location_code}: ${loc.quantity}`}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                  </CardActionArea>
+                </Card>
+              ))}
+            </Box>
+          )}
+        </Box>
+      ) : (
+        <>
       {activeTab === 0 && (
         <>
           {/* ---- Live Overview ---- */}
@@ -601,6 +809,48 @@ export default function Dashboard() {
           </Box>
         </>
       )}
+        </>
+      )}
+
+      {/* ---- Material Details (from the inventory search above) ---- */}
+      <Dialog open={detailsOpen} onClose={closeDetails} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          Material Details
+          <IconButton size="small" onClick={closeDetails} aria-label="Close">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent>
+          {detailsLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <>
+              <AllocationSummary
+                material={detailsMaterial}
+                totalStock={detailsTotalStock}
+                allocatedQty={detailsAllocatedQty}
+                unallocatedQty={detailsUnallocatedQty}
+              />
+
+              <Typography
+                variant="subtitle2"
+                sx={{ fontWeight: "bold", mb: 0.75, mt: 1.5, fontSize: "0.85rem" }}
+              >
+                Allocated Locations
+              </Typography>
+
+              <AllocationTable
+                allocations={detailsAllocations.filter(
+                  (a) => a.location_code !== UNALLOCATED_LOCATION
+                )}
+              />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
