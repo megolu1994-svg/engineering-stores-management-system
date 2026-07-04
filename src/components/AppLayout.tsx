@@ -166,58 +166,65 @@ export default function AppLayout() {
 
     <Box sx={{ display: "flex" }}>
 
-      <AppBar
-        position="fixed"
-        elevation={0}
-        sx={{
-          zIndex: theme.zIndex.drawer + 1,
-          bgcolor: BRAND_PURPLE,
-          width: { md: `calc(100% - ${drawerWidth}px)` },
-          ml: { md: `${drawerWidth}px` },
-        }}
-      >
+      {/* Hidden while the mobile drawer is open so only one header (the
+          drawer's own purple header) is ever visible at a time - otherwise
+          this fixed bar sits on top of and clips the drawer's logo. */}
+      {!(mobile && mobileOpen) && (
 
-        <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT, position: "relative" }}>
+        <AppBar
+          position="fixed"
+          elevation={0}
+          sx={{
+            zIndex: theme.zIndex.drawer + 1,
+            bgcolor: BRAND_PURPLE,
+            width: { md: `calc(100% - ${drawerWidth}px)` },
+            ml: { md: `${drawerWidth}px` },
+          }}
+        >
 
-          {mobile && (
+          <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT, position: "relative" }}>
 
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={() => setMobileOpen(true)}
-              sx={{ mr: 2 }}
+            {mobile && (
+
+              <IconButton
+                color="inherit"
+                edge="start"
+                onClick={() => setMobileOpen(true)}
+                sx={{ mr: 2 }}
+              >
+
+                <MenuIcon />
+
+              </IconButton>
+
+            )}
+
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                position: mobile ? "absolute" : "static",
+                left: 0,
+                right: 0,
+                justifyContent: "center",
+                pointerEvents: "none",
+              }}
             >
+              <BrandLogo size={26} />
+              <Typography
+                sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
+                noWrap
+              >
+                DUMAD STORE
+              </Typography>
+            </Box>
 
-              <MenuIcon />
+          </Toolbar>
 
-            </IconButton>
+        </AppBar>
 
-          )}
-
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              position: mobile ? "absolute" : "static",
-              left: 0,
-              right: 0,
-              justifyContent: "center",
-              pointerEvents: "none",
-            }}
-          >
-            <BrandLogo size={26} />
-            <Typography
-              sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
-              noWrap
-            >
-              DUMAD STORE
-            </Typography>
-          </Box>
-
-        </Toolbar>
-
-      </AppBar>
+      )}
 
       {mobile ? (
 

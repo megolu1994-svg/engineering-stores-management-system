@@ -18,8 +18,10 @@ import type { MaterialAllocation } from "../types/materialAllocation";
 
 interface Props {
   allocations: MaterialAllocation[];
-  onEdit: (allocation: MaterialAllocation) => void;
-  onDelete: (id: number) => void;
+  /** Omit both to render a read-only list (e.g. Material Details lookups)
+   * with no edit/delete actions. */
+  onEdit?: (allocation: MaterialAllocation) => void;
+  onDelete?: (id: number) => void;
 }
 
 export default function AllocationTable({
@@ -109,25 +111,29 @@ export default function AllocationTable({
             {allocation.quantity}
           </Typography>
 
-          <IconButton
-            color="primary"
-            size="small"
-            onClick={() => onEdit(allocation)}
-            aria-label="Edit allocation"
-            sx={{ minWidth: 40, minHeight: 40 }}
-          >
-            <EditIcon fontSize="small" />
-          </IconButton>
+          {onEdit && (
+            <IconButton
+              color="primary"
+              size="small"
+              onClick={() => onEdit(allocation)}
+              aria-label="Edit allocation"
+              sx={{ minWidth: 40, minHeight: 40 }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          )}
 
-          <IconButton
-            color="error"
-            size="small"
-            onClick={() => onDelete(allocation.id as number)}
-            aria-label="Delete allocation"
-            sx={{ minWidth: 40, minHeight: 40 }}
-          >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
+          {onDelete && (
+            <IconButton
+              color="error"
+              size="small"
+              onClick={() => onDelete(allocation.id as number)}
+              aria-label="Delete allocation"
+              sx={{ minWidth: 40, minHeight: 40 }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          )}
         </Card>
       ))}
     </Stack>

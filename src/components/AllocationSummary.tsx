@@ -27,7 +27,7 @@ export default function AllocationSummary({
 }: Props) {
   if (!material) {
     return (
-      <Paper elevation={2} sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
+      <Paper elevation={2} sx={{ p: 1.5, mb: 1, borderRadius: 2 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: "bold", fontSize: "0.9rem" }}>
           Material Information
         </Typography>
@@ -61,7 +61,7 @@ export default function AllocationSummary({
   }
 
   return (
-    <Paper elevation={2} sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
+    <Paper elevation={2} sx={{ p: 1.5, mb: 1, borderRadius: 2 }}>
       <Box
         sx={{
           display: "flex",
