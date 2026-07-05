@@ -315,13 +315,70 @@ export async function uploadReceiptDocuments(
 }
 
 /**
+ * Manual overrides for the auto-generated DRC No. / DRC Date, collected
+ * from the Create DRC form when the operator switches on manual entry.
+ * Both are optional; omit a key to keep the database-generated value.
+ */
+export interface DrcManualOverrides {
+  drc_number?: string;
+  receipt_datetime?: string;
+}
+
+/**
+ * Best-effort suggestion for the next DRC No., used only to prefill the
+ * manual-entry field in the Create DRC form (previous DRC No. + 1). It
+ * increments the trailing numeric run of the most recently created DRC
+ * No. (e.g. "DRC/26/000001" -> "DRC/26/000002"), preserving its
+ * zero-padded width. Falls back to a fresh "DRC/{yy}/000001"-style
+ * number if no DRC exists yet, or if the last one doesn't end in a
+ * number.
+ */
+export async function getNextDrcNumberSuggestion(): Promise<string> {
+  const currentYear = String(new Date().getFullYear()).slice(-2);
+  const fallback = `DRC/${currentYear}/000001`;
+
+  const { data, error } = await supabase
+    .from("receipt_header")
+    .select("drc_number")
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const lastDrcNumber = (data as { drc_number: string } | null)?.drc_number;
+
+  if (error || !lastDrcNumber) {
+    return fallback;
+  }
+
+  const match = lastDrcNumber.match(/^(.*?)(\d+)(\D*)$/);
+  if (!match) {
+    return fallback;
+  }
+
+  const [, prefix, digits, suffix] = match;
+  const next = String(Number(digits) + 1).padStart(digits.length, "0");
+  return `${prefix}${next}${suffix}`;
+}
+
+/**
  * Creates a new DRC. drc_number, status, and receipt_datetime are left
- * unset here so the database trigger generates them.
+ * unset on the insert so the database trigger generates them - this
+ * insert path is unchanged from before and always runs first.
+ *
+ * If `manualOverrides` is provided (operator switched on manual DRC No.
+ * / Date entry), a follow-up update immediately applies the chosen
+ * drc_number / receipt_datetime to the newly created row. Doing this as
+ * a second update - rather than sending the overrides on the initial
+ * insert - means the override never depends on how the database
+ * trigger reacts to a pre-filled value: the trigger runs and fills its
+ * defaults exactly as it always has, and the update then simply
+ * replaces those columns like any other edit.
  */
 export async function createReceipt(
   input: ReceiptFormInput,
   photoFiles: File[],
-  documentFiles: File[] = []
+  documentFiles: File[] = [],
+  manualOverrides?: DrcManualOverrides
 ): Promise<ReceiptHeader> {
   const photoUrls =
     photoFiles.length > 0 ? await uploadReceiptPhotos(photoFiles) : [];
@@ -363,7 +420,30 @@ export async function createReceipt(
     throw error;
   }
 
-  return data as ReceiptHeader;
+  const created = data as ReceiptHeader;
+
+  const overridePayload: Record<string, string> = {};
+  if (manualOverrides?.drc_number) {
+    overridePayload.drc_number = manualOverrides.drc_number;
+  }
+  if (manualOverrides?.receipt_datetime) {
+    overridePayload.receipt_datetime = manualOverrides.receipt_datetime;
+  }
+
+  if (Object.keys(overridePayload).length === 0) {
+    return created;
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("receipt_header")
+    .update(overridePayload)
+    .eq("id", created.id)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+
+  return updated as ReceiptHeader;
 }
 
 /**
