@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
+import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -14,9 +17,11 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 
 import CloseIcon from "@mui/icons-material/Close";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 import type { Material } from "../types/material";
 import {
+  deleteMaterialPhoto,
   getMaterialPhotos,
   type MaterialPhoto,
 } from "../services/materialPhotoService";
@@ -46,6 +51,10 @@ export default function MaterialInfoDialog({ material, onClose }: Props) {
   const [photos, setPhotos] = useState<MaterialPhoto[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [photoPendingDelete, setPhotoPendingDelete] =
+    useState<MaterialPhoto | null>(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     // Dialog is hidden (open={!!material}) when there's no material, so
@@ -55,6 +64,8 @@ export default function MaterialInfoDialog({ material, onClose }: Props) {
 
     let cancelled = false;
     setLoadingPhotos(true);
+    setPhotoPendingDelete(null);
+    setDeleteError(null);
 
     getMaterialPhotos(material.material_code)
       .then((data) => {
@@ -71,6 +82,23 @@ export default function MaterialInfoDialog({ material, onClose }: Props) {
       cancelled = true;
     };
   }, [material]);
+
+  async function handleConfirmDeletePhoto() {
+    if (!photoPendingDelete) return;
+
+    const photo = photoPendingDelete;
+    setDeletingPhotoId(photo.id);
+
+    try {
+      await deleteMaterialPhoto(photo);
+      setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+      setPhotoPendingDelete(null);
+    } catch {
+      setDeleteError("Failed to delete photo. Please try again.");
+    } finally {
+      setDeletingPhotoId(null);
+    }
+  }
 
   return (
     <>
@@ -110,22 +138,49 @@ export default function MaterialInfoDialog({ material, onClose }: Props) {
               ) : (
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
                   {photos.map((photo) => (
-                    <Box
-                      key={photo.id}
-                      component="img"
-                      src={photo.photo_url}
-                      alt="Material"
-                      onClick={() => setLightboxUrl(photo.photo_url)}
-                      sx={{
-                        width: 84,
-                        height: 84,
-                        borderRadius: 2,
-                        objectFit: "cover",
-                        cursor: "pointer",
-                        border: "1px solid",
-                        borderColor: "divider",
-                      }}
-                    />
+                    <Box key={photo.id} sx={{ position: "relative", width: 84, height: 84 }}>
+                      <Box
+                        component="img"
+                        src={photo.photo_url}
+                        alt="Material"
+                        onClick={() => setLightboxUrl(photo.photo_url)}
+                        sx={{
+                          width: 84,
+                          height: 84,
+                          borderRadius: 2,
+                          objectFit: "cover",
+                          cursor: "pointer",
+                          border: "1px solid",
+                          borderColor: "divider",
+                          opacity: deletingPhotoId === photo.id ? 0.5 : 1,
+                        }}
+                      />
+
+                      <IconButton
+                        size="small"
+                        aria-label="Delete photo"
+                        disabled={deletingPhotoId === photo.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPhotoPendingDelete(photo);
+                        }}
+                        sx={{
+                          position: "absolute",
+                          top: -8,
+                          right: -8,
+                          bgcolor: "background.paper",
+                          border: "1px solid",
+                          borderColor: "divider",
+                          "&:hover": { bgcolor: "error.main", color: "error.contrastText" },
+                        }}
+                      >
+                        {deletingPhotoId === photo.id ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <DeleteIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Box>
                   ))}
                 </Box>
               )}
@@ -191,6 +246,58 @@ export default function MaterialInfoDialog({ material, onClose }: Props) {
           )}
         </Box>
       </Dialog>
+
+      <Dialog
+        open={!!photoPendingDelete}
+        onClose={() => setPhotoPendingDelete(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Photo</DialogTitle>
+
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this photo? This action cannot
+            be undone.
+          </DialogContentText>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => setPhotoPendingDelete(null)}
+            fullWidth={mobile}
+            sx={{ minHeight: 48, borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDeletePhoto}
+            color="error"
+            variant="contained"
+            disabled={deletingPhotoId !== null}
+            fullWidth={mobile}
+            sx={{ minHeight: 48, borderRadius: 2 }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!deleteError}
+        autoHideDuration={4000}
+        onClose={() => setDeleteError(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setDeleteError(null)}
+          severity="error"
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {deleteError}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

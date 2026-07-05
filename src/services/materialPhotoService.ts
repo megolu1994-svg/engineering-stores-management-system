@@ -64,3 +64,42 @@ export async function getMaterialPhotos(
 
   return (data ?? []) as MaterialPhoto[];
 }
+
+/**
+ * Recovers the Storage object path from a public URL produced by
+ * `getPublicUrl`, since `material_photos` only stores the URL rather than
+ * the bucket-relative path.
+ */
+function storagePathFromPublicUrl(photoUrl: string): string {
+  const marker = `/object/public/${MATERIAL_PHOTOS_BUCKET}/`;
+  const index = photoUrl.indexOf(marker);
+
+  if (index === -1) {
+    throw new Error("Could not determine the storage path for this photo.");
+  }
+
+  return decodeURIComponent(photoUrl.slice(index + marker.length));
+}
+
+/**
+ * Deletes a single photo: removes the file from the `material-photos`
+ * Storage bucket, then removes its row from `material_photos`. Throws on
+ * failure so the caller can surface the error and keep the photo in the
+ * UI rather than silently dropping it.
+ */
+export async function deleteMaterialPhoto(photo: MaterialPhoto): Promise<void> {
+  const path = storagePathFromPublicUrl(photo.photo_url);
+
+  const { error: removeError } = await supabase.storage
+    .from(MATERIAL_PHOTOS_BUCKET)
+    .remove([path]);
+
+  if (removeError) throw removeError;
+
+  const { error: deleteError } = await supabase
+    .from("material_photos")
+    .delete()
+    .eq("id", photo.id);
+
+  if (deleteError) throw deleteError;
+}
