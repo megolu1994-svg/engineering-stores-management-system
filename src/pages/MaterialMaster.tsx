@@ -448,9 +448,9 @@ export default function MaterialMaster() {
       await uploadMaterialPhoto(materialCode, file);
       setSnackbarSeverity("success");
       setSnackbarMessage("Photo uploaded successfully.");
-    } catch {
+    } catch (error: any) {
       setSnackbarSeverity("error");
-      setSnackbarMessage("Failed to upload photo. Please try again.");
+      setSnackbarMessage(error?.message || "Failed to upload photo. Please try again.");
     } finally {
       setUploadingPhotoCode(null);
       setPhotoMenuMaterial(null);
