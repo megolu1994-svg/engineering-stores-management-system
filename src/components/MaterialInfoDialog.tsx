@@ -79,7 +79,6 @@ export default function MaterialInfoDialog({ material, onClose }: Props) {
         onClose={onClose}
         fullWidth
         maxWidth="xs"
-        fullScreen={mobile}
       >
         <DialogTitle sx={{ fontWeight: 700 }}>Material Details</DialogTitle>
 
