@@ -463,6 +463,7 @@ interface MovementRow {
   movement: "IN" | "OUT";
   location_code: string;
   material_code: string;
+  material_description: string;
   created_by: string | null;
 }
 
@@ -709,7 +710,30 @@ export default function Reports() {
 
       const { data, error } = await query;
       if (error) throw error;
-      setMovementRows((data ?? []) as MovementRow[]);
+
+      const rows = (data ?? []) as Omit<MovementRow, "material_description">[];
+
+      const materialCodes = Array.from(new Set(rows.map((r) => r.material_code)));
+      const descriptionMap = new Map<string, string>();
+      if (materialCodes.length > 0) {
+        const { data: materials, error: materialsError } = await supabase
+          .from("material_master")
+          .select("material_code, short_description")
+          .in("material_code", materialCodes);
+
+        if (materialsError) throw materialsError;
+
+        (materials ?? []).forEach((m: { material_code: string; short_description: string }) => {
+          descriptionMap.set(m.material_code, m.short_description);
+        });
+      }
+
+      setMovementRows(
+        rows.map((r) => ({
+          ...r,
+          material_description: descriptionMap.get(r.material_code) ?? "",
+        }))
+      );
     } catch (err) {
       console.error(err);
       setMovementRows([]);
@@ -733,7 +757,7 @@ export default function Reports() {
 
   function handleExportMovement() {
     downloadWorkbook(
-      ["Date", "Transaction Type", "Reference", "Material", "Quantity", "From Location", "To Location", "User"],
+      ["Date", "Transaction Type", "Reference", "Material Code", "Description", "Quantity", "From Location", "To Location", "User"],
       movementRows.map((r) => {
         const { from, to } = movementFromTo(r);
         return [
@@ -741,6 +765,7 @@ export default function Reports() {
           r.transaction_type,
           safeText(r.reference_number),
           r.material_code,
+          safeText(r.material_description),
           safeNumber(r.quantity),
           from,
           to,
@@ -1163,6 +1188,9 @@ export default function Reports() {
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
                           {row.material_code}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap sx={{ display: "block" }}>
+                          {safeText(row.material_description)}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
                           {safeText(row.reference_number)}
