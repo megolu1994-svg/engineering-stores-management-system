@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, Fragment } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   Alert,
@@ -13,19 +13,11 @@ import {
   MenuItem,
   Paper,
   Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tab,
   Tabs,
   TextField,
   Typography,
-  useMediaQuery,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -122,9 +114,6 @@ function formatDateTime(value: string): string {
 }
 
 export default function MaterialIssue() {
-  const theme = useTheme();
-  const mobile = useMediaQuery(theme.breakpoints.down("sm"));
-
   const [activeTab, setActiveTab] = useState(TAB_NEW_ISSUE);
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
 
@@ -819,7 +808,7 @@ export default function MaterialIssue() {
                 No issues found.
               </Typography>
             </Card>
-          ) : mobile ? (
+          ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {issues.map((issue) => (
                 <Card
@@ -855,55 +844,6 @@ export default function MaterialIssue() {
                 </Card>
               ))}
             </Box>
-          ) : (
-            <TableContainer
-              component={Paper}
-              elevation={0}
-              sx={{ borderRadius: 2, boxShadow: "0 2px 14px rgba(15,23,42,0.06)" }}
-            >
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Issue No</TableCell>
-                    <TableCell>Date/Time</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Department</TableCell>
-                    <TableCell>Reservation</TableCell>
-                    <TableCell align="right">Materials</TableCell>
-                    <TableCell align="right">Total Qty</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {issues.map((issue) => (
-                    <Fragment key={issue.id}>
-                      <TableRow
-                        key={issue.id}
-                        hover
-                        sx={{ cursor: "pointer" }}
-                        onClick={() => toggleExpand(issue.id)}
-                      >
-                        <TableCell sx={{ fontWeight: 600 }}>{issue.issue_number}</TableCell>
-                        <TableCell>{formatDateTime(issue.issue_datetime)}</TableCell>
-                        <TableCell>
-                          <Chip size="small" label={issue.issue_type} />
-                        </TableCell>
-                        <TableCell>{issue.department}</TableCell>
-                        <TableCell>{issue.sap_reservation_number ?? "-"}</TableCell>
-                        <TableCell align="right">{issue.total_materials}</TableCell>
-                        <TableCell align="right">{issue.total_quantity}</TableCell>
-                      </TableRow>
-                      {expandedIssueId === issue.id && (
-                        <TableRow key={`${issue.id}-detail`}>
-                          <TableCell colSpan={7} sx={{ bgcolor: "grey.50" }}>
-                            <IssueDetail loading={loadingDetail} items={expandedItems} />
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           )}
         </Box>
       )}
