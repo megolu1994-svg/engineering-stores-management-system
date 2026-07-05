@@ -666,7 +666,9 @@ export default function Reports() {
 
     try {
       const data = await loadExportReportData();
-      const { headers, rows } = report.build(data);
+      const dataset = report.build(data);
+      const headers = ["S.No", ...dataset.headers];
+      const rows = dataset.rows.map((row, index) => [index + 1, ...row]);
 
       if (format === "excel") {
         downloadWorkbook(headers, rows, `${report.filenameBase}.xlsx`, report.sheetName);
