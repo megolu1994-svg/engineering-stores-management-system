@@ -40,6 +40,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 import MaterialForm from "../components/MaterialForm";
 import MaterialTable from "../components/MaterialTable";
+import MaterialMasterDesktopView from "../components/MaterialMasterDesktopView";
 
 import {
   addMaterial,
@@ -48,6 +49,8 @@ import {
   updateMaterial,
   parseMaterialExcelRows,
   bulkImportMaterials,
+  getMaterialsCount,
+  getLastMaterialUpdate,
   type MaterialValidationResult,
   type MaterialImportSummary,
 } from "../services/materialService";
@@ -237,7 +240,7 @@ export default function MaterialMaster() {
       setSnackbarOpen(true);
 
       // Refresh the current view so newly imported materials show up.
-      await loadCurrentView(search);
+      await refreshCurrentView();
     } catch {
       setSnackbarSeverity("error");
       setSnackbarMessage("Import failed unexpectedly.");
@@ -302,6 +305,64 @@ export default function MaterialMaster() {
     return () => clearTimeout(timer);
   }, [search, loadCurrentView]);
 
+  // ---------------- Desktop paginated table ----------------
+  const [desktopMaterials, setDesktopMaterials] = useState<Material[]>([]);
+  const [desktopPage, setDesktopPage] = useState(0);
+  const [desktopPageSize, setDesktopPageSize] = useState(10);
+  const [desktopTotalCount, setDesktopTotalCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const desktopRequestId = useRef(0);
+
+  const loadDesktopView = useCallback(
+    async (query: string, page: number, pageSize: number) => {
+      const currentRequestId = ++desktopRequestId.current;
+
+      const [data, count] = await Promise.all([
+        searchMaterials(query, page, pageSize),
+        getMaterialsCount(query),
+      ]);
+
+      if (currentRequestId === desktopRequestId.current) {
+        setDesktopMaterials(data);
+        setDesktopTotalCount(count);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (mobile) return;
+    loadDesktopView(search, desktopPage, desktopPageSize);
+  }, [mobile, search, desktopPage, desktopPageSize, loadDesktopView]);
+
+  useEffect(() => {
+    if (mobile) return;
+    getLastMaterialUpdate()
+      .then(setLastUpdated)
+      .catch(() => setLastUpdated(null));
+  }, [mobile]);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    setDesktopPage(0);
+  }
+
+  // Refreshes whichever view (mobile card list or desktop paginated table)
+  // is currently on screen after an add/edit/delete/import mutation.
+  async function refreshCurrentView() {
+    if (mobile) {
+      await loadCurrentView(search);
+      return;
+    }
+
+    await Promise.all([
+      loadDesktopView(search, desktopPage, desktopPageSize),
+      getLastMaterialUpdate()
+        .then(setLastUpdated)
+        .catch(() => {}),
+    ]);
+  }
+
   const handleSave = useCallback(
     async (material: Material) => {
       try {
@@ -319,7 +380,16 @@ export default function MaterialMaster() {
 
         // Refresh only the current (small) view instead of reloading the
         // entire material_master table.
-        await loadCurrentView(search);
+        if (mobile) {
+          await loadCurrentView(search);
+        } else {
+          await Promise.all([
+            loadDesktopView(search, desktopPage, desktopPageSize),
+            getLastMaterialUpdate()
+              .then(setLastUpdated)
+              .catch(() => {}),
+          ]);
+        }
 
         setShowForm(false);
         setSelectedMaterial(null);
@@ -331,7 +401,7 @@ export default function MaterialMaster() {
         setSnackbarOpen(true);
       }
     },
-    [selectedMaterial, search, loadCurrentView]
+    [selectedMaterial, mobile, search, desktopPage, desktopPageSize, loadCurrentView, loadDesktopView]
   );
 
   function handleEdit(material: Material) {
@@ -352,7 +422,16 @@ export default function MaterialMaster() {
 
       // Refresh only the current (small) view instead of reloading the
       // entire material_master table.
-      await loadCurrentView(search);
+      if (mobile) {
+        await loadCurrentView(search);
+      } else {
+        await Promise.all([
+          loadDesktopView(search, desktopPage, desktopPageSize),
+          getLastMaterialUpdate()
+            .then(setLastUpdated)
+            .catch(() => {}),
+        ]);
+      }
 
       setSnackbarSeverity("success");
       setSnackbarMessage("Material deleted successfully.");
@@ -363,7 +442,7 @@ export default function MaterialMaster() {
 
     setDeleteMaterialData(null);
     setSnackbarOpen(true);
-  }, [deleteMaterialData, search, loadCurrentView]);
+  }, [deleteMaterialData, mobile, search, desktopPage, desktopPageSize, loadCurrentView, loadDesktopView]);
 
   return (
     <Box sx={{ overflowX: "hidden" }}>
@@ -394,7 +473,7 @@ export default function MaterialMaster() {
           label="Search Material"
           placeholder="Search by Code, Description or UoM"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           fullWidth
           slotProps={{
             input: {
@@ -416,29 +495,26 @@ export default function MaterialMaster() {
         />
       </Box>
 
-      <Button
-        variant="contained"
-        size="large"
-        fullWidth
-        startIcon={<AddIcon />}
-        onClick={handleAdd}
-        sx={{
-          minHeight: 56,
-          fontWeight: 700,
-          fontSize: "1rem",
-          borderRadius: 3,
-          mb: 3,
-          width: { xs: "100%", sm: "auto" },
-        }}
-      >
-        Add Material
-      </Button>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, mb: 3 }}>
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={<AddIcon />}
+          onClick={handleAdd}
+          sx={{
+            minHeight: 56,
+            fontWeight: 700,
+            fontSize: "1rem",
+            borderRadius: 3,
+            width: { xs: "100%", sm: "auto" },
+          }}
+        >
+          Add Material
+        </Button>
 
-      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, mb: 1.5 }}>
         <Button
           variant="outlined"
           color="inherit"
-          fullWidth
           startIcon={<DownloadIcon />}
           onClick={handleDownloadTemplate}
           sx={{
@@ -447,6 +523,7 @@ export default function MaterialMaster() {
             borderRadius: 2.5,
             borderColor: "divider",
             color: "text.primary",
+            width: { xs: "100%", sm: "auto" },
           }}
         >
           Download Template
@@ -454,10 +531,14 @@ export default function MaterialMaster() {
 
         <Button
           variant="outlined"
-          fullWidth
           startIcon={<CloudUploadIcon />}
           onClick={openImport}
-          sx={{ minHeight: 48, fontWeight: 600, borderRadius: 2.5 }}
+          sx={{
+            minHeight: 48,
+            fontWeight: 600,
+            borderRadius: 2.5,
+            width: { xs: "100%", sm: "auto" },
+          }}
         >
           Import Excel
         </Button>
@@ -639,13 +720,30 @@ export default function MaterialMaster() {
         />
       )}
 
-      <MaterialTable
-        materials={materials}
-        onEdit={handleEdit}
-        onDelete={(material) =>
-          setDeleteMaterialData(material)
-        }
-      />
+      {mobile ? (
+        <MaterialTable
+          materials={materials}
+          onEdit={handleEdit}
+          onDelete={(material) =>
+            setDeleteMaterialData(material)
+          }
+        />
+      ) : (
+        <MaterialMasterDesktopView
+          materials={desktopMaterials}
+          totalCount={desktopTotalCount}
+          lastUpdated={lastUpdated}
+          page={desktopPage}
+          pageSize={desktopPageSize}
+          onPageChange={setDesktopPage}
+          onPageSizeChange={(pageSize) => {
+            setDesktopPageSize(pageSize);
+            setDesktopPage(0);
+          }}
+          onEdit={handleEdit}
+          onDelete={(material) => setDeleteMaterialData(material)}
+        />
+      )}
 
       <Dialog
         open={!!deleteMaterialData}
