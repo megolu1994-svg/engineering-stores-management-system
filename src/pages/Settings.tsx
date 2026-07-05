@@ -26,6 +26,8 @@ import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
+import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
+
 const APP_VERSION = "1.0.0";
 const DEVELOPER_NAME = "ESMS Engineering Team";
 
@@ -63,6 +65,8 @@ function SectionCard({
  * a settings table once one exists.
  */
 export default function Settings() {
+  useSwipeOpenDrawer();
+
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   // Application

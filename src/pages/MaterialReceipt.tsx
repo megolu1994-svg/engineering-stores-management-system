@@ -86,6 +86,7 @@ import {
   type PackageDetailRow,
   type AttachmentFile,
 } from "../services/receiptService";
+import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -256,6 +257,8 @@ function DateTextField({ label, value, onChange, required }: DateTextFieldProps)
 }
 
 export default function MaterialReceipt() {
+  useSwipeOpenDrawer();
+
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 

@@ -57,6 +57,8 @@ import {
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
+import { useSwipeTabs } from "../hooks/useSwipeTabs";
+import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -124,6 +126,7 @@ export default function MaterialIssue() {
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [activeTab, setActiveTab] = useState(TAB_NEW_ISSUE);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -414,6 +417,8 @@ export default function MaterialIssue() {
         <Tab icon={<SendIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="New Issue" />
         <Tab icon={<ListAltIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Issue Register" />
       </Tabs>
+
+      <SwipeableTabPanel activeTab={activeTab} direction={direction}>
 
       {activeTab === TAB_NEW_ISSUE && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, pb: 10 }}>
@@ -902,6 +907,8 @@ export default function MaterialIssue() {
           )}
         </Box>
       )}
+
+      </SwipeableTabPanel>
 
       <Snackbar
         open={snackbar.open}

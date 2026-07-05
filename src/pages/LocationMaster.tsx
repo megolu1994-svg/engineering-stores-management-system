@@ -51,6 +51,7 @@ import {
 } from "../services/locationService";
 
 import type { Location } from "../types/location";
+import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const BROWSE_PAGE_SIZE = 50;
@@ -87,6 +88,8 @@ function downloadWorkbook(
 }
 
 export default function LocationMaster() {
+  useSwipeOpenDrawer();
+
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 

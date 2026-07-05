@@ -129,3 +129,17 @@ export function useSwipeTabs(
 
   return { direction };
 }
+
+const NO_OP = () => {};
+
+/**
+ * For pages with no internal tabs (Material Master, Location Master,
+ * Material Receipt, Settings, ...): a right swipe anywhere on the page
+ * opens the navigation drawer, matching the same "swipe right runs out
+ * of tabs into the menu" behavior tabbed pages already have - here
+ * there's simply nothing to switch through, so it opens immediately.
+ * Left swipe does nothing, same as running out of tabs going forward.
+ */
+export function useSwipeOpenDrawer() {
+  useSwipeTabs(0, NO_OP, 1);
+}
