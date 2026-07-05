@@ -559,7 +559,7 @@ export default function Dashboard() {
               ),
               sx: {
                 bgcolor: "#FFFFFF",
-                borderRadius: "24px",
+                borderRadius: "12px",
                 "& fieldset": { border: "none" },
               },
             },
