@@ -3,15 +3,11 @@ import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -20,6 +16,7 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
@@ -38,6 +35,9 @@ interface Props {
   onPageSizeChange: (pageSize: number) => void;
   onEdit: (material: Material) => void;
   onDelete: (material: Material) => void;
+  onUploadPhoto: (material: Material, anchorEl: HTMLElement) => void;
+  uploadingPhotoCode: string | null;
+  onRowClick: (material: Material) => void;
 }
 
 function formatLastUpdated(value: string | null): string {
@@ -112,6 +112,9 @@ export default function MaterialMasterListView({
   onPageSizeChange,
   onEdit,
   onDelete,
+  onUploadPhoto,
+  uploadingPhotoCode,
+  onRowClick,
 }: Props) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = page + 1;
@@ -144,74 +147,114 @@ export default function MaterialMasterListView({
         </CardContent>
       </Card>
 
-      <TableContainer
-        component={Card}
+      <Card
         elevation={0}
-        sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", overflowX: "auto" }}
+        sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", overflow: "hidden" }}
       >
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ bgcolor: BRAND_PURPLE_SOFT }}>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }}>Code</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }}>UoM</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }} align="right">
-                Actions
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {materials.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                  No materials found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              materials.map((material) => (
-                <TableRow key={material.material_code} hover>
-                  <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 0.75 }}>
-                    {material.material_code}
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      py: 0.75,
-                      maxWidth: { xs: 120, sm: 320 },
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={material.short_description}
+        {materials.length === 0 ? (
+          <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
+            <Typography variant="body2">No materials found.</Typography>
+          </Box>
+        ) : (
+          materials.map((material, index) => (
+            <Box
+              key={material.material_code}
+              role="button"
+              tabIndex={0}
+              onClick={() => onRowClick(material)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onRowClick(material);
+              }}
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 0.5,
+                px: { xs: 1.5, sm: 2.5 },
+                py: 1.25,
+                cursor: "pointer",
+                borderTop: index === 0 ? "none" : "1px solid",
+                borderColor: "divider",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+                  <Typography
+                    sx={{ fontWeight: 700, color: BRAND_PURPLE, fontSize: { xs: "0.9rem", sm: "1rem" } }}
+                    noWrap
                   >
-                    {material.short_description}
-                  </TableCell>
-                  <TableCell sx={{ py: 0.75 }}>{material.uom}</TableCell>
-                  <TableCell align="right" sx={{ py: 0.25, whiteSpace: "nowrap" }}>
-                    <IconButton
-                      color="primary"
-                      size="small"
-                      onClick={() => onEdit(material)}
-                      aria-label="Edit material"
-                      sx={{ p: 0.5 }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      color="error"
-                      size="small"
-                      onClick={() => onDelete(material)}
-                      aria-label="Delete material"
-                      sx={{ p: 0.5 }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                    {material.material_code}
+                  </Typography>
+                  <Chip
+                    label={material.uom}
+                    size="small"
+                    sx={{
+                      height: 20,
+                      fontSize: "0.65rem",
+                      fontWeight: 700,
+                      bgcolor: BRAND_PURPLE_SOFT,
+                      color: BRAND_PURPLE,
+                    }}
+                  />
+                </Box>
+
+                <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.25, sm: 1.5 }, flexShrink: 0 }}>
+                  <IconButton
+                    color="primary"
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(material);
+                    }}
+                    aria-label="Edit material"
+                    sx={{ p: 0.75 }}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUploadPhoto(material, e.currentTarget);
+                    }}
+                    disabled={uploadingPhotoCode === material.material_code}
+                    aria-label="Add material photo"
+                    sx={{ p: 0.75, color: "text.secondary" }}
+                  >
+                    {uploadingPhotoCode === material.material_code ? (
+                      <CircularProgress size={18} />
+                    ) : (
+                      <PhotoCameraIcon fontSize="small" />
+                    )}
+                  </IconButton>
+
+                  <IconButton
+                    color="error"
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(material);
+                    }}
+                    aria-label="Delete material"
+                    sx={{ p: 0.75 }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ wordBreak: "break-word", fontSize: { xs: "0.82rem", sm: "0.875rem" } }}
+              >
+                {material.short_description}
+              </Typography>
+            </Box>
+          ))
+        )}
+      </Card>
 
       <Box
         sx={{
