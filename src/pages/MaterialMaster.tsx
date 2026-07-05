@@ -53,6 +53,7 @@ import {
 } from "../services/materialService";
 
 import type { Material } from "../types/material";
+import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const BROWSE_PAGE_SIZE = 50;
@@ -88,6 +89,8 @@ function downloadWorkbook(
 }
 
 export default function MaterialMaster() {
+  useSwipeOpenDrawer();
+
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 
