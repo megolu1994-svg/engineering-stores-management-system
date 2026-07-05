@@ -17,6 +17,8 @@ import {
   IconButton,
   InputAdornment,
   LinearProgress,
+  Menu,
+  MenuItem,
   Snackbar,
   Table,
   TableBody,
@@ -37,9 +39,12 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 
 import MaterialForm from "../components/MaterialForm";
 import MaterialMasterListView from "../components/MaterialMasterListView";
+import MaterialInfoDialog from "../components/MaterialInfoDialog";
 
 import {
   addMaterial,
@@ -53,6 +58,7 @@ import {
   type MaterialValidationResult,
   type MaterialImportSummary,
 } from "../services/materialService";
+import { uploadMaterialPhoto } from "../services/materialPhotoService";
 
 import type { Material } from "../types/material";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
@@ -404,6 +410,57 @@ export default function MaterialMaster() {
     setSnackbarOpen(true);
   }, [deleteMaterialData, debouncedSearch, page, pageSize, loadMaterials]);
 
+  // ---------------- Material photo upload ----------------
+  const [photoMenuAnchor, setPhotoMenuAnchor] = useState<HTMLElement | null>(null);
+  const [photoMenuMaterial, setPhotoMenuMaterial] = useState<Material | null>(null);
+  const [uploadingPhotoCode, setUploadingPhotoCode] = useState<string | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+
+  function handleOpenPhotoMenu(material: Material, anchorEl: HTMLElement) {
+    setPhotoMenuMaterial(material);
+    setPhotoMenuAnchor(anchorEl);
+  }
+
+  function closePhotoMenu() {
+    setPhotoMenuAnchor(null);
+  }
+
+  function handleTakePhoto() {
+    closePhotoMenu();
+    cameraInputRef.current?.click();
+  }
+
+  function handleChooseFromGallery() {
+    closePhotoMenu();
+    galleryInputRef.current?.click();
+  }
+
+  async function handlePhotoFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!file || !photoMenuMaterial) return;
+
+    const materialCode = photoMenuMaterial.material_code;
+    setUploadingPhotoCode(materialCode);
+
+    try {
+      await uploadMaterialPhoto(materialCode, file);
+      setSnackbarSeverity("success");
+      setSnackbarMessage("Photo uploaded successfully.");
+    } catch {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Failed to upload photo. Please try again.");
+    } finally {
+      setUploadingPhotoCode(null);
+      setPhotoMenuMaterial(null);
+      setSnackbarOpen(true);
+    }
+  }
+
+  // ---------------- Material info dialog ----------------
+  const [infoMaterial, setInfoMaterial] = useState<Material | null>(null);
+
   return (
     <Box sx={{ overflowX: "hidden" }}>
 
@@ -693,6 +750,33 @@ export default function MaterialMaster() {
         />
       )}
 
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={handlePhotoFileSelected}
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={handlePhotoFileSelected}
+      />
+
+      <Menu anchorEl={photoMenuAnchor} open={!!photoMenuAnchor} onClose={closePhotoMenu}>
+        <MenuItem onClick={handleTakePhoto}>
+          <PhotoCameraIcon fontSize="small" sx={{ mr: 1 }} />
+          Take Photo
+        </MenuItem>
+        <MenuItem onClick={handleChooseFromGallery}>
+          <PhotoLibraryIcon fontSize="small" sx={{ mr: 1 }} />
+          Choose From Gallery
+        </MenuItem>
+      </Menu>
+
       <MaterialMasterListView
         materials={materials}
         totalCount={totalCount}
@@ -703,7 +787,12 @@ export default function MaterialMaster() {
         onPageSizeChange={handlePageSizeChange}
         onEdit={handleEdit}
         onDelete={(material) => setDeleteMaterialData(material)}
+        onUploadPhoto={handleOpenPhotoMenu}
+        uploadingPhotoCode={uploadingPhotoCode}
+        onRowClick={setInfoMaterial}
       />
+
+      <MaterialInfoDialog material={infoMaterial} onClose={() => setInfoMaterial(null)} />
 
       <Dialog
         open={!!deleteMaterialData}
