@@ -89,6 +89,62 @@ export async function searchMaterials(
   return (data ?? []) as Material[];
 }
 
+/**
+ * Total count of active materials matching the same filter `searchMaterials`
+ * applies, for driving pagination controls without loading every row.
+ */
+export async function getMaterialsCount(query: string): Promise<number> {
+  let request = supabase
+    .from("material_master")
+    .select("material_code", { count: "exact", head: true })
+    .eq("is_active", true);
+
+  const trimmed = query.trim();
+
+  if (trimmed) {
+    const safe = escapeIlikeValue(trimmed);
+    request = request.or(
+      `material_code.ilike.%${safe}%,short_description.ilike.%${safe}%,material_group.ilike.%${safe}%`
+    );
+  }
+
+  const { count, error } = await request;
+
+  if (error) throw error;
+
+  return count ?? 0;
+}
+
+/**
+ * Most recent update timestamp across active materials, for a "Last
+ * Updated" summary stat. Falls back to `created_at` when `updated_at`
+ * isn't populated for any row.
+ */
+export async function getLastMaterialUpdate(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("material_master")
+    .select("updated_at")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data?.updated_at) return data.updated_at as string;
+
+  const { data: fallback, error: fallbackError } = await supabase
+    .from("material_master")
+    .select("created_at")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (fallbackError) throw fallbackError;
+
+  return (fallback?.created_at as string | undefined) ?? null;
+}
+
 export async function materialExists(
   materialCode: string
 ): Promise<boolean> {
