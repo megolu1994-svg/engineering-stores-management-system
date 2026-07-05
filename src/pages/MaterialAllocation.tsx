@@ -47,6 +47,7 @@ import {
   updateAllocation,
   deleteAllocation,
 } from "../services/materialAllocationService";
+import { uploadMaterialPhoto } from "../services/materialPhotoService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 
@@ -83,6 +84,8 @@ export default function MaterialAllocation() {
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 5);
 
   const [material, setMaterial] = useState<Material | null>(null);
+
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 
   const [allocations, setAllocations] = useState<MaterialAllocationType[]>(
     []
@@ -144,6 +147,8 @@ export default function MaterialAllocation() {
   }
 
   useEffect(() => {
+    setPendingPhoto(null);
+
     if (!material) {
       setAllocations([]);
       return;
@@ -222,22 +227,35 @@ export default function MaterialAllocation() {
         const newQuantity = existingRow.quantity + quantity;
 
         await updateAllocation(existingRow.id, newQuantity);
-
-        showSnackbar(
-          `Allocation updated for location ${locationCode}.`,
-          "success"
-        );
       } else {
         await addAllocation({
           material_code: material.material_code,
           location_code: locationCode,
           quantity,
         });
+      }
 
-        showSnackbar(
-          `Stock allocated to location ${locationCode}.`,
-          "success"
-        );
+      const allocationMessage = existingRow
+        ? `Allocation updated for location ${locationCode}.`
+        : `Stock allocated to location ${locationCode}.`;
+
+      if (pendingPhoto) {
+        try {
+          await uploadMaterialPhoto(material.material_code, pendingPhoto);
+          setPendingPhoto(null);
+
+          showSnackbar(
+            `${allocationMessage} Photo uploaded to material master.`,
+            "success"
+          );
+        } catch {
+          showSnackbar(
+            `${allocationMessage} However, the photo failed to upload - please try again.`,
+            "warning"
+          );
+        }
+      } else {
+        showSnackbar(allocationMessage, "success");
       }
 
       await loadAllocations(material.material_code);
@@ -431,10 +449,9 @@ export default function MaterialAllocation() {
 
             <MaterialPhotoUploadButton
               material={material}
-              onUploaded={() =>
-                showSnackbar("Photo uploaded to material master.", "success")
-              }
-              onError={(message) => showSnackbar(message, "error")}
+              pendingFile={pendingPhoto}
+              onFileSelected={setPendingPhoto}
+              onClear={() => setPendingPhoto(null)}
             />
           </Box>
 
