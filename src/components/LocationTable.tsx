@@ -115,13 +115,13 @@ export default function LocationTable({
             sx={{
               borderRadius: 2,
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: 0.5,
               px: 1.5,
               py: 0.75,
             }}
           >
-            <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Box sx={{ minWidth: 0, flex: 1, pt: 0.5 }}>
               <Typography variant="body2" sx={{ fontWeight: "bold" }} noWrap>
                 {location.location_code}
               </Typography>
@@ -129,8 +129,7 @@ export default function LocationTable({
               <Typography
                 variant="caption"
                 color="text.secondary"
-                noWrap
-                sx={{ display: "block" }}
+                sx={{ display: "block", overflowWrap: "break-word" }}
               >
                 {location.location_description}
               </Typography>
@@ -141,7 +140,7 @@ export default function LocationTable({
               size="small"
               onClick={() => setViewLocation(location)}
               aria-label="View location"
-              sx={{ minWidth: 40, minHeight: 40 }}
+              sx={{ minWidth: 40, minHeight: 40, mt: 0.5 }}
             >
               <VisibilityIcon fontSize="small" />
             </IconButton>
@@ -151,7 +150,7 @@ export default function LocationTable({
               size="small"
               onClick={() => onEdit(location)}
               aria-label="Edit location"
-              sx={{ minWidth: 40, minHeight: 40 }}
+              sx={{ minWidth: 40, minHeight: 40, mt: 0.5 }}
             >
               <EditIcon fontSize="small" />
             </IconButton>
@@ -161,7 +160,7 @@ export default function LocationTable({
               size="small"
               onClick={() => onDelete(location)}
               aria-label="Delete location"
-              sx={{ minWidth: 40, minHeight: 40 }}
+              sx={{ minWidth: 40, minHeight: 40, mt: 0.5 }}
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
