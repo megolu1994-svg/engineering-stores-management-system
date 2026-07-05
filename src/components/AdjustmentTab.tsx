@@ -66,13 +66,12 @@ export default function AdjustmentTab() {
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // A location is only mandatory for Decrease (you have to say where the
-  // stock is coming out of). For Increase, no location means "add this
-  // now, allocate it to a location later" - it goes to UNALLOCATED,
-  // exactly like an unassigned Material Receipt.
-  const effectiveLocationCode =
-    location?.location_code ??
-    (direction === "increase" ? UNALLOCATED_LOCATION : null);
+  // No location means "Unallocated" for both directions - Increase adds
+  // to Unallocated to be allocated later, and Decrease (e.g. reversing
+  // that same increase) takes it back out of Unallocated. Decreasing
+  // stock actually held at a real location still requires picking that
+  // location explicitly.
+  const effectiveLocationCode = location?.location_code ?? UNALLOCATED_LOCATION;
 
   useEffect(() => {
     if (!material || !effectiveLocationCode) {
@@ -120,19 +119,6 @@ export default function AdjustmentTab() {
   async function handleSubmit() {
     if (!material) {
       showSnackbar("Please select a material.", "warning");
-      return;
-    }
-
-    if (direction === "decrease" && !location) {
-      showSnackbar(
-        "Please select a location to decrease stock from.",
-        "warning"
-      );
-      return;
-    }
-
-    if (!effectiveLocationCode) {
-      showSnackbar("Please select a location.", "warning");
       return;
     }
 
@@ -194,18 +180,8 @@ export default function AdjustmentTab() {
             <LocationSearch
               value={location}
               onChange={setLocation}
-              label={
-                direction === "increase"
-                  ? "Search Location (optional - leave blank for Unallocated)"
-                  : "Search Location"
-              }
+              label="Search Location (optional - leave blank for Unallocated)"
             />
-
-            {direction === "decrease" && !location && (
-              <Alert severity="warning" sx={{ py: 0.25 }}>
-                Select a location to decrease stock from.
-              </Alert>
-            )}
 
             {material && effectiveLocationCode && (
               <Box
