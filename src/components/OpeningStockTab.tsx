@@ -46,6 +46,7 @@ import {
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
 const IMPORT_PREVIEW_LIMIT = 20;
+const UNALLOCATED_LOCATION = "UNALLOCATED";
 
 async function readExcelFile(
   file: File
@@ -95,11 +96,6 @@ export default function OpeningStockTab() {
       return;
     }
 
-    if (!manualLocation) {
-      showSnackbar("Please select a location.", "warning");
-      return;
-    }
-
     const quantity = Number(manualQuantity);
 
     if (!manualQuantity || Number.isNaN(quantity) || quantity <= 0) {
@@ -107,18 +103,22 @@ export default function OpeningStockTab() {
       return;
     }
 
+    const locationCode = manualLocation?.location_code ?? UNALLOCATED_LOCATION;
+
     setSavingManual(true);
 
     try {
       await applyOpeningStock(
         manualMaterial.material_code,
-        manualLocation.location_code,
+        locationCode,
         quantity,
         "Manual entry"
       );
 
       showSnackbar(
-        `Opening balance of ${quantity} recorded for ${manualMaterial.material_code} at ${manualLocation.location_code}.`,
+        manualLocation
+          ? `Opening balance of ${quantity} recorded for ${manualMaterial.material_code} at ${manualLocation.location_code}.`
+          : `Opening balance of ${quantity} recorded for ${manualMaterial.material_code} (Unallocated).`,
         "success"
       );
 
@@ -267,7 +267,11 @@ export default function OpeningStockTab() {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <MaterialSearch value={manualMaterial} onChange={setManualMaterial} />
 
-            <LocationSearch value={manualLocation} onChange={setManualLocation} />
+            <LocationSearch
+              value={manualLocation}
+              onChange={setManualLocation}
+              label="Search Location (optional - leave blank for Unallocated)"
+            />
 
             <TextField
               label="Opening Quantity"

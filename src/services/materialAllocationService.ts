@@ -427,10 +427,6 @@ export function parseOpeningStockExcelRows(
       errors.push("Material Code is required.");
     }
 
-    if (!locationCode) {
-      errors.push("Location Code is required.");
-    }
-
     const quantity = parseOpeningQuantity(quantityRaw);
 
     if (!quantityRaw) {
@@ -455,7 +451,7 @@ export function parseOpeningStockExcelRows(
     validRows.push({
       rowNumber,
       material_code: materialCode,
-      location_code: locationCode,
+      location_code: locationCode || UNALLOCATED_LOCATION,
       quantity,
     });
   });
