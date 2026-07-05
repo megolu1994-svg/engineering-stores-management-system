@@ -25,6 +25,7 @@ import {
   RadioGroup,
   FormControlLabel,
   Snackbar,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -65,6 +66,7 @@ import {
   getReceipts,
   getReceiptSummary,
   uploadReceiptPhotos,
+  getNextDrcNumberSuggestion,
   // Sprint 2
   submitInspection,
   getInspectionHistory,
@@ -206,9 +208,10 @@ interface DateTextFieldProps {
   value: string;
   onChange: (isoValue: string) => void;
   required?: boolean;
+  disabled?: boolean;
 }
 
-function DateTextField({ label, value, onChange, required }: DateTextFieldProps) {
+function DateTextField({ label, value, onChange, required, disabled }: DateTextFieldProps) {
   const [digits, setDigits] = useState(() => isoToDigits(value));
   const [touched, setTouched] = useState(false);
 
@@ -244,6 +247,7 @@ function DateTextField({ label, value, onChange, required }: DateTextFieldProps)
       size="small"
       fullWidth
       required={required}
+      disabled={disabled}
       value={digitsToDisplay(digits)}
       onChange={handleChange}
       onBlur={() => setTouched(true)}
@@ -254,6 +258,39 @@ function DateTextField({ label, value, onChange, required }: DateTextFieldProps)
       sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
     />
   );
+}
+
+// ---------------------------------------------------------------------
+// DRC No. / DRC Date - "Manual" toggle at the top of Create DRC. Off by
+// default: DRC No. previews the auto-generated "previous + 1" value and
+// DRC Date previews today, both read-only, matching what the database
+// trigger will actually assign on save. Toggling Manual on unlocks both
+// fields for hand entry.
+// ---------------------------------------------------------------------
+
+function todayIso(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Combines a manually-chosen calendar date with the current time of
+ * day, so a manual DRC Date still sorts/behaves like a normal
+ * timestamp rather than always landing on midnight. */
+function combineDateWithNow(dateIso: string): string {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const now = new Date();
+  return new Date(
+    y,
+    m - 1,
+    d,
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds()
+  ).toISOString();
 }
 
 export default function MaterialReceipt() {
@@ -332,6 +369,32 @@ export default function MaterialReceipt() {
   const [form, setForm] = useState<ReceiptFormInput>(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  // ---- DRC No. / DRC Date (manual override toggle, create-only) ----
+  const [manualDrcEntry, setManualDrcEntry] = useState(false);
+  const [drcNumber, setDrcNumber] = useState("");
+  const [drcDate, setDrcDate] = useState(todayIso());
+  const [loadingDrcSuggestion, setLoadingDrcSuggestion] = useState(false);
+
+  async function loadDrcSuggestion() {
+    setLoadingDrcSuggestion(true);
+    try {
+      const suggestion = await getNextDrcNumberSuggestion();
+      setDrcNumber(suggestion);
+    } finally {
+      setLoadingDrcSuggestion(false);
+    }
+  }
+
+  function handleManualDrcToggle(e: ChangeEvent<HTMLInputElement>) {
+    const manual = e.target.checked;
+    setManualDrcEntry(manual);
+
+    if (!manual) {
+      setDrcDate(todayIso());
+      loadDrcSuggestion();
+    }
+  }
+
   const [newPhotoFiles, setNewPhotoFiles] = useState<File[]>([]);
   const [newPhotoPreviews, setNewPhotoPreviews] = useState<string[]>([]);
   const [keptPhotoUrls, setKeptPhotoUrls] = useState<string[]>([]);
@@ -393,6 +456,10 @@ export default function MaterialReceipt() {
     setKeptPhotoUrls([]);
     setNewDocumentFiles([]);
     setKeptAttachments([]);
+    setManualDrcEntry(false);
+    setDrcDate(todayIso());
+    setDrcNumber("");
+    loadDrcSuggestion();
     setFormOpen(true);
   }
 
@@ -547,6 +614,10 @@ export default function MaterialReceipt() {
     if (validPackageRows.length === 0) {
       return "Please enter at least one Package Details row with a Quantity and Package Type.";
     }
+    if (!editingReceipt && manualDrcEntry) {
+      if (!drcNumber.trim()) return "Please enter a DRC No.";
+      if (!drcDate) return "Please enter a valid DRC Date.";
+    }
     return null;
   }
 
@@ -571,14 +642,37 @@ export default function MaterialReceipt() {
         );
         showSnackbar(`DRC ${updated.drc_number} updated.`, "success");
       } else {
-        const created = await createReceipt(form, newPhotoFiles, newDocumentFiles);
+        const created = await createReceipt(
+          form,
+          newPhotoFiles,
+          newDocumentFiles,
+          manualDrcEntry
+            ? {
+                drc_number: drcNumber.trim(),
+                receipt_datetime: combineDateWithNow(drcDate),
+              }
+            : undefined
+        );
         showSnackbar(`DRC ${created.drc_number} created.`, "success");
       }
 
       closeForm();
       await refreshAll();
-    } catch {
-      showSnackbar("Something went wrong while saving the DRC.", "error");
+    } catch (err) {
+      const isDuplicateDrcNumber =
+        manualDrcEntry &&
+        !editingReceipt &&
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code?: string }).code === "23505";
+
+      showSnackbar(
+        isDuplicateDrcNumber
+          ? `DRC No. "${drcNumber.trim()}" already exists. Please use a different number.`
+          : "Something went wrong while saving the DRC.",
+        "error"
+      );
     } finally {
       setSaving(false);
     }
@@ -1146,6 +1240,76 @@ export default function MaterialReceipt() {
 
         <DialogContent dividers sx={{ p: 1.5 }}>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {/* DRC No. & Date (create-only; fixed once a DRC exists) */}
+            {!editingReceipt && (
+              <Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    mb: 0.75,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    DRC No. &amp; Date
+                  </Typography>
+                  <FormControlLabel
+                    sx={{ mr: 0 }}
+                    control={
+                      <Switch
+                        size="small"
+                        checked={manualDrcEntry}
+                        onChange={handleManualDrcToggle}
+                      />
+                    }
+                    label={
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        Manual
+                      </Typography>
+                    }
+                  />
+                </Box>
+
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
+                  <TextField
+                    label="DRC No."
+                    size="small"
+                    fullWidth
+                    required={manualDrcEntry}
+                    disabled={!manualDrcEntry}
+                    value={drcNumber}
+                    onChange={(e) => setDrcNumber(e.target.value)}
+                    slotProps={{
+                      input: {
+                        endAdornment: loadingDrcSuggestion ? (
+                          <InputAdornment position="end">
+                            <CircularProgress size={16} />
+                          </InputAdornment>
+                        ) : undefined,
+                      },
+                    }}
+                    helperText={
+                      manualDrcEntry
+                        ? " "
+                        : "Auto - previous DRC No. + 1"
+                    }
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+
+                  <DateTextField
+                    label="DRC Date"
+                    value={drcDate}
+                    onChange={setDrcDate}
+                    required={manualDrcEntry}
+                    disabled={!manualDrcEntry}
+                  />
+                </Box>
+              </Box>
+            )}
+
+            {!editingReceipt && <Divider />}
+
             {/* Transport */}
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
