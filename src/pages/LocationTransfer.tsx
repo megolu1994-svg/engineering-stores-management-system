@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, Fragment } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   Alert,
@@ -13,19 +13,11 @@ import {
   MenuItem,
   Paper,
   Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tab,
   Tabs,
   TextField,
   Typography,
-  useMediaQuery,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -127,9 +119,6 @@ function formatDateTime(value: string): string {
 }
 
 export default function LocationTransfer() {
-  const theme = useTheme();
-  const mobile = useMediaQuery(theme.breakpoints.down("sm"));
-
   const [activeTab, setActiveTab] = useState(TAB_NEW_TRANSFER);
 
   const [snackbar, setSnackbar] = useState<{
@@ -898,7 +887,7 @@ export default function LocationTransfer() {
                 No transfers found.
               </Typography>
             </Card>
-          ) : mobile ? (
+          ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {transfers.map((transfer) => (
                 <Card
@@ -940,55 +929,6 @@ export default function LocationTransfer() {
                 </Card>
               ))}
             </Box>
-          ) : (
-            <TableContainer
-              component={Paper}
-              elevation={0}
-              sx={{ borderRadius: 2, boxShadow: "0 2px 14px rgba(15,23,42,0.06)" }}
-            >
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Transfer No</TableCell>
-                    <TableCell>Date/Time</TableCell>
-                    <TableCell>Transfer By</TableCell>
-                    <TableCell>Reason</TableCell>
-                    <TableCell align="right">Materials</TableCell>
-                    <TableCell align="right">Total Qty</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {transfers.map((transfer) => (
-                    <Fragment key={transfer.id}>
-                      <TableRow
-                        hover
-                        sx={{ cursor: "pointer" }}
-                        onClick={() => toggleExpand(transfer.id)}
-                      >
-                        <TableCell sx={{ fontWeight: 600 }}>{transfer.transfer_number}</TableCell>
-                        <TableCell>{formatDateTime(transfer.transfer_datetime)}</TableCell>
-                        <TableCell>{transfer.transfer_by}</TableCell>
-                        <TableCell>{transfer.reason ?? "-"}</TableCell>
-                        <TableCell align="right">{transfer.total_materials}</TableCell>
-                        <TableCell align="right">{transfer.total_quantity}</TableCell>
-                      </TableRow>
-                      {expandedTransferId === transfer.id && (
-                        <TableRow key={`${transfer.id}-detail`}>
-                          <TableCell colSpan={6} sx={{ bgcolor: "grey.50" }}>
-                            <TransferDetail loading={loadingDetail} items={expandedItems} />
-                            {transfer.remarks && (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-                                Remarks: {transfer.remarks}
-                              </Typography>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           )}
         </Box>
       )}

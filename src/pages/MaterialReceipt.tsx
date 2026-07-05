@@ -1058,7 +1058,7 @@ export default function MaterialReceipt() {
             No DRCs found. Tap "Create DRC" to add the first one.
           </Typography>
         </Card>
-      ) : mobile ? (
+      ) : (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {receipts.map((r) => (
             <Card key={r.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
@@ -1120,53 +1120,6 @@ export default function MaterialReceipt() {
             </Card>
           ))}
         </Box>
-      ) : (
-        <TableContainer
-          component={Paper}
-          elevation={0}
-          sx={{ borderRadius: 2.5, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)" }}
-        >
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>DRC Number</TableCell>
-                <TableCell>Vendor</TableCell>
-                <TableCell>PO Number</TableCell>
-                <TableCell>Invoice Number</TableCell>
-                <TableCell>Receipt Date</TableCell>
-                <TableCell>Vehicle Number</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {receipts.map((r) => (
-                <TableRow key={r.id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{r.drc_number}</TableCell>
-                  <TableCell>{r.vendor_name}</TableCell>
-                  <TableCell>{r.po_number ?? "-"}</TableCell>
-                  <TableCell>{r.invoice_number ?? "-"}</TableCell>
-                  <TableCell>{formatDate(r.receipt_datetime)}</TableCell>
-                  <TableCell>{r.vehicle_number ?? "-"}</TableCell>
-                  <TableCell>
-                    <Chip size="small" label={r.status} color={statusColor(r.status)} sx={{ fontWeight: 700 }} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton size="small" onClick={() => setViewReceipt(r)} aria-label="View DRC">
-                      <VisibilityIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => openEditForm(r)} aria-label="Edit DRC">
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => handlePrint(r)} aria-label="Print DRC">
-                      <PrintIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
       )}
 
       {/* ================= Create / Edit DRC ================= */}

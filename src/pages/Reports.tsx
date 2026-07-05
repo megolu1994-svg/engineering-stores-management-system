@@ -14,18 +14,10 @@ import {
   InputAdornment,
   Stack,
   Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tabs,
   TextField,
   Typography,
-  useMediaQuery,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -176,9 +168,6 @@ function ExportPrintBar({
 }
 
 export default function Reports() {
-  const theme = useTheme();
-  const mobile = useMediaQuery(theme.breakpoints.down("sm"));
-
   const [activeTab, setActiveTab] = useState(TAB_MATERIAL_SUMMARY);
 
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 4);
@@ -664,7 +653,7 @@ export default function Reports() {
                     No allocations found for this material.
                   </Typography>
                 </Card>
-              ) : mobile ? (
+              ) : (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   {allocations
                     .filter((a) => a.location_code !== UNALLOCATED_LOCATION)
@@ -686,31 +675,6 @@ export default function Reports() {
                       </Card>
                     ))}
                 </Box>
-              ) : (
-                <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Description</TableCell>
-                        <TableCell align="right">Quantity</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {allocations
-                        .filter((a) => a.location_code !== UNALLOCATED_LOCATION)
-                        .map((allocation) => (
-                          <TableRow key={allocation.id}>
-                            <TableCell sx={{ fontWeight: 700 }}>{allocation.location_code}</TableCell>
-                            <TableCell>{safeText(locationMap[allocation.location_code])}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {safeNumber(allocation.quantity)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
               )}
             </>
           )}
@@ -749,7 +713,7 @@ export default function Reports() {
                 No movement history found.
               </Typography>
             </Card>
-          ) : mobile ? (
+          ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {movementRows.map((row) => {
                 const { from, to } = movementFromTo(row);
@@ -807,40 +771,6 @@ export default function Reports() {
                 );
               })}
             </Box>
-          ) : (
-            <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Reference</TableCell>
-                    <TableCell>Material</TableCell>
-                    <TableCell align="right">Qty</TableCell>
-                    <TableCell>From</TableCell>
-                    <TableCell>To</TableCell>
-                    <TableCell>User</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {movementRows.map((row) => {
-                    const { from, to } = movementFromTo(row);
-                    return (
-                      <TableRow key={row.id}>
-                        <TableCell>{formatReportDateTime(row.created_at)}</TableCell>
-                        <TableCell>{row.transaction_type.replace("_", " ")}</TableCell>
-                        <TableCell>{safeText(row.reference_number)}</TableCell>
-                        <TableCell>{row.material_code}</TableCell>
-                        <TableCell align="right">{safeNumber(row.quantity)}</TableCell>
-                        <TableCell>{from}</TableCell>
-                        <TableCell>{to}</TableCell>
-                        <TableCell>{safeText(row.created_by)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
           )}
         </>
       )}
@@ -859,7 +789,7 @@ export default function Reports() {
                 No receipts found.
               </Typography>
             </Card>
-          ) : mobile ? (
+          ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {receiptRows.map((row) => (
                 <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
@@ -894,31 +824,6 @@ export default function Reports() {
                 </Card>
               ))}
             </Box>
-          ) : (
-            <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>DRC</TableCell>
-                    <TableCell>PO</TableCell>
-                    <TableCell>Vendor</TableCell>
-                    <TableCell align="right">Qty</TableCell>
-                    <TableCell>Date</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {receiptRows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell sx={{ fontWeight: 700 }}>{row.drc_number}</TableCell>
-                      <TableCell>{safeText(row.po_number)}</TableCell>
-                      <TableCell>{row.vendor_name}</TableCell>
-                      <TableCell align="right">{safeNumber(row.package_qty)}</TableCell>
-                      <TableCell>{formatReportDate(row.receipt_datetime)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           )}
         </>
       )}
@@ -937,7 +842,7 @@ export default function Reports() {
                 No issues found.
               </Typography>
             </Card>
-          ) : mobile ? (
+          ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {issueRows.map((row) => (
                 <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
@@ -961,29 +866,6 @@ export default function Reports() {
                 </Card>
               ))}
             </Box>
-          ) : (
-            <TableContainer component={Card} variant="outlined" sx={{ borderRadius: 2 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Issue No</TableCell>
-                    <TableCell>Department</TableCell>
-                    <TableCell align="right">Qty</TableCell>
-                    <TableCell>Date</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {issueRows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell sx={{ fontWeight: 700 }}>{row.issue_number}</TableCell>
-                      <TableCell>{row.department}</TableCell>
-                      <TableCell align="right">{safeNumber(row.total_quantity)}</TableCell>
-                      <TableCell>{formatReportDate(row.issue_datetime)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
           )}
         </>
       )}
