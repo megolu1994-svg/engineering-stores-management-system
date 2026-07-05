@@ -17,8 +17,16 @@ const theme = createTheme({
       secondary: "#6B7280",
     },
   },
+  // Base unit multiplied by every unitless `borderRadius` value passed to
+  // MUI's `sx` prop (e.g. `sx={{ borderRadius: 2 }}` -> 2 * shape.borderRadius).
+  // At 16 that pushed the many `borderRadius: 2` usages on ~48-56px tall
+  // tabs/inputs/buttons to a 32px radius - equal to or past half their
+  // height, so corners rendered as a full pill/cylinder instead of a
+  // rounded rectangle. 8 keeps those the same rounded-rectangle look while
+  // letting the deliberately pill-shaped elements (progress bars, avatars)
+  // stay pill-shaped since their radius still exceeds half their height.
   shape: {
-    borderRadius: 16,
+    borderRadius: 8,
   },
   typography: {
     h5: { fontWeight: 800 },
