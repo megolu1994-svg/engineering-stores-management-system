@@ -5,13 +5,10 @@ import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
-import CardActions from "@mui/material/CardActions";
-import CardContent from "@mui/material/CardContent";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -110,57 +107,64 @@ export default function LocationTable({
 
   return (
     <>
-      <Stack spacing={1.5}>
+      <Stack spacing={0.75}>
         {locations.map((location) => (
           <Card
             key={location.location_code}
             variant="outlined"
-            sx={{ borderRadius: 2 }}
+            sx={{
+              borderRadius: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              px: 1.5,
+              py: 0.75,
+            }}
           >
-            <CardContent sx={{ pb: 1.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: "bold" }} noWrap>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: "bold" }} noWrap>
                 {location.location_code}
               </Typography>
 
               <Typography
-                variant="body2"
+                variant="caption"
                 color="text.secondary"
-                sx={{ overflowWrap: "break-word" }}
+                noWrap
+                sx={{ display: "block" }}
               >
                 {location.location_description}
               </Typography>
-            </CardContent>
+            </Box>
 
-            <Divider />
+            <IconButton
+              color="default"
+              size="small"
+              onClick={() => setViewLocation(location)}
+              aria-label="View location"
+              sx={{ minWidth: 40, minHeight: 40 }}
+            >
+              <VisibilityIcon fontSize="small" />
+            </IconButton>
 
-            <CardActions sx={{ justifyContent: "flex-end", px: 1.5, py: 1 }}>
-              <IconButton
-                color="default"
-                onClick={() => setViewLocation(location)}
-                aria-label="View location"
-                sx={{ minWidth: 48, minHeight: 48 }}
-              >
-                <VisibilityIcon />
-              </IconButton>
+            <IconButton
+              color="primary"
+              size="small"
+              onClick={() => onEdit(location)}
+              aria-label="Edit location"
+              sx={{ minWidth: 40, minHeight: 40 }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
 
-              <IconButton
-                color="primary"
-                onClick={() => onEdit(location)}
-                aria-label="Edit location"
-                sx={{ minWidth: 48, minHeight: 48 }}
-              >
-                <EditIcon />
-              </IconButton>
-
-              <IconButton
-                color="error"
-                onClick={() => onDelete(location)}
-                aria-label="Delete location"
-                sx={{ minWidth: 48, minHeight: 48 }}
-              >
-                <DeleteIcon />
-              </IconButton>
-            </CardActions>
+            <IconButton
+              color="error"
+              size="small"
+              onClick={() => onDelete(location)}
+              aria-label="Delete location"
+              sx={{ minWidth: 40, minHeight: 40 }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
           </Card>
         ))}
       </Stack>
