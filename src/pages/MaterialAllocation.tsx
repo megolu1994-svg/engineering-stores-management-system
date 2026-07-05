@@ -26,6 +26,7 @@ import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
 import TuneIcon from "@mui/icons-material/Tune";
 
 import MaterialSearch from "../components/MaterialSearch";
+import MaterialPhotoUploadButton from "../components/MaterialPhotoUploadButton";
 import AllocationSummary from "../components/AllocationSummary";
 import AllocationTable from "../components/AllocationTable";
 import AllocationForm from "../components/AllocationForm";
@@ -423,8 +424,18 @@ export default function MaterialAllocation() {
 
       {activeTab === TAB_ALLOCATION && (
         <>
-          <Box sx={{ mb: 1 }}>
-            <MaterialSearch value={material} onChange={setMaterial} />
+          <Box sx={{ mb: 1, display: "flex", gap: 1, alignItems: "center" }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <MaterialSearch value={material} onChange={setMaterial} />
+            </Box>
+
+            <MaterialPhotoUploadButton
+              material={material}
+              onUploaded={() =>
+                showSnackbar("Photo uploaded to material master.", "success")
+              }
+              onError={(message) => showSnackbar(message, "error")}
+            />
           </Box>
 
           <AllocationSummary
