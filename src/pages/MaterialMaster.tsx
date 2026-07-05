@@ -39,8 +39,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 import MaterialForm from "../components/MaterialForm";
-import MaterialTable from "../components/MaterialTable";
-import MaterialMasterDesktopView from "../components/MaterialMasterDesktopView";
+import MaterialMasterListView from "../components/MaterialMasterListView";
 
 import {
   addMaterial,
@@ -59,8 +58,6 @@ import type { Material } from "../types/material";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 
 const SEARCH_DEBOUNCE_MS = 300;
-const BROWSE_PAGE_SIZE = 50;
-const SEARCH_PAGE_SIZE = 20;
 const IMPORT_BATCH_SIZE = 500;
 const PREVIEW_ROW_LIMIT = 20;
 
@@ -96,8 +93,6 @@ export default function MaterialMaster() {
 
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
-
-  const [materials, setMaterials] = useState<Material[]>([]);
 
   const [search, setSearch] = useState("");
 
@@ -275,88 +270,61 @@ export default function MaterialMaster() {
         .slice(0, PREVIEW_ROW_LIMIT)
     : [];
 
-  // Loads whatever is currently "in view": either the first browse page
-  // (no search text) or the current search results. This is intentionally
-  // lightweight (<= 50 rows) - it never loads the entire material_master
-  // table.
-  const loadCurrentView = useCallback(async (query: string) => {
-    const currentRequestId = ++requestId.current;
-
-    const pageSize = query.trim() ? SEARCH_PAGE_SIZE : BROWSE_PAGE_SIZE;
-
-    const data = await searchMaterials(query, 0, pageSize);
-
-    if (currentRequestId === requestId.current) {
-      setMaterials(data);
-    }
-  }, []);
-
-  // Initial browse page on mount.
-  useEffect(() => {
-    loadCurrentView("");
-  }, [loadCurrentView]);
-
-  // Debounced server-side search as the user types.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadCurrentView(search);
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [search, loadCurrentView]);
-
-  // ---------------- Desktop paginated table ----------------
-  const [desktopMaterials, setDesktopMaterials] = useState<Material[]>([]);
-  const [desktopPage, setDesktopPage] = useState(0);
-  const [desktopPageSize, setDesktopPageSize] = useState(10);
-  const [desktopTotalCount, setDesktopTotalCount] = useState(0);
+  // ---------------- Paginated material list ----------------
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const desktopRequestId = useRef(0);
 
-  const loadDesktopView = useCallback(
+  const loadMaterials = useCallback(
     async (query: string, page: number, pageSize: number) => {
-      const currentRequestId = ++desktopRequestId.current;
+      const currentRequestId = ++requestId.current;
 
       const [data, count] = await Promise.all([
         searchMaterials(query, page, pageSize),
         getMaterialsCount(query),
       ]);
 
-      if (currentRequestId === desktopRequestId.current) {
-        setDesktopMaterials(data);
-        setDesktopTotalCount(count);
+      if (currentRequestId === requestId.current) {
+        setMaterials(data);
+        setTotalCount(count);
       }
     },
     []
   );
 
+  // Debounce only the search text - page/page-size changes should feel instant.
   useEffect(() => {
-    if (mobile) return;
-    loadDesktopView(search, desktopPage, desktopPageSize);
-  }, [mobile, search, desktopPage, desktopPageSize, loadDesktopView]);
+    const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
-    if (mobile) return;
+    loadMaterials(debouncedSearch, page, pageSize);
+  }, [debouncedSearch, page, pageSize, loadMaterials]);
+
+  useEffect(() => {
     getLastMaterialUpdate()
       .then(setLastUpdated)
       .catch(() => setLastUpdated(null));
-  }, [mobile]);
+  }, []);
 
   function handleSearchChange(value: string) {
     setSearch(value);
-    setDesktopPage(0);
+    setPage(0);
   }
 
-  // Refreshes whichever view (mobile card list or desktop paginated table)
-  // is currently on screen after an add/edit/delete/import mutation.
-  async function refreshCurrentView() {
-    if (mobile) {
-      await loadCurrentView(search);
-      return;
-    }
+  function handlePageSizeChange(newPageSize: number) {
+    setPageSize(newPageSize);
+    setPage(0);
+  }
 
+  // Refreshes the current page after an add/edit/delete/import mutation.
+  async function refreshCurrentView() {
     await Promise.all([
-      loadDesktopView(search, desktopPage, desktopPageSize),
+      loadMaterials(debouncedSearch, page, pageSize),
       getLastMaterialUpdate()
         .then(setLastUpdated)
         .catch(() => {}),
@@ -378,18 +346,14 @@ export default function MaterialMaster() {
           setSnackbarMessage("Material saved successfully.");
         }
 
-        // Refresh only the current (small) view instead of reloading the
+        // Refresh only the current (small) page instead of reloading the
         // entire material_master table.
-        if (mobile) {
-          await loadCurrentView(search);
-        } else {
-          await Promise.all([
-            loadDesktopView(search, desktopPage, desktopPageSize),
-            getLastMaterialUpdate()
-              .then(setLastUpdated)
-              .catch(() => {}),
-          ]);
-        }
+        await Promise.all([
+          loadMaterials(debouncedSearch, page, pageSize),
+          getLastMaterialUpdate()
+            .then(setLastUpdated)
+            .catch(() => {}),
+        ]);
 
         setShowForm(false);
         setSelectedMaterial(null);
@@ -401,7 +365,7 @@ export default function MaterialMaster() {
         setSnackbarOpen(true);
       }
     },
-    [selectedMaterial, mobile, search, desktopPage, desktopPageSize, loadCurrentView, loadDesktopView]
+    [selectedMaterial, debouncedSearch, page, pageSize, loadMaterials]
   );
 
   function handleEdit(material: Material) {
@@ -420,18 +384,14 @@ export default function MaterialMaster() {
     try {
       await deleteMaterial(deleteMaterialData.material_code);
 
-      // Refresh only the current (small) view instead of reloading the
+      // Refresh only the current (small) page instead of reloading the
       // entire material_master table.
-      if (mobile) {
-        await loadCurrentView(search);
-      } else {
-        await Promise.all([
-          loadDesktopView(search, desktopPage, desktopPageSize),
-          getLastMaterialUpdate()
-            .then(setLastUpdated)
-            .catch(() => {}),
-        ]);
-      }
+      await Promise.all([
+        loadMaterials(debouncedSearch, page, pageSize),
+        getLastMaterialUpdate()
+          .then(setLastUpdated)
+          .catch(() => {}),
+      ]);
 
       setSnackbarSeverity("success");
       setSnackbarMessage("Material deleted successfully.");
@@ -442,7 +402,7 @@ export default function MaterialMaster() {
 
     setDeleteMaterialData(null);
     setSnackbarOpen(true);
-  }, [deleteMaterialData, mobile, search, desktopPage, desktopPageSize, loadCurrentView, loadDesktopView]);
+  }, [deleteMaterialData, debouncedSearch, page, pageSize, loadMaterials]);
 
   return (
     <Box sx={{ overflowX: "hidden" }}>
@@ -495,18 +455,21 @@ export default function MaterialMaster() {
         />
       </Box>
 
-      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, mb: 3 }}>
+      <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 }, mb: 3 }}>
         <Button
           variant="contained"
-          size="large"
-          startIcon={<AddIcon />}
+          startIcon={<AddIcon fontSize="small" />}
           onClick={handleAdd}
           sx={{
-            minHeight: 56,
+            flex: { xs: 1, sm: "0 0 auto" },
+            minWidth: 0,
+            minHeight: { xs: 44, sm: 56 },
+            px: { xs: 0.5, sm: 3 },
             fontWeight: 700,
-            fontSize: "1rem",
+            fontSize: { xs: "0.68rem", sm: "1rem" },
             borderRadius: 3,
-            width: { xs: "100%", sm: "auto" },
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
           }}
         >
           Add Material
@@ -515,15 +478,20 @@ export default function MaterialMaster() {
         <Button
           variant="outlined"
           color="inherit"
-          startIcon={<DownloadIcon />}
+          startIcon={<DownloadIcon fontSize="small" />}
           onClick={handleDownloadTemplate}
           sx={{
-            minHeight: 48,
+            flex: { xs: 1, sm: "0 0 auto" },
+            minWidth: 0,
+            minHeight: { xs: 44, sm: 48 },
+            px: { xs: 0.5, sm: 2.5 },
             fontWeight: 600,
+            fontSize: { xs: "0.68rem", sm: "0.95rem" },
             borderRadius: 2.5,
             borderColor: "divider",
             color: "text.primary",
-            width: { xs: "100%", sm: "auto" },
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
           }}
         >
           Download Template
@@ -531,13 +499,18 @@ export default function MaterialMaster() {
 
         <Button
           variant="outlined"
-          startIcon={<CloudUploadIcon />}
+          startIcon={<CloudUploadIcon fontSize="small" />}
           onClick={openImport}
           sx={{
-            minHeight: 48,
+            flex: { xs: 1, sm: "0 0 auto" },
+            minWidth: 0,
+            minHeight: { xs: 44, sm: 48 },
+            px: { xs: 0.5, sm: 2.5 },
             fontWeight: 600,
+            fontSize: { xs: "0.68rem", sm: "0.95rem" },
             borderRadius: 2.5,
-            width: { xs: "100%", sm: "auto" },
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
           }}
         >
           Import Excel
@@ -720,30 +693,17 @@ export default function MaterialMaster() {
         />
       )}
 
-      {mobile ? (
-        <MaterialTable
-          materials={materials}
-          onEdit={handleEdit}
-          onDelete={(material) =>
-            setDeleteMaterialData(material)
-          }
-        />
-      ) : (
-        <MaterialMasterDesktopView
-          materials={desktopMaterials}
-          totalCount={desktopTotalCount}
-          lastUpdated={lastUpdated}
-          page={desktopPage}
-          pageSize={desktopPageSize}
-          onPageChange={setDesktopPage}
-          onPageSizeChange={(pageSize) => {
-            setDesktopPageSize(pageSize);
-            setDesktopPage(0);
-          }}
-          onEdit={handleEdit}
-          onDelete={(material) => setDeleteMaterialData(material)}
-        />
-      )}
+      <MaterialMasterListView
+        materials={materials}
+        totalCount={totalCount}
+        lastUpdated={lastUpdated}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
+        onEdit={handleEdit}
+        onDelete={(material) => setDeleteMaterialData(material)}
+      />
 
       <Dialog
         open={!!deleteMaterialData}

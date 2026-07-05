@@ -53,11 +53,11 @@ function formatLastUpdated(value: string | null): string {
 
 function StatItem({ icon, value, label }: { icon: ReactNode; value: string; label: string }) {
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+    <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 1.25, minWidth: 0 }}>
       <Box
         sx={{
-          width: 40,
-          height: 40,
+          width: { xs: 34, sm: 40 },
+          height: { xs: 34, sm: 40 },
           borderRadius: 2,
           bgcolor: BRAND_PURPLE_SOFT,
           color: BRAND_PURPLE,
@@ -69,9 +69,11 @@ function StatItem({ icon, value, label }: { icon: ReactNode; value: string; labe
       >
         {icon}
       </Box>
-      <Box>
-        <Typography sx={{ fontWeight: 700 }}>{value}</Typography>
-        <Typography variant="caption" color="text.secondary">
+      <Box sx={{ minWidth: 0 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.95rem", sm: "1rem" } }} noWrap>
+          {value}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
           {label}
         </Typography>
       </Box>
@@ -100,7 +102,7 @@ function getPageNumbers(currentPage: number, totalPages: number): (number | "ell
   return pages;
 }
 
-export default function MaterialMasterDesktopView({
+export default function MaterialMasterListView({
   materials,
   totalCount,
   lastUpdated,
@@ -120,15 +122,22 @@ export default function MaterialMasterDesktopView({
   return (
     <Box>
       <Card elevation={0} sx={{ borderRadius: 3, mb: 2, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)" }}>
-        <CardContent sx={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", p: 2.5 }}>
+        <CardContent
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            p: { xs: 1.5, sm: 2 },
+            "&:last-child": { pb: { xs: 1.5, sm: 2 } },
+          }}
+        >
           <StatItem
-            icon={<Inventory2Icon />}
+            icon={<Inventory2Icon fontSize="small" />}
             value={totalCount.toLocaleString("en-IN")}
             label="Total Materials"
           />
-          <Divider orientation="vertical" flexItem />
+          <Divider orientation="vertical" flexItem sx={{ mx: { xs: 1, sm: 2 } }} />
           <StatItem
-            icon={<CalendarMonthIcon />}
+            icon={<CalendarMonthIcon fontSize="small" />}
             value={formatLastUpdated(lastUpdated)}
             label="Last Updated"
           />
@@ -138,15 +147,15 @@ export default function MaterialMasterDesktopView({
       <TableContainer
         component={Card}
         elevation={0}
-        sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)" }}
+        sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", overflowX: "auto" }}
       >
-        <Table>
+        <Table size="small">
           <TableHead>
             <TableRow sx={{ bgcolor: BRAND_PURPLE_SOFT }}>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>Code</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>Description</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>UoM</TableCell>
-              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }} align="right">
+              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }}>Code</TableCell>
+              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }}>Description</TableCell>
+              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }}>UoM</TableCell>
+              <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 1 }} align="right">
                 Actions
               </TableCell>
             </TableRow>
@@ -161,17 +170,29 @@ export default function MaterialMasterDesktopView({
             ) : (
               materials.map((material) => (
                 <TableRow key={material.material_code} hover>
-                  <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>
+                  <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE, py: 0.75 }}>
                     {material.material_code}
                   </TableCell>
-                  <TableCell>{material.short_description}</TableCell>
-                  <TableCell>{material.uom}</TableCell>
-                  <TableCell align="right">
+                  <TableCell
+                    sx={{
+                      py: 0.75,
+                      maxWidth: { xs: 120, sm: 320 },
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={material.short_description}
+                  >
+                    {material.short_description}
+                  </TableCell>
+                  <TableCell sx={{ py: 0.75 }}>{material.uom}</TableCell>
+                  <TableCell align="right" sx={{ py: 0.25, whiteSpace: "nowrap" }}>
                     <IconButton
                       color="primary"
                       size="small"
                       onClick={() => onEdit(material)}
                       aria-label="Edit material"
+                      sx={{ p: 0.5 }}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
@@ -180,6 +201,7 @@ export default function MaterialMasterDesktopView({
                       size="small"
                       onClick={() => onDelete(material)}
                       aria-label="Delete material"
+                      sx={{ p: 0.5 }}
                     >
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -197,20 +219,25 @@ export default function MaterialMasterDesktopView({
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",
-          gap: 2,
+          gap: 1.5,
           mt: 2,
         }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="caption" color="text.secondary">
           Showing {from} to {to} of {totalCount.toLocaleString("en-IN")} items
         </Typography>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap" }}>
           <IconButton
             size="small"
             disabled={page === 0}
             onClick={() => onPageChange(page - 1)}
             aria-label="Previous page"
+            sx={{
+              bgcolor: "background.paper",
+              boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
+              "&.Mui-disabled": { boxShadow: "none" },
+            }}
           >
             <ChevronLeftIcon fontSize="small" />
           </IconButton>
@@ -226,7 +253,18 @@ export default function MaterialMasterDesktopView({
                 size="small"
                 variant={p === currentPage ? "contained" : "outlined"}
                 onClick={() => onPageChange(p - 1)}
-                sx={{ minWidth: 36, px: 0, borderRadius: 2, fontWeight: 700 }}
+                sx={{
+                  minWidth: 32,
+                  height: 32,
+                  px: 0,
+                  borderRadius: 2,
+                  fontWeight: 700,
+                  ...(p !== currentPage && {
+                    borderColor: "transparent",
+                    bgcolor: "background.paper",
+                    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
+                  }),
+                }}
               >
                 {p}
               </Button>
@@ -238,6 +276,11 @@ export default function MaterialMasterDesktopView({
             disabled={page >= totalPages - 1}
             onClick={() => onPageChange(page + 1)}
             aria-label="Next page"
+            sx={{
+              bgcolor: "background.paper",
+              boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
+              "&.Mui-disabled": { boxShadow: "none" },
+            }}
           >
             <ChevronRightIcon fontSize="small" />
           </IconButton>
@@ -248,7 +291,7 @@ export default function MaterialMasterDesktopView({
           size="small"
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          sx={{ width: 90, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          sx={{ width: 80, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
         >
           {PAGE_SIZE_OPTIONS.map((option) => (
             <MenuItem key={option} value={option}>
