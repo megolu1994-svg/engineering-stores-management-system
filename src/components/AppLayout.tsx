@@ -158,8 +158,8 @@ export default function AppLayout() {
               selected={selected}
               onClick={() => handleNavigate(item.path)}
               sx={{
-                minHeight: 60,
-                pl: 3,
+                minHeight: { xs: 60, md: 64 },
+                pl: { xs: 3, md: 3.5 },
                 color: selected ? BRAND_PURPLE : "#111827",
                 "&.Mui-selected": {
                   bgcolor: BRAND_PURPLE_SOFT,
@@ -171,9 +171,9 @@ export default function AppLayout() {
             >
               <ListItemIcon
                 sx={{
-                  minWidth: 40,
+                  minWidth: { xs: 40, md: 46 },
                   color: selected ? BRAND_PURPLE : "#111827",
-                  "& svg": { fontSize: 24 },
+                  "& svg": { fontSize: { xs: 24, md: 27 } },
                 }}
               >
                 {item.icon}
@@ -181,7 +181,7 @@ export default function AppLayout() {
 
               <ListItemText
                 primary={item.text}
-                slotProps={{ primary: { sx: { fontWeight: 600, fontSize: 16 } } }}
+                slotProps={{ primary: { sx: { fontWeight: 600, fontSize: { xs: 16, md: 17 } } } }}
               />
 
             </ListItemButton>

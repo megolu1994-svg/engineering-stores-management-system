@@ -1049,31 +1049,41 @@ export default function MaterialReceipt() {
       </Box>
 
       {/* ---- Summary cards ---- */}
-      <Grid container spacing={1.25} sx={{ mb: 2 }}>
+      <Grid container spacing={{ xs: 1.25, md: 2 }} sx={{ mb: 2 }}>
         {summaryCards.map((card) => (
           <Grid key={card.label} size={{ xs: 6, sm: 3 }}>
             <Paper
               elevation={0}
               sx={{
-                p: 1.25,
+                p: { xs: 1.25, md: 2 },
                 borderRadius: 2.5,
                 boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)",
                 display: "flex",
                 alignItems: "center",
-                gap: 1,
+                gap: { xs: 1, md: 1.5 },
               }}
             >
-              <Avatar sx={{ bgcolor: card.color, width: 36, height: 36 }}>
+              <Avatar
+                sx={{
+                  bgcolor: card.color,
+                  width: { xs: 36, md: 48 },
+                  height: { xs: 36, md: 48 },
+                  "& svg": { fontSize: { xs: 20, md: 24 } },
+                }}
+              >
                 {card.icon}
               </Avatar>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 800, lineHeight: 1.1, fontSize: { xs: "1.25rem", md: "1.5rem" } }}
+                >
                   {card.value}
                 </Typography>
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ fontSize: "0.68rem" }}
+                  sx={{ fontSize: { xs: "0.68rem", md: "0.8rem" } }}
                   noWrap
                 >
                   {card.label}

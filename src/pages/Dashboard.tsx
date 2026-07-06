@@ -661,18 +661,19 @@ export default function Dashboard() {
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
             Live Overview
           </Typography>
-          <Grid container spacing={1.5} sx={{ mb: 3 }}>
+          <Grid container spacing={{ xs: 1.5, md: 2.5 }} sx={{ mb: 3 }}>
             {liveOverview.map((card) => (
               <Grid key={card.label} size={{ xs: 4 }}>
-                <Card elevation={0} sx={{ height: "100%", p: 1.5, textAlign: "center" }}>
+                <Card elevation={0} sx={{ height: "100%", p: { xs: 1.5, md: 3 }, textAlign: "center" }}>
                   <Avatar
                     sx={{
                       bgcolor: BRAND_PURPLE_SOFT,
                       color: BRAND_PURPLE,
-                      width: 44,
-                      height: 44,
+                      width: { xs: 44, md: 64 },
+                      height: { xs: 44, md: 64 },
                       mx: "auto",
-                      mb: 1,
+                      mb: { xs: 1, md: 1.5 },
+                      "& svg": { fontSize: { xs: 24, md: 32 } },
                     }}
                   >
                     {card.icon}
@@ -680,11 +681,15 @@ export default function Dashboard() {
                   {loadingStats ? (
                     <CircularProgress size={18} />
                   ) : (
-                    <Typography sx={{ fontWeight: 800, color: BRAND_PURPLE, fontSize: { xs: "1.1rem", sm: "1.4rem" } }}>
+                    <Typography sx={{ fontWeight: 800, color: BRAND_PURPLE, fontSize: { xs: "1.1rem", sm: "1.4rem", md: "2rem" } }}>
                       {card.value}
                     </Typography>
                   )}
-                  <Typography variant="caption" color="text.primary" sx={{ display: "block", fontWeight: 500 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.primary"
+                    sx={{ display: "block", fontWeight: 500, fontSize: { xs: "0.75rem", md: "0.9rem" } }}
+                  >
                     {card.label}
                   </Typography>
                 </Card>
@@ -696,15 +701,18 @@ export default function Dashboard() {
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
             Quick Actions
           </Typography>
-          <Grid container spacing={1.5} sx={{ mb: 3 }}>
+          <Grid container spacing={{ xs: 1.5, md: 2.5 }} sx={{ mb: 3 }}>
             {quickActions.map((action) => (
               <Grid key={action.label} size={{ xs: 6, md: 3 }}>
                 <Card elevation={0} sx={{ height: "100%" }}>
-                  <CardActionArea onClick={() => navigate(action.path)} sx={{ p: 2.5, textAlign: "center" }}>
-                    <Box sx={{ color: BRAND_PURPLE, mb: 1, "& svg": { fontSize: 36 } }}>
+                  <CardActionArea
+                    onClick={() => navigate(action.path)}
+                    sx={{ p: { xs: 2.5, md: 4 }, textAlign: "center" }}
+                  >
+                    <Box sx={{ color: BRAND_PURPLE, mb: 1, "& svg": { fontSize: { xs: 36, md: 48 } } }}>
                       {action.icon}
                     </Box>
-                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontSize: { xs: "0.875rem", md: "1rem" } }}>
                       {action.label}
                     </Typography>
                   </CardActionArea>
@@ -718,31 +726,46 @@ export default function Dashboard() {
       {activeTab === 1 && (
         <>
           {/* ---- Additional stats ---- */}
-          <Grid container spacing={1.5} sx={{ mb: 3 }}>
+          <Grid container spacing={{ xs: 1.5, md: 2.5 }} sx={{ mb: 3 }}>
             {secondaryStats.map((card) => (
               <Grid key={card.label} size={{ xs: 6, sm: 4, md: 3 }}>
                 <Card
                   elevation={0}
                   sx={{
-                    p: 1.5,
+                    p: { xs: 1.5, md: 2.5 },
                     display: "flex",
                     alignItems: "center",
-                    gap: 1.25,
+                    gap: { xs: 1.25, md: 1.75 },
                     height: "100%",
                   }}
                 >
-                  <Avatar sx={{ bgcolor: card.color, width: 40, height: 40 }}>
+                  <Avatar
+                    sx={{
+                      bgcolor: card.color,
+                      width: { xs: 40, md: 52 },
+                      height: { xs: 40, md: 52 },
+                      "& svg": { fontSize: { xs: 20, md: 26 } },
+                    }}
+                  >
                     {card.icon}
                   </Avatar>
                   <Box sx={{ minWidth: 0 }}>
                     {loadingStats ? (
                       <CircularProgress size={18} />
                     ) : (
-                      <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 800, lineHeight: 1.1, fontSize: { xs: "1.25rem", md: "1.6rem" } }}
+                      >
                         {card.value}
                       </Typography>
                     )}
-                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      noWrap
+                      sx={{ display: "block", fontSize: { xs: "0.75rem", md: "0.85rem" } }}
+                    >
                       {card.label}
                     </Typography>
                   </Box>

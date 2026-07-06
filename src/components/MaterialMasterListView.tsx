@@ -56,8 +56,8 @@ function StatItem({ icon, value, label }: { icon: ReactNode; value: string; labe
     <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 1.25, minWidth: 0 }}>
       <Box
         sx={{
-          width: { xs: 34, sm: 40 },
-          height: { xs: 34, sm: 40 },
+          width: { xs: 34, sm: 40, md: 48 },
+          height: { xs: 34, sm: 40, md: 48 },
           borderRadius: 2,
           bgcolor: BRAND_PURPLE_SOFT,
           color: BRAND_PURPLE,
@@ -65,15 +65,21 @@ function StatItem({ icon, value, label }: { icon: ReactNode; value: string; labe
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
+          "& svg": { fontSize: { xs: 18, sm: 20, md: 24 } },
         }}
       >
         {icon}
       </Box>
       <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.95rem", sm: "1rem" } }} noWrap>
+        <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.95rem", sm: "1rem", md: "1.15rem" } }} noWrap>
           {value}
         </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          sx={{ display: "block", fontSize: { xs: "0.75rem", md: "0.85rem" } }}
+        >
           {label}
         </Typography>
       </Box>
