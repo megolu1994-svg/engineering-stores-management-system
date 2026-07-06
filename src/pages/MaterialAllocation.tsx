@@ -30,6 +30,7 @@ import MaterialPhotoUploadButton from "../components/MaterialPhotoUploadButton";
 import AllocationSummary from "../components/AllocationSummary";
 import AllocationTable from "../components/AllocationTable";
 import AllocationForm from "../components/AllocationForm";
+import BulkAllocateCard from "../components/BulkAllocateCard";
 import CurrentStockTab from "../components/CurrentStockTab";
 import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
@@ -470,6 +471,15 @@ export default function MaterialAllocation() {
               Please select a material to allocate stock.
             </Alert>
           )}
+
+          <BulkAllocateCard
+            onShowSnackbar={showSnackbar}
+            onImportComplete={() => {
+              if (material) {
+                loadAllocations(material.material_code);
+              }
+            }}
+          />
 
           <Box ref={allocationsRef}>
             <Typography

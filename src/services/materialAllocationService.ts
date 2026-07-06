@@ -542,6 +542,420 @@ export async function bulkApplyOpeningStock(
 }
 
 /* =========================================================================
+ * Bulk Allocation
+ * ========================================================================= */
+
+export interface AllocationImportRow {
+  rowNumber: number;
+  material_code: string;
+  location_code: string;
+  quantity: number;
+  /** Set at preview time when the requested quantity is expected to
+   *  exceed the material's unallocated balance (estimated against a
+   *  running total across the file) - informational only, the row is
+   *  still importable and the actual cap is re-checked live on import. */
+  warning?: string;
+}
+
+export interface AllocationInvalidRow {
+  rowNumber: number;
+  material_code: string;
+  location_code: string;
+  quantityRaw: string;
+  errors: string[];
+}
+
+export interface AllocationValidationResult {
+  totalRecords: number;
+  validRows: AllocationImportRow[];
+  invalidRows: AllocationInvalidRow[];
+}
+
+function getAllocationFieldValue(
+  row: Record<string, unknown>,
+  aliases: string[]
+): string {
+  const keys = Object.keys(row);
+
+  for (const alias of aliases) {
+    const match = keys.find(
+      (key) => key.trim().toLowerCase() === alias.toLowerCase()
+    );
+
+    if (match !== undefined) {
+      const value = row[match];
+      return value === null || value === undefined
+        ? ""
+        : String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function isAllocationRowBlank(row: Record<string, unknown>): boolean {
+  return Object.values(row).every((value) => {
+    if (value === null || value === undefined) return true;
+    return String(value).trim() === "";
+  });
+}
+
+function parseAllocationQuantity(raw: string): number {
+  const cleaned = raw.replace(/,/g, "").trim();
+
+  if (!cleaned) {
+    return NaN;
+  }
+
+  return Number(cleaned);
+}
+
+/**
+ * Parses and validates a bulk Allocate Excel file against the database:
+ * required fields, numeric quantity, that the material/location actually
+ * exist, and (best-effort, since the file may allocate the same material
+ * more than once) that a running total of each material's current
+ * unallocated balance can cover every row referencing it. Rows that would
+ * exceed the balance are NOT rejected - they're kept in `validRows` with
+ * a `warning`, since the user may still choose to import them and have
+ * only the available balance applied (see `bulkApplyAllocation`).
+ */
+export async function validateAllocationExcelRows(
+  rawRows: Record<string, unknown>[]
+): Promise<AllocationValidationResult> {
+  const invalidRows: AllocationInvalidRow[] = [];
+
+  const candidates: {
+    rowNumber: number;
+    material_code: string;
+    location_code: string;
+    quantity: number;
+  }[] = [];
+
+  let totalRecords = 0;
+
+  rawRows.forEach((row, index) => {
+    if (isAllocationRowBlank(row)) {
+      return;
+    }
+
+    totalRecords += 1;
+
+    const rowNumber = index + 2;
+
+    const materialCode = getAllocationFieldValue(row, [
+      "Material Code",
+      "material_code",
+      "Material",
+    ]);
+
+    const locationCode = getAllocationFieldValue(row, [
+      "Location Code",
+      "location_code",
+      "Location",
+    ]);
+
+    const quantityRaw = getAllocationFieldValue(row, [
+      "Quantity",
+      "Qty",
+      "Allocate Quantity",
+      "Allocation Quantity",
+    ]);
+
+    const errors: string[] = [];
+
+    if (!materialCode) {
+      errors.push("Material Code is required.");
+    }
+
+    if (!locationCode) {
+      errors.push("Location Code is required.");
+    } else if (locationCode.toUpperCase() === UNALLOCATED_LOCATION) {
+      errors.push("Location Code cannot be UNALLOCATED.");
+    }
+
+    const quantity = parseAllocationQuantity(quantityRaw);
+
+    if (!quantityRaw) {
+      errors.push("Quantity is required.");
+    } else if (Number.isNaN(quantity)) {
+      errors.push("Quantity must be a number.");
+    } else if (quantity <= 0) {
+      errors.push("Quantity must be greater than zero.");
+    }
+
+    if (errors.length > 0) {
+      invalidRows.push({
+        rowNumber,
+        material_code: materialCode,
+        location_code: locationCode,
+        quantityRaw,
+        errors,
+      });
+      return;
+    }
+
+    candidates.push({
+      rowNumber,
+      material_code: materialCode,
+      location_code: locationCode,
+      quantity,
+    });
+  });
+
+  if (candidates.length === 0) {
+    return { totalRecords, validRows: [], invalidRows };
+  }
+
+  const materialCodes = Array.from(
+    new Set(candidates.map((c) => c.material_code))
+  );
+  const locationCodes = Array.from(
+    new Set(candidates.map((c) => c.location_code))
+  );
+
+  const [materialsResult, locationsResult, unallocatedResult] =
+    await Promise.all([
+      supabase
+        .from("material_master")
+        .select("material_code")
+        .in("material_code", materialCodes),
+      supabase
+        .from("location_master")
+        .select("location_code")
+        .in("location_code", locationCodes),
+      supabase
+        .from("material_allocation")
+        .select("material_code, quantity")
+        .eq("location_code", UNALLOCATED_LOCATION)
+        .in("material_code", materialCodes),
+    ]);
+
+  const knownMaterials = new Set(
+    (materialsResult.data ?? []).map(
+      (m: { material_code: string }) => m.material_code
+    )
+  );
+  const knownLocations = new Set(
+    (locationsResult.data ?? []).map(
+      (l: { location_code: string }) => l.location_code
+    )
+  );
+
+  const runningBalance = new Map<string, number>();
+  for (const row of (unallocatedResult.data ?? []) as {
+    material_code: string;
+    quantity: number;
+  }[]) {
+    runningBalance.set(row.material_code, Number(row.quantity));
+  }
+
+  const validRows: AllocationImportRow[] = [];
+
+  for (const candidate of candidates) {
+    const errors: string[] = [];
+
+    if (!knownMaterials.has(candidate.material_code)) {
+      errors.push(`Material Code "${candidate.material_code}" was not found.`);
+    }
+
+    if (!knownLocations.has(candidate.location_code)) {
+      errors.push(`Location Code "${candidate.location_code}" was not found.`);
+    }
+
+    if (errors.length > 0) {
+      invalidRows.push({
+        rowNumber: candidate.rowNumber,
+        material_code: candidate.material_code,
+        location_code: candidate.location_code,
+        quantityRaw: String(candidate.quantity),
+        errors,
+      });
+      continue;
+    }
+
+    const available = runningBalance.get(candidate.material_code) ?? 0;
+    let warning: string | undefined;
+
+    if (candidate.quantity > available) {
+      warning =
+        available > 0
+          ? `Only ${available} unallocated for ${candidate.material_code} - the rest of this request will be skipped.`
+          : `No unallocated balance left for ${candidate.material_code} - this row will be skipped.`;
+    }
+
+    runningBalance.set(
+      candidate.material_code,
+      Math.max(0, available - candidate.quantity)
+    );
+
+    validRows.push({
+      rowNumber: candidate.rowNumber,
+      material_code: candidate.material_code,
+      location_code: candidate.location_code,
+      quantity: candidate.quantity,
+      warning,
+    });
+  }
+
+  return { totalRecords, validRows, invalidRows };
+}
+
+/**
+ * Applies a single bulk-allocate row: moves stock out of the material's
+ * UNALLOCATED balance into the target location, ADDING to any existing
+ * allocation already at that location rather than overwriting it (so a
+ * material allocated there before is never disturbed). Never allocates
+ * more than is currently unallocated - if the requested quantity exceeds
+ * it, only the available balance is moved and the rest is simply not
+ * applied; other locations' allocations for this material are untouched.
+ * Returns the quantity actually applied.
+ */
+async function applyBulkAllocationRow(
+  materialCode: string,
+  locationCode: string,
+  requestedQuantity: number
+): Promise<number> {
+  const existing = await getAllocations(materialCode);
+
+  const unallocatedRow = existing.find(
+    (a) => a.location_code === UNALLOCATED_LOCATION
+  );
+  const unallocatedQty = unallocatedRow?.quantity ?? 0;
+
+  const appliedQuantity = Math.min(requestedQuantity, unallocatedQty);
+
+  if (appliedQuantity <= 0) {
+    throw new Error(`No unallocated balance available for ${materialCode}.`);
+  }
+
+  const targetRow = existing.find((a) => a.location_code === locationCode);
+
+  // Shared by both halves of this move, so the Movement report can pair
+  // the OUT (UNALLOCATED) and IN (target location) rows back into one.
+  const referenceNumber = generateReferenceNumber("ALC");
+
+  await applyStockMovement({
+    materialCode,
+    locationCode: UNALLOCATED_LOCATION,
+    prevQuantity: unallocatedQty,
+    newQuantity: unallocatedQty - appliedQuantity,
+    allocationId: unallocatedRow?.id,
+    transactionType: "ALLOCATION",
+    referenceType: "ALLOCATION",
+    referenceNumber,
+    remarks: "Bulk Excel import",
+  });
+
+  const prevTargetQuantity = targetRow?.quantity ?? 0;
+
+  await applyStockMovement({
+    materialCode,
+    locationCode,
+    prevQuantity: prevTargetQuantity,
+    newQuantity: prevTargetQuantity + appliedQuantity,
+    allocationId: targetRow?.id,
+    transactionType: "ALLOCATION",
+    referenceType: "ALLOCATION",
+    referenceNumber,
+    remarks: "Bulk Excel import",
+  });
+
+  return appliedQuantity;
+}
+
+export interface AllocationImportOutcome {
+  rowNumber: number;
+  material_code: string;
+  location_code: string;
+  requestedQuantity: number;
+  appliedQuantity: number;
+  status: "applied" | "partial" | "failed";
+  message?: string;
+}
+
+export interface AllocationImportSummary {
+  totalRows: number;
+  applied: number;
+  partial: number;
+  failed: number;
+  outcomes: AllocationImportOutcome[];
+}
+
+/**
+ * Applies a batch of Bulk Allocate rows one at a time (never in parallel),
+ * so that when the same material appears on more than one row, each row
+ * sees the balance left behind by the one before it. A single failing or
+ * balance-short row never blocks the rest.
+ */
+export async function bulkApplyAllocation(
+  rows: AllocationImportRow[],
+  onProgress?: (processed: number, total: number) => void
+): Promise<AllocationImportSummary> {
+  const summary: AllocationImportSummary = {
+    totalRows: rows.length,
+    applied: 0,
+    partial: 0,
+    failed: 0,
+    outcomes: [],
+  };
+
+  let processed = 0;
+
+  for (const row of rows) {
+    try {
+      const appliedQuantity = await applyBulkAllocationRow(
+        row.material_code,
+        row.location_code,
+        row.quantity
+      );
+
+      if (appliedQuantity < row.quantity) {
+        summary.partial += 1;
+        summary.outcomes.push({
+          rowNumber: row.rowNumber,
+          material_code: row.material_code,
+          location_code: row.location_code,
+          requestedQuantity: row.quantity,
+          appliedQuantity,
+          status: "partial",
+          message: `Only ${appliedQuantity} of ${row.quantity} requested was allocated - the unallocated balance ran out.`,
+        });
+      } else {
+        summary.applied += 1;
+        summary.outcomes.push({
+          rowNumber: row.rowNumber,
+          material_code: row.material_code,
+          location_code: row.location_code,
+          requestedQuantity: row.quantity,
+          appliedQuantity,
+          status: "applied",
+        });
+      }
+    } catch (err) {
+      summary.failed += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        location_code: row.location_code,
+        requestedQuantity: row.quantity,
+        appliedQuantity: 0,
+        status: "failed",
+        message: err instanceof Error ? err.message : "Unknown error.",
+      });
+    }
+
+    processed += 1;
+
+    if (onProgress) {
+      onProgress(processed, rows.length);
+    }
+  }
+
+  return summary;
+}
+
+/* =========================================================================
  * Adjustment
  * ========================================================================= */
 
