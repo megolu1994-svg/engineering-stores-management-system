@@ -698,7 +698,7 @@ export default function Dashboard() {
           </Typography>
           <Grid container spacing={1.5} sx={{ mb: 3 }}>
             {quickActions.map((action) => (
-              <Grid key={action.label} size={{ xs: 6 }}>
+              <Grid key={action.label} size={{ xs: 6, md: 3 }}>
                 <Card elevation={0} sx={{ height: "100%" }}>
                   <CardActionArea onClick={() => navigate(action.path)} sx={{ p: 2.5, textAlign: "center" }}>
                     <Box sx={{ color: BRAND_PURPLE, mb: 1, "& svg": { fontSize: 36 } }}>
