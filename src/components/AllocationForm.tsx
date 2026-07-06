@@ -13,6 +13,11 @@ import { usePersistentState } from "../hooks/usePersistentState";
 import type { Location } from "../types/location";
 
 interface Props {
+  // Scopes the persisted draft to the material being allocated - the
+  // caller also passes this as this component's React `key` so a fresh
+  // instance (and a fresh draft) is used whenever it changes, instead
+  // of leaking one material's in-progress location/quantity into another's.
+  materialCode: string;
   onAllocate: (
     locationCode: string,
     quantity: number
@@ -20,14 +25,18 @@ interface Props {
 }
 
 export default function AllocationForm({
+  materialCode,
   onAllocate,
 }: Props) {
 
   const [location, setLocation] =
-    usePersistentState<Location | null>("allocationForm.location", null);
+    usePersistentState<Location | null>(
+      `allocationForm.${materialCode}.location`,
+      null
+    );
 
   const [quantity, setQuantity] =
-    usePersistentState("allocationForm.quantity", "");
+    usePersistentState(`allocationForm.${materialCode}.quantity`, "");
 
   function handleAllocate() {
 

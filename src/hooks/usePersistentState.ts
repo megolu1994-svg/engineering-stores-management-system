@@ -15,6 +15,21 @@ function readDraft<T>(key: string, fallback: T): T {
 }
 
 /**
+ * Removes a persisted draft outside of React (no re-render). Useful when
+ * a parent needs to discard a child's stale draft before it mounts - e.g.
+ * clearing a leftover "Add" draft right before opening a fresh Add form,
+ * so an abandoned attempt from earlier doesn't resurface in an unrelated
+ * later one.
+ */
+export function clearPersistedDraft(key: string): void {
+  try {
+    sessionStorage.removeItem(storageKey(key));
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Drop-in replacement for useState that mirrors the value to
  * sessionStorage under `key`. Screens in this app are routed with
  * react-router, which unmounts the previous page (and its useState)

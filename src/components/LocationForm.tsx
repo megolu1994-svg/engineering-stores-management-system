@@ -24,21 +24,25 @@ const emptyLocation: Location = {
   is_active: true,
 };
 
+// Draft is keyed by which record is being edited (or "add" for a new
+// one) so an in-progress edit survives navigating away and back without
+// leaking into an unrelated Add/Edit later. Exported so the parent page
+// can clear a stale draft right before deliberately opening a fresh
+// Add/Edit (see LocationMaster.tsx's handleAdd/handleEdit).
+export function locationFormDraftKey(location?: Location | null): string {
+  return location
+    ? `locationForm.edit.${location.location_code}`
+    : "locationForm.add";
+}
+
 export default function LocationForm({
   location,
   onSave,
   onCancel,
 }: Props) {
 
-  // Draft is keyed by which record is being edited (or "add" for a new
-  // one) so an in-progress edit survives navigating away and back
-  // without leaking into an unrelated Add/Edit later.
-  const draftKey = location
-    ? `locationForm.edit.${location.location_code}`
-    : "locationForm.add";
-
   const [formData, setFormData, clearDraft] = usePersistentState<Location>(
-    draftKey,
+    locationFormDraftKey(location),
     location ?? emptyLocation
   );
 
