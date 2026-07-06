@@ -739,46 +739,56 @@ export default function LocationTransfer() {
                       </Box>
                     )}
 
-                    {row.stockLocations.length > 0 && (
-                      <TextField
-                        select
-                        size="small"
-                        fullWidth
-                        label="Add Location"
-                        value=""
-                        onChange={(e) => {
-                          const allocation = row.stockLocations.find(
-                            (a) => a.location_code === e.target.value
-                          );
-                          if (allocation) addLocationRow(row.rowKey, allocation);
-                        }}
-                        sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                        slotProps={{
-                          select: {
-                            displayEmpty: true,
-                            renderValue: () => (
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "primary.main" }}>
-                                <AddIcon fontSize="small" />
-                                <span>Add Location</span>
-                              </Box>
-                            ),
-                          },
-                        }}
-                      >
-                        {row.stockLocations
-                          .filter(
-                            (a) =>
-                              !row.locations.some(
-                                (l) => l.from_location_code === a.location_code
-                              )
+                    {(() => {
+                      const remainingLocations = row.stockLocations.filter(
+                        (a) =>
+                          !row.locations.some(
+                            (l) => l.from_location_code === a.location_code
                           )
-                          .map((a) => (
+                      );
+
+                      if (remainingLocations.length === 0) {
+                        return row.locations.length > 0 ? (
+                          <Alert severity="info" sx={{ mt: 1, py: 0.25 }}>
+                            All locations with stock for this material have been added.
+                          </Alert>
+                        ) : null;
+                      }
+
+                      return (
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          label="Add Location"
+                          value=""
+                          onChange={(e) => {
+                            const allocation = remainingLocations.find(
+                              (a) => a.location_code === e.target.value
+                            );
+                            if (allocation) addLocationRow(row.rowKey, allocation);
+                          }}
+                          sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                          slotProps={{
+                            select: {
+                              displayEmpty: true,
+                              renderValue: () => (
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "primary.main" }}>
+                                  <AddIcon fontSize="small" />
+                                  <span>Add Location</span>
+                                </Box>
+                              ),
+                            },
+                          }}
+                        >
+                          {remainingLocations.map((a) => (
                             <MenuItem key={a.location_code} value={a.location_code}>
                               {a.location_code} (available: {a.quantity})
                             </MenuItem>
                           ))}
-                      </TextField>
-                    )}
+                        </TextField>
+                      );
+                    })()}
                   </Box>
                 )}
               </CardContent>
