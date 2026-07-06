@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Alert,
@@ -197,6 +197,20 @@ export default function LocationTransfer() {
       );
     }
   }
+
+  // A row's stock lookup can be interrupted mid-flight if the user
+  // navigates away before it resolves - since materialRows is now
+  // persisted, that row would otherwise be restored permanently stuck
+  // at "loading" with no way to recover. Re-run the lookup for any row
+  // left in that state once, right after mount.
+  useEffect(() => {
+    materialRows.forEach((row) => {
+      if (row.material && row.loadingStock) {
+        handleMaterialSelect(row.rowKey, row.material);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function addLocationRow(materialRowKey: string, allocation: MaterialAllocation) {
     setMaterialRows((prev) =>

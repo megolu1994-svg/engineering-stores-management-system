@@ -42,7 +42,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 
-import MaterialForm from "../components/MaterialForm";
+import MaterialForm, { materialFormDraftKey } from "../components/MaterialForm";
 import MaterialMasterListView from "../components/MaterialMasterListView";
 import MaterialInfoDialog from "../components/MaterialInfoDialog";
 
@@ -63,7 +63,7 @@ import { uploadMaterialPhoto } from "../services/materialPhotoService";
 
 import type { Material } from "../types/material";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
-import { usePersistentState } from "../hooks/usePersistentState";
+import { usePersistentState, clearPersistedDraft } from "../hooks/usePersistentState";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const IMPORT_BATCH_SIZE = 500;
@@ -401,11 +401,18 @@ export default function MaterialMaster() {
   );
 
   function handleEdit(material: Material) {
+    // A deliberate click on Edit is a fresh start - discard any draft
+    // left over from a previous, abandoned edit of this same material
+    // (e.g. its data may have changed since). Accidentally navigating
+    // away mid-edit and coming back is still covered separately, since
+    // showForm/selectedMaterial themselves are restored automatically.
+    clearPersistedDraft(materialFormDraftKey(material));
     setSelectedMaterial(material);
     setShowForm(true);
   }
 
   function handleAdd() {
+    clearPersistedDraft(materialFormDraftKey(null));
     setSelectedMaterial(null);
     setShowForm(true);
   }

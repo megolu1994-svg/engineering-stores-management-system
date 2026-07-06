@@ -39,20 +39,24 @@ const fieldSx = {
   },
 };
 
+// Draft is keyed by which record is being edited (or "add" for a new
+// one) so an in-progress edit survives navigating away and back without
+// leaking into an unrelated Add/Edit later. Exported so the parent page
+// can clear a stale draft right before deliberately opening a fresh
+// Add/Edit (see MaterialMaster.tsx's handleAdd/handleEdit).
+export function materialFormDraftKey(material?: Material | null): string {
+  return material
+    ? `materialForm.edit.${material.material_code}`
+    : "materialForm.add";
+}
+
 export default function MaterialForm({
   material,
   onSave,
   onCancel,
 }: Props) {
-  // Draft is keyed by which record is being edited (or "add" for a new
-  // one) so an in-progress edit survives navigating away and back
-  // without leaking into an unrelated Add/Edit later.
-  const draftKey = material
-    ? `materialForm.edit.${material.material_code}`
-    : "materialForm.add";
-
   const [formData, setFormData, clearDraft] = usePersistentState<Material>(
-    draftKey,
+    materialFormDraftKey(material),
     material ?? emptyMaterial
   );
 

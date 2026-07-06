@@ -166,6 +166,31 @@ export default function MaterialAllocation() {
     loadAllocations(material.material_code);
   }, [material]);
 
+  // The selected material can be restored from a previous visit (see
+  // usePersistentState above) - refresh its own fields once on mount in
+  // case its Material Master record changed elsewhere in the meantime,
+  // so uom/description shown here don't go stale across a long gap.
+  useEffect(() => {
+    if (!material) return;
+
+    let cancelled = false;
+
+    searchMaterials(material.material_code, 0, 1)
+      .then((results) => {
+        if (cancelled) return;
+        const exact = results.find(
+          (m) => m.material_code === material.material_code
+        );
+        if (exact) setMaterial(exact);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Called when a Recent Activity / search card is tapped in the Current
   // Stock tab: looks up the full Material record (reusing the existing
   // searchMaterials service, a targeted lookup - not a full table load)
@@ -472,7 +497,11 @@ export default function MaterialAllocation() {
           />
 
           {material ? (
-            <AllocationForm onAllocate={handleAllocate} />
+            <AllocationForm
+              key={material.material_code}
+              materialCode={material.material_code}
+              onAllocate={handleAllocate}
+            />
           ) : (
             <Alert severity="info" sx={{ mb: 1, py: 0.25 }}>
               Please select a material to allocate stock.

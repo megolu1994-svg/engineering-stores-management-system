@@ -36,7 +36,7 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
-import LocationForm from "../components/LocationForm";
+import LocationForm, { locationFormDraftKey } from "../components/LocationForm";
 import LocationTable from "../components/LocationTable";
 
 import {
@@ -53,7 +53,7 @@ import {
 
 import type { Location } from "../types/location";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
-import { usePersistentState } from "../hooks/usePersistentState";
+import { usePersistentState, clearPersistedDraft } from "../hooks/usePersistentState";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const BROWSE_PAGE_SIZE = 50;
@@ -365,11 +365,18 @@ export default function LocationMaster() {
   );
 
   function handleAdd() {
+    clearPersistedDraft(locationFormDraftKey(null));
     setSelectedLocation(null);
     setShowForm(true);
   }
 
   function handleEdit(location: Location) {
+    // A deliberate click on Edit is a fresh start - discard any draft
+    // left over from a previous, abandoned edit of this same location.
+    // Accidentally navigating away mid-edit and coming back is still
+    // covered separately, since showForm/selectedLocation are restored
+    // automatically.
+    clearPersistedDraft(locationFormDraftKey(location));
     setSelectedLocation(location);
     setShowForm(true);
   }

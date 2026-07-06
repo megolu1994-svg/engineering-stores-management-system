@@ -415,6 +415,18 @@ export default function MaterialReceipt() {
     }
   }
 
+  // If a "Create DRC" draft was left open (formOpen restored true from a
+  // previous visit) in auto-date mode, refresh the date/suggested number
+  // once on mount - otherwise a draft resumed on a later day would keep
+  // showing the day it was originally opened.
+  useEffect(() => {
+    if (formOpen && !editingReceipt && !manualDrcEntry) {
+      setDrcDate(todayIso());
+      loadDrcSuggestion();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Newly-picked files can't be persisted (File objects aren't
   // serializable), but the references to already-uploaded photos/
   // attachments are plain data and are worth keeping.
