@@ -207,7 +207,7 @@ export default function BulkAllocateCard({
 
       setSummary(result);
 
-      downloadAllocationImportReport(validation, result);
+      await downloadAllocationImportReport(validation, result, file?.name);
 
       onShowSnackbar(
         `Bulk allocate complete. Applied: ${result.applied}, Partial: ${result.partial}, Failed: ${result.failed}. Result report downloaded.`,
@@ -222,13 +222,17 @@ export default function BulkAllocateCard({
     }
   }
 
-  function handleDownloadReport() {
+  async function handleDownloadReport() {
     if (!validation || !summary) {
       return;
     }
 
-    downloadAllocationImportReport(validation, summary);
-    onShowSnackbar("Import report downloaded.", "success");
+    try {
+      await downloadAllocationImportReport(validation, summary, file?.name);
+      onShowSnackbar("Import report downloaded.", "success");
+    } catch {
+      onShowSnackbar("Failed to download the import report.", "error");
+    }
   }
 
   const issueBreakdown = validation ? buildIssueBreakdown(validation) : null;

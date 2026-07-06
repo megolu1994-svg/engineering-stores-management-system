@@ -1,9 +1,7 @@
 import { supabase } from "../config/supabase";
 import type { Location } from "../types/location";
-import {
-  downloadBulkImportReport,
-  type BulkImportReportRow,
-} from "../utils/bulkImportReport";
+import { type BulkImportReportRow } from "../utils/bulkImportReport";
+import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
 export async function getLocations(): Promise<Location[]> {
   const { data, error } = await supabase
@@ -441,16 +439,18 @@ const LOCATION_REPORT_COLUMNS = [
 ];
 
 /**
- * Builds and immediately downloads a combined Excel report for a Location
- * Master bulk import, covering every row submitted: rows rejected by
- * validation before the import ran, rows that imported/updated
- * successfully, and rows that failed during the import itself - along
- * with the reason for anything other than a clean success.
+ * Builds a combined Excel report for a Location Master bulk import,
+ * covering every row submitted: rows rejected by validation before the
+ * import ran, rows that imported/updated successfully, and rows that
+ * failed during the import itself - along with the reason for anything
+ * other than a clean success. Saves the report to Reports > Import
+ * Reports history and then downloads it immediately.
  */
-export function downloadLocationImportReport(
+export async function downloadLocationImportReport(
   validation: LocationValidationResult,
-  summary: LocationImportSummary
-): void {
+  summary: LocationImportSummary,
+  fileName?: string | null
+): Promise<void> {
   const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
     rowNumber: row.rowNumber,
     status: "Rejected",
@@ -480,7 +480,13 @@ export function downloadLocationImportReport(
     },
   }));
 
-  downloadBulkImportReport({
+  await recordAndDownloadBulkImportReport({
+    importType: "Location Master",
+    fileName,
+    totalRows: validation.totalRecords,
+    successCount: summary.imported + summary.updated,
+    rejectedCount: validation.invalidRows.length,
+    failedCount: summary.failed,
     fileNamePrefix: "Location_Import",
     columns: LOCATION_REPORT_COLUMNS,
     rows: [...rejected, ...succeeded, ...failed],

@@ -8,10 +8,10 @@ import {
 } from "./inventoryTransactionService";
 
 import {
-  downloadBulkImportReport,
   type BulkImportReportRow,
   type BulkImportRowStatus,
 } from "../utils/bulkImportReport";
+import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 
@@ -569,16 +569,18 @@ const OPENING_STOCK_REPORT_COLUMNS = [
 ];
 
 /**
- * Builds and immediately downloads a combined Excel report for an Opening
- * Stock bulk import, covering every row submitted: rows rejected by
- * validation before the import ran, rows applied successfully, and rows
- * that failed during the import itself - along with the reason for
- * anything other than a clean success.
+ * Builds a combined Excel report for an Opening Stock bulk import,
+ * covering every row submitted: rows rejected by validation before the
+ * import ran, rows applied successfully, and rows that failed during the
+ * import itself - along with the reason for anything other than a clean
+ * success. Saves the report to Reports > Import Reports history and then
+ * downloads it immediately.
  */
-export function downloadOpeningStockImportReport(
+export async function downloadOpeningStockImportReport(
   validation: OpeningStockValidationResult,
-  summary: OpeningStockImportSummary
-): void {
+  summary: OpeningStockImportSummary,
+  fileName?: string | null
+): Promise<void> {
   const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
     rowNumber: row.rowNumber,
     status: "Rejected",
@@ -611,7 +613,13 @@ export function downloadOpeningStockImportReport(
     },
   }));
 
-  downloadBulkImportReport({
+  await recordAndDownloadBulkImportReport({
+    importType: "Opening Stock",
+    fileName,
+    totalRows: validation.totalRecords,
+    successCount: summary.applied,
+    rejectedCount: validation.invalidRows.length,
+    failedCount: summary.failed,
     fileNamePrefix: "Opening_Stock_Import",
     columns: OPENING_STOCK_REPORT_COLUMNS,
     rows: [...rejected, ...succeeded, ...failed],
@@ -1056,16 +1064,18 @@ const ALLOCATION_OUTCOME_STATUS: Record<
 };
 
 /**
- * Builds and immediately downloads a combined Excel report for a Bulk
- * Allocate import, covering every row submitted: rows rejected by
- * validation before the import ran, and every outcome (applied, partial,
- * or failed) recorded while applying the rest - along with the reason for
- * anything other than a clean, full allocation.
+ * Builds a combined Excel report for a Bulk Allocate import, covering
+ * every row submitted: rows rejected by validation before the import ran,
+ * and every outcome (applied, partial, or failed) recorded while applying
+ * the rest - along with the reason for anything other than a clean, full
+ * allocation. Saves the report to Reports > Import Reports history and
+ * then downloads it immediately.
  */
-export function downloadAllocationImportReport(
+export async function downloadAllocationImportReport(
   validation: AllocationValidationResult,
-  summary: AllocationImportSummary
-): void {
+  summary: AllocationImportSummary,
+  fileName?: string | null
+): Promise<void> {
   const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
     rowNumber: row.rowNumber,
     status: "Rejected",
@@ -1090,7 +1100,13 @@ export function downloadAllocationImportReport(
     },
   }));
 
-  downloadBulkImportReport({
+  await recordAndDownloadBulkImportReport({
+    importType: "Bulk Allocate",
+    fileName,
+    totalRows: validation.totalRecords,
+    successCount: summary.applied + summary.partial,
+    rejectedCount: validation.invalidRows.length,
+    failedCount: summary.failed,
     fileNamePrefix: "Bulk_Allocate_Import",
     columns: ALLOCATION_REPORT_COLUMNS,
     rows: [...rejected, ...outcomes],
