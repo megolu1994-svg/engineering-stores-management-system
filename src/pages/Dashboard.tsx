@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -21,7 +22,9 @@ import {
   Tabs,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import PlaceIcon from "@mui/icons-material/Place";
@@ -39,6 +42,9 @@ import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import CloseIcon from "@mui/icons-material/Close";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import InfoIcon from "@mui/icons-material/Info";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 
 import { supabase } from "../config/supabase";
 import {
@@ -53,6 +59,7 @@ import AllocationTable from "../components/AllocationTable";
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
+import { useHeaderSlot } from "../components/AppLayout";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
@@ -172,14 +179,38 @@ interface DashboardSearchResult {
 }
 
 const quickActions = [
-  { label: "Inventory", path: "/allocation", icon: <Inventory2Icon /> },
-  { label: "Material Receipt", path: "/material-receipt", icon: <AssignmentReturnedIcon /> },
-  { label: "Material Issue", path: "/material-issue", icon: <AssignmentReturnIcon /> },
-  { label: "Reports", path: "/reports", icon: <BarChartIcon /> },
+  {
+    label: "Inventory",
+    description: "View stock and material availability",
+    path: "/allocation",
+    icon: <Inventory2Icon />,
+  },
+  {
+    label: "Material Receipt",
+    description: "Receive new materials into store",
+    path: "/material-receipt",
+    icon: <AssignmentReturnedIcon />,
+  },
+  {
+    label: "Material Issue",
+    description: "Issue materials to departments",
+    path: "/material-issue",
+    icon: <AssignmentReturnIcon />,
+  },
+  {
+    label: "Reports",
+    description: "View reports and export data",
+    path: "/reports",
+    icon: <BarChartIcon />,
+  },
 ];
 
 export default function Dashboard() {
   const navigate = useNavigate();
+
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down("md"));
+  const headerSlotEl = useHeaderSlot();
 
   const [activeTab, setActiveTab] = useState(0);
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
@@ -200,6 +231,13 @@ export default function Dashboard() {
 
   const [lowStock, setLowStock] = useState<LowStockRow[]>([]);
   const [loadingLowStock, setLoadingLowStock] = useState(true);
+
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -523,79 +561,121 @@ export default function Dashboard() {
     { label: "Pending DRC", value: stats.pendingDrc, icon: <PendingActionsIcon />, color: "info.main" },
   ];
 
+  const searchField = (
+    <TextField
+      fullWidth
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+      placeholder="Search material code or description..."
+      slotProps={{
+        input: {
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon sx={{ color: BRAND_PURPLE }} />
+            </InputAdornment>
+          ),
+          endAdornment: searchTerm && (
+            <InputAdornment position="end">
+              <IconButton size="small" onClick={() => setSearchTerm("")}>
+                <ClearIcon fontSize="small" />
+              </IconButton>
+            </InputAdornment>
+          ),
+          sx: {
+            bgcolor: "#FFFFFF",
+            borderRadius: "12px",
+            "& fieldset": { border: "none" },
+          },
+        },
+      }}
+    />
+  );
+
   return (
     <Box sx={{ pb: 4 }}>
 
-      {/* ---- Purple hero: search + tabs ---- */}
-      <Box
-        sx={{
-          bgcolor: BRAND_PURPLE,
-          mx: { xs: -2, md: -3 },
-          mt: { xs: -2, md: -3 },
-          mb: 3,
-          px: { xs: 2, md: 3 },
-          pt: 2.5,
-          pb: 0,
-        }}
-      >
-        <TextField
-          fullWidth
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search material code or description..."
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ color: BRAND_PURPLE }} />
-                </InputAdornment>
-              ),
-              endAdornment: searchTerm && (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={() => setSearchTerm("")}>
-                    <ClearIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ),
-              sx: {
-                bgcolor: "#FFFFFF",
-                borderRadius: "12px",
-                "& fieldset": { border: "none" },
-              },
+      {/* ---- Mobile only: purple hero with search + tabs, unchanged ---- */}
+      {mobile && (
+        <Box
+          sx={{
+            bgcolor: BRAND_PURPLE,
+            mx: -2,
+            mt: -2,
+            mb: 3,
+            px: 2,
+            pt: 2.5,
+            pb: 0,
+          }}
+        >
+          {searchField}
+
+          {!isSearchMode && (
+            <Tabs
+              value={activeTab}
+              onChange={(_e, value) => setActiveTab(value)}
+              textColor="inherit"
+              variant="fullWidth"
+              sx={{
+                mt: 2,
+                minHeight: 44,
+                "& .MuiTab-root": {
+                  color: "#FFFFFF",
+                  fontWeight: 700,
+                  minHeight: 44,
+                },
+                "& .Mui-selected": {
+                  color: "#FFFFFF !important",
+                },
+                "& .MuiTabs-indicator": {
+                  backgroundColor: "#FFFFFF",
+                  height: 2,
+                },
+              }}
+            >
+              <Tab label="DASHBOARD" />
+              <Tab label="ACTIVITIES" />
+            </Tabs>
+          )}
+
+          {isSearchMode && <Box sx={{ height: 16 }} />}
+        </Box>
+      )}
+
+      {/* ---- Desktop only: search portals into the header next to the
+          logo (see useHeaderSlot); tabs sit on plain white background
+          directly below it, underline-styled instead of white-on-purple. ---- */}
+      {!mobile && headerSlotEl && createPortal(searchField, headerSlotEl)}
+
+      {!mobile && !isSearchMode && (
+        <Tabs
+          value={activeTab}
+          onChange={(_e, value) => setActiveTab(value)}
+          textColor="primary"
+          indicatorColor="primary"
+          sx={{
+            mb: 3,
+            minHeight: 48,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            "& .MuiTab-root": {
+              fontWeight: 700,
+              color: "text.secondary",
+              minHeight: 48,
+              px: 3,
+            },
+            "& .Mui-selected": {
+              color: `${BRAND_PURPLE} !important`,
+            },
+            "& .MuiTabs-indicator": {
+              backgroundColor: BRAND_PURPLE,
+              height: 2,
             },
           }}
-        />
-
-        {!isSearchMode && (
-          <Tabs
-            value={activeTab}
-            onChange={(_e, value) => setActiveTab(value)}
-            textColor="inherit"
-            variant="fullWidth"
-            sx={{
-              mt: 2,
-              minHeight: 44,
-              "& .MuiTab-root": {
-                color: "#FFFFFF",
-                fontWeight: 700,
-                minHeight: 44,
-              },
-              "& .Mui-selected": {
-                color: "#FFFFFF !important",
-              },
-              "& .MuiTabs-indicator": {
-                backgroundColor: "#FFFFFF",
-                height: 2,
-              },
-            }}
-          >
-            <Tab label="DASHBOARD" />
-            <Tab label="ACTIVITIES" />
-          </Tabs>
-        )}
-
-        {isSearchMode && <Box sx={{ height: 16 }} />}
-      </Box>
+        >
+          <Tab label="DASHBOARD" />
+          <Tab label="ACTIVITIES" />
+        </Tabs>
+      )}
 
       {isSearchMode ? (
         <Box sx={{ mt: 2 }}>
@@ -682,7 +762,7 @@ export default function Dashboard() {
                     <CircularProgress size={18} />
                   ) : (
                     <Typography sx={{ fontWeight: 800, color: BRAND_PURPLE, fontSize: { xs: "1.1rem", sm: "1.4rem", md: "2rem" } }}>
-                      {card.value}
+                      {card.value.toLocaleString("en-IN")}
                     </Typography>
                   )}
                   <Typography
@@ -707,19 +787,77 @@ export default function Dashboard() {
                 <Card elevation={0} sx={{ height: "100%" }}>
                   <CardActionArea
                     onClick={() => navigate(action.path)}
-                    sx={{ p: { xs: 2.5, md: 4 }, textAlign: "center" }}
+                    sx={{ height: "100%", p: { xs: 2.5, md: 3 }, textAlign: { xs: "center", md: "left" } }}
                   >
-                    <Box sx={{ color: BRAND_PURPLE, mb: 1, "& svg": { fontSize: { xs: 36, md: 48 } } }}>
+                    <Box
+                      sx={{
+                        display: { xs: "block", md: "flex" },
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: { xs: BRAND_PURPLE, md: "#FFFFFF" },
+                        bgcolor: { xs: "transparent", md: BRAND_PURPLE },
+                        borderRadius: { md: 2.5 },
+                        width: { xs: "auto", md: 56 },
+                        height: { xs: "auto", md: 56 },
+                        mb: { xs: 1, md: 1.5 },
+                        "& svg": { fontSize: { xs: 36, md: 28 } },
+                      }}
+                    >
                       {action.icon}
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700, fontSize: { xs: "0.875rem", md: "1rem" } }}>
                       {action.label}
                     </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: { xs: "none", md: "block" }, mt: 0.5 }}
+                    >
+                      {action.description}
+                    </Typography>
+                    <ArrowForwardIcon
+                      fontSize="small"
+                      sx={{ display: { xs: "none", md: "block" }, color: BRAND_PURPLE, mt: 1.5 }}
+                    />
                   </CardActionArea>
                 </Card>
               </Grid>
             ))}
           </Grid>
+
+          {/* ---- Desktop only: welcome banner ---- */}
+          <Box
+            sx={{
+              display: { xs: "none", md: "flex" },
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+              bgcolor: BRAND_PURPLE_SOFT,
+              borderRadius: 2,
+              px: 2.5,
+              py: 1.5,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <InfoIcon sx={{ color: BRAND_PURPLE }} fontSize="small" />
+              <Typography variant="body2" sx={{ fontWeight: 600, color: "#111827" }}>
+                Welcome back! Here&apos;s what&apos;s happening with your store today.
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexShrink: 0 }}>
+              <CalendarMonthIcon sx={{ color: BRAND_PURPLE }} fontSize="small" />
+              <Typography variant="body2" sx={{ fontWeight: 600, color: "#111827" }}>
+                {now.toLocaleString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Typography>
+            </Box>
+          </Box>
         </>
       )}
 

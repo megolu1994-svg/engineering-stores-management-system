@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 import {
   AppBar,
@@ -69,7 +69,18 @@ const bottomNavItems = [
   { label: "Reports", path: "/reports", icon: <BarChartIcon /> },
 ];
 
-const TOOLBAR_HEIGHT = { xs: 48, sm: 52 };
+const TOOLBAR_HEIGHT = { xs: 48, sm: 52, md: 76 };
+
+// Lets a page (currently just Dashboard) render its search field into the
+// desktop header's toolbar, next to the brand logo, instead of in its own
+// page content - purely a portal target, so the page keeps full ownership
+// of the field's state/logic. Only meaningful at "md"+: on mobile the
+// header slot node is never mounted, so this is always null there and
+// pages must fall back to their normal (unchanged) mobile layout.
+const HeaderSlotContext = createContext<HTMLDivElement | null>(null);
+export function useHeaderSlot() {
+  return useContext(HeaderSlotContext);
+}
 
 // Height of the fixed bottom navigation bar shown on mobile (below the "md"
 // breakpoint) - exported so pages with their own fixed/sticky bottom bars
@@ -105,6 +116,8 @@ export default function AppLayout() {
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function handleSwipeOpenDrawer() {
@@ -203,6 +216,8 @@ export default function AppLayout() {
 
   return (
 
+    <HeaderSlotContext.Provider value={headerSlotEl}>
+
     <Box sx={{ display: "flex" }}>
 
       {/* Hidden while the mobile drawer is open so only one header (the
@@ -247,7 +262,7 @@ export default function AppLayout() {
                 left: 0,
                 right: 0,
                 justifyContent: "center",
-                pointerEvents: "none",
+                pointerEvents: mobile ? "none" : "auto",
               }}
             >
               <BrandLogo size={26} />
@@ -258,6 +273,18 @@ export default function AppLayout() {
                 DUMAD STORE
               </Typography>
             </Box>
+
+            {/* Desktop-only: portal target for the active page's search
+                field (see useHeaderSlot) so it renders inline with the
+                logo, in one header row, instead of in a separate hero
+                block further down the page. Empty/unused on pages that
+                don't portal anything into it. */}
+            {!mobile && (
+              <Box
+                ref={setHeaderSlotEl}
+                sx={{ flexGrow: 1, ml: 3, display: "flex", alignItems: "center" }}
+              />
+            )}
 
           </Toolbar>
 
@@ -386,6 +413,8 @@ export default function AppLayout() {
       )}
 
     </Box>
+
+    </HeaderSlotContext.Provider>
 
   );
 
