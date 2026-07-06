@@ -37,6 +37,50 @@ type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
 const IMPORT_PREVIEW_LIMIT = 20;
 
+/** Collapses row-specific detail (quoted codes, numbers) out of an error/
+ *  warning message so rows that fail for the same underlying reason group
+ *  together, e.g. every "Material Code "X" was not found." becomes one
+ *  bucket instead of one per distinct material code. */
+function canonicalizeIssueMessage(message: string): string {
+  return message.replace(/"[^"]*"/g, '"…"').replace(/\d[\d,]*/g, "N");
+}
+
+interface IssueGroup {
+  message: string;
+  count: number;
+}
+
+function buildIssueBreakdown(validation: AllocationValidationResult): {
+  invalid: IssueGroup[];
+  warning: IssueGroup[];
+} {
+  const invalidCounts = new Map<string, number>();
+  for (const row of validation.invalidRows) {
+    for (const error of row.errors) {
+      const key = canonicalizeIssueMessage(error);
+      invalidCounts.set(key, (invalidCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const warningCounts = new Map<string, number>();
+  for (const row of validation.validRows) {
+    if (row.warning) {
+      const key = canonicalizeIssueMessage(row.warning);
+      warningCounts.set(key, (warningCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const toSortedGroups = (counts: Map<string, number>): IssueGroup[] =>
+    Array.from(counts.entries())
+      .map(([message, count]) => ({ message, count }))
+      .sort((a, b) => b.count - a.count);
+
+  return {
+    invalid: toSortedGroups(invalidCounts),
+    warning: toSortedGroups(warningCounts),
+  };
+}
+
 async function readExcelFile(
   file: File
 ): Promise<Record<string, unknown>[]> {
@@ -175,6 +219,10 @@ export default function BulkAllocateCard({
     }
   }
 
+  const issueBreakdown = validation ? buildIssueBreakdown(validation) : null;
+
+  const statusPriority = { Invalid: 0, Warning: 1, Valid: 2 } as const;
+
   const previewRows = validation
     ? [
         ...validation.validRows.map((row) => ({
@@ -194,8 +242,14 @@ export default function BulkAllocateCard({
           errors: row.errors,
         })),
       ]
-        .sort((a, b) => a.rowNumber - b.rowNumber)
+        // Invalid/Warning rows surface first so they aren't pushed out of
+        // the capped preview by earlier Valid rows in a large file.
+        .sort((a, b) => {
+          const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
+          return priorityDiff !== 0 ? priorityDiff : a.rowNumber - b.rowNumber;
+        })
         .slice(0, IMPORT_PREVIEW_LIMIT)
+        .sort((a, b) => a.rowNumber - b.rowNumber)
     : [];
 
   function statusColor(status: "Valid" | "Warning" | "Invalid") {
@@ -334,6 +388,56 @@ export default function BulkAllocateCard({
               </Box>
             )}
 
+            {issueBreakdown &&
+              (issueBreakdown.invalid.length > 0 ||
+                issueBreakdown.warning.length > 0) && (
+                <Box>
+                  <Typography
+                    variant="caption"
+                    fontWeight={700}
+                    sx={{ display: "block", mb: 0.5 }}
+                  >
+                    Issues found (by reason)
+                  </Typography>
+                  <TableContainer
+                    sx={{ maxHeight: 200, overflowX: "auto", borderRadius: 2 }}
+                  >
+                    <Table size="small">
+                      <TableBody>
+                        {issueBreakdown.invalid.map((group) => (
+                          <TableRow key={`invalid-${group.message}`}>
+                            <TableCell sx={{ width: 56, py: 0.5 }}>
+                              <Chip
+                                size="small"
+                                label={group.count}
+                                color="error"
+                              />
+                            </TableCell>
+                            <TableCell sx={{ py: 0.5 }}>
+                              {group.message}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {issueBreakdown.warning.map((group) => (
+                          <TableRow key={`warning-${group.message}`}>
+                            <TableCell sx={{ width: 56, py: 0.5 }}>
+                              <Chip
+                                size="small"
+                                label={group.count}
+                                color="warning"
+                              />
+                            </TableCell>
+                            <TableCell sx={{ py: 0.5 }}>
+                              {group.message}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+
             {validation && previewRows.length > 0 && (
               <TableContainer sx={{ maxHeight: 260, overflowX: "auto", borderRadius: 2 }}>
                 <Table size="small" stickyHeader>
@@ -344,6 +448,7 @@ export default function BulkAllocateCard({
                       <TableCell>Location</TableCell>
                       <TableCell>Qty</TableCell>
                       <TableCell>Status</TableCell>
+                      <TableCell>Issue</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -358,8 +463,10 @@ export default function BulkAllocateCard({
                             size="small"
                             label={row.status}
                             color={statusColor(row.status)}
-                            title={row.errors.join(", ")}
                           />
+                        </TableCell>
+                        <TableCell title={row.errors.join(", ")}>
+                          {row.errors.join(", ")}
                         </TableCell>
                       </TableRow>
                     ))}
