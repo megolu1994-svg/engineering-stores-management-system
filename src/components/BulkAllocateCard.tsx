@@ -394,8 +394,7 @@ export default function BulkAllocateCard({
                 <Box>
                   <Typography
                     variant="caption"
-                    fontWeight={700}
-                    sx={{ display: "block", mb: 0.5 }}
+                    sx={{ display: "block", mb: 0.5, fontWeight: 700 }}
                   >
                     Issues found (by reason)
                   </Typography>
