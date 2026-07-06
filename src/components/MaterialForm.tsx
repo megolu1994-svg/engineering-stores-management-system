@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Material } from "../types/material";
 
 import {
@@ -10,9 +10,11 @@ import {
   Typography,
 } from "@mui/material";
 
+import { usePersistentState } from "../hooks/usePersistentState";
+
 interface Props {
   material?: Material | null;
-  onSave: (material: Material) => Promise<void>;
+  onSave: (material: Material) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -42,15 +44,32 @@ export default function MaterialForm({
   onSave,
   onCancel,
 }: Props) {
-  const [formData, setFormData] = useState<Material>(emptyMaterial);
+  // Draft is keyed by which record is being edited (or "add" for a new
+  // one) so an in-progress edit survives navigating away and back
+  // without leaking into an unrelated Add/Edit later.
+  const draftKey = material
+    ? `materialForm.edit.${material.material_code}`
+    : "materialForm.add";
+
+  const [formData, setFormData, clearDraft] = usePersistentState<Material>(
+    draftKey,
+    material ?? emptyMaterial
+  );
+
+  // Only reset formData from the `material` prop when it actually
+  // switches to a different record - otherwise this would stomp on a
+  // draft just restored from sessionStorage on mount.
+  const lastMaterialCode = useRef<string | null>(
+    material?.material_code ?? null
+  );
 
   useEffect(() => {
-    if (material) {
-      setFormData(material);
-    } else {
-      setFormData(emptyMaterial);
+    const code = material?.material_code ?? null;
+    if (code !== lastMaterialCode.current) {
+      lastMaterialCode.current = code;
+      setFormData(material ?? emptyMaterial);
     }
-  }, [material]);
+  }, [material, setFormData]);
 
   function updateField(
     field: keyof Material,
@@ -94,7 +113,10 @@ export default function MaterialForm({
       return;
     }
 
-    await onSave(formData);
+    const saved = await onSave(formData);
+    if (saved) {
+      clearDraft();
+    }
   }
 
   return (
@@ -218,7 +240,10 @@ export default function MaterialForm({
           variant="outlined"
           size="large"
           fullWidth
-          onClick={onCancel}
+          onClick={() => {
+            clearDraft();
+            onCancel();
+          }}
           sx={{ minHeight: 52, fontWeight: 600, borderRadius: 2, fontSize: "1rem" }}
         >
           Cancel

@@ -63,6 +63,7 @@ import { BOTTOM_NAV_OFFSET, CONTENT_MAX_WIDTH, DRAWER_WIDTH } from "../component
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
+import { usePersistentState } from "../hooks/usePersistentState";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
@@ -130,7 +131,10 @@ export default function MaterialIssue() {
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
 
-  const [activeTab, setActiveTab] = useState(TAB_NEW_ISSUE);
+  const [activeTab, setActiveTab] = usePersistentState(
+    "materialIssue.activeTab",
+    TAB_NEW_ISSUE
+  );
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
 
   const [snackbar, setSnackbar] = useState<{
@@ -144,10 +148,13 @@ export default function MaterialIssue() {
   }
 
   // ---------------- New Issue form ----------------
-  const [header, setHeader] = useState(emptyHeader);
-  const [materialRows, setMaterialRows] = useState<MaterialRowState[]>([
-    emptyMaterialRow(),
-  ]);
+  const [header, setHeader] = usePersistentState(
+    "materialIssue.header",
+    emptyHeader
+  );
+  const [materialRows, setMaterialRows] = usePersistentState<
+    MaterialRowState[]
+  >("materialIssue.materialRows", [emptyMaterialRow()]);
   const [saving, setSaving] = useState(false);
 
   function updateHeader<K extends keyof typeof emptyHeader>(

@@ -91,6 +91,7 @@ import {
   type AttachmentFile,
 } from "../services/receiptService";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
+import { usePersistentState } from "../hooks/usePersistentState";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -364,17 +365,34 @@ export default function MaterialReceipt() {
   }
 
   // ---------------- Create / Edit DRC form ----------------
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingReceipt, setEditingReceipt] = useState<ReceiptHeader | null>(
-    null
+  // Persisted to sessionStorage so an in-progress DRC survives the user
+  // navigating to another screen and back, instead of being lost.
+  const [formOpen, setFormOpen] = usePersistentState(
+    "materialReceipt.formOpen",
+    false
   );
-  const [form, setForm] = useState<ReceiptFormInput>(emptyForm);
+  const [editingReceipt, setEditingReceipt] = usePersistentState<
+    ReceiptHeader | null
+  >("materialReceipt.editingReceipt", null);
+  const [form, setForm] = usePersistentState<ReceiptFormInput>(
+    "materialReceipt.form",
+    emptyForm
+  );
   const [saving, setSaving] = useState(false);
 
   // ---- DRC No. / DRC Date (manual override toggle, create-only) ----
-  const [manualDrcEntry, setManualDrcEntry] = useState(false);
-  const [drcNumber, setDrcNumber] = useState("");
-  const [drcDate, setDrcDate] = useState(todayIso());
+  const [manualDrcEntry, setManualDrcEntry] = usePersistentState(
+    "materialReceipt.manualDrcEntry",
+    false
+  );
+  const [drcNumber, setDrcNumber] = usePersistentState(
+    "materialReceipt.drcNumber",
+    ""
+  );
+  const [drcDate, setDrcDate] = usePersistentState(
+    "materialReceipt.drcDate",
+    todayIso()
+  );
   const [loadingDrcSuggestion, setLoadingDrcSuggestion] = useState(false);
 
   async function loadDrcSuggestion() {
@@ -397,9 +415,15 @@ export default function MaterialReceipt() {
     }
   }
 
+  // Newly-picked files can't be persisted (File objects aren't
+  // serializable), but the references to already-uploaded photos/
+  // attachments are plain data and are worth keeping.
   const [newPhotoFiles, setNewPhotoFiles] = useState<File[]>([]);
   const [newPhotoPreviews, setNewPhotoPreviews] = useState<string[]>([]);
-  const [keptPhotoUrls, setKeptPhotoUrls] = useState<string[]>([]);
+  const [keptPhotoUrls, setKeptPhotoUrls] = usePersistentState<string[]>(
+    "materialReceipt.keptPhotoUrls",
+    []
+  );
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const [photoMenuAnchor, setPhotoMenuAnchor] = useState<HTMLElement | null>(
@@ -409,9 +433,9 @@ export default function MaterialReceipt() {
 
   const documentInputRef = useRef<HTMLInputElement | null>(null);
   const [newDocumentFiles, setNewDocumentFiles] = useState<File[]>([]);
-  const [keptAttachments, setKeptAttachments] = useState<AttachmentFile[]>(
-    []
-  );
+  const [keptAttachments, setKeptAttachments] = usePersistentState<
+    AttachmentFile[]
+  >("materialReceipt.keptAttachments", []);
 
   function updateField<K extends keyof ReceiptFormInput>(
     field: K,

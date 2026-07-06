@@ -45,6 +45,7 @@ import type { Location } from "../types/location";
 import type { MaterialAllocation } from "../types/materialAllocation";
 
 import { BOTTOM_NAV_OFFSET, CONTENT_MAX_WIDTH, DRAWER_WIDTH } from "../components/AppLayout";
+import { usePersistentState } from "../hooks/usePersistentState";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -118,10 +119,13 @@ export default function LocationTransfer() {
   }
 
   // ---------------- New Transfer form ----------------
-  const [header, setHeader] = useState(emptyHeader);
-  const [materialRows, setMaterialRows] = useState<MaterialRowState[]>([
-    emptyMaterialRow(),
-  ]);
+  const [header, setHeader] = usePersistentState(
+    "locationTransfer.header",
+    emptyHeader
+  );
+  const [materialRows, setMaterialRows] = usePersistentState<
+    MaterialRowState[]
+  >("locationTransfer.materialRows", [emptyMaterialRow()]);
   const [saving, setSaving] = useState(false);
 
   function updateHeader<K extends keyof typeof emptyHeader>(

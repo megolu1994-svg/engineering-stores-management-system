@@ -22,6 +22,8 @@ import RemoveIcon from "@mui/icons-material/Remove";
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
 
+import { usePersistentState } from "../hooks/usePersistentState";
+
 import type { Material } from "../types/material";
 import type { Location } from "../types/location";
 
@@ -54,16 +56,25 @@ export default function AdjustmentTab() {
     setSnackbar({ open: true, message, severity });
   }
 
-  const [material, setMaterial] = useState<Material | null>(null);
-  const [location, setLocation] = useState<Location | null>(null);
+  const [material, setMaterial] = usePersistentState<Material | null>(
+    "adjustment.material",
+    null
+  );
+  const [location, setLocation] = usePersistentState<Location | null>(
+    "adjustment.location",
+    null
+  );
 
   const [currentQuantity, setCurrentQuantity] = useState<number | null>(null);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
 
-  const [direction, setDirection] = useState<Direction>("increase");
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("");
-  const [remarks, setRemarks] = useState("");
+  const [direction, setDirection] = usePersistentState<Direction>(
+    "adjustment.direction",
+    "increase"
+  );
+  const [amount, setAmount] = usePersistentState("adjustment.amount", "");
+  const [reason, setReason] = usePersistentState("adjustment.reason", "");
+  const [remarks, setRemarks] = usePersistentState("adjustment.remarks", "");
   const [saving, setSaving] = useState(false);
 
   // No location means "Unallocated" for both directions - Increase adds

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { Location } from "../types/location";
 
 import {
@@ -10,9 +10,11 @@ import {
   Typography,
 } from "@mui/material";
 
+import { usePersistentState } from "../hooks/usePersistentState";
+
 interface Props {
   location?: Location | null;
-  onSave: (location: Location) => Promise<void>;
+  onSave: (location: Location) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -28,16 +30,32 @@ export default function LocationForm({
   onCancel,
 }: Props) {
 
-  const [formData, setFormData] =
-    useState<Location>(emptyLocation);
+  // Draft is keyed by which record is being edited (or "add" for a new
+  // one) so an in-progress edit survives navigating away and back
+  // without leaking into an unrelated Add/Edit later.
+  const draftKey = location
+    ? `locationForm.edit.${location.location_code}`
+    : "locationForm.add";
+
+  const [formData, setFormData, clearDraft] = usePersistentState<Location>(
+    draftKey,
+    location ?? emptyLocation
+  );
+
+  // Only reset formData from the `location` prop when it actually
+  // switches to a different record - otherwise this would stomp on a
+  // draft just restored from sessionStorage on mount.
+  const lastLocationCode = useRef<string | null>(
+    location?.location_code ?? null
+  );
 
   useEffect(() => {
-    if (location) {
-      setFormData(location);
-    } else {
-      setFormData(emptyLocation);
+    const code = location?.location_code ?? null;
+    if (code !== lastLocationCode.current) {
+      lastLocationCode.current = code;
+      setFormData(location ?? emptyLocation);
     }
-  }, [location]);
+  }, [location, setFormData]);
 
   function updateField(
     field: keyof Location,
@@ -61,7 +79,10 @@ export default function LocationForm({
       return;
     }
 
-    await onSave(formData);
+    const saved = await onSave(formData);
+    if (saved) {
+      clearDraft();
+    }
   }
 
   return (
@@ -137,7 +158,10 @@ export default function LocationForm({
 
         <Button
           variant="outlined"
-          onClick={onCancel}
+          onClick={() => {
+            clearDraft();
+            onCancel();
+          }}
           fullWidth
           size="large"
           sx={{ width: { xs: "100%", sm: "auto" } }}
