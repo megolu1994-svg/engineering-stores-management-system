@@ -86,7 +86,11 @@ export default function LocationForm({
             fullWidth
             label="Location Code"
             value={formData.location_code}
-            disabled={!!location}
+            helperText={
+              location
+                ? "Changing this code will move all materials allocated to this location to the new code."
+                : undefined
+            }
             onChange={(e) =>
               updateField(
                 "location_code",

@@ -104,18 +104,59 @@ export async function addLocation(
   if (error) throw error;
 }
 
+/**
+ * Tables (and columns) that store a location's code directly, outside of
+ * `location_master` itself. When a location's code is renamed, every one of
+ * these needs to be updated too so existing allocations, stock movements
+ * and transaction history keep pointing at the right location instead of
+ * being silently orphaned under the old code.
+ */
+const LOCATION_CODE_DEPENDENTS: Array<{ table: string; column: string }> = [
+  { table: "material_allocation", column: "location_code" },
+  { table: "inventory_transactions", column: "location_code" },
+  { table: "transfer_item_locations", column: "from_location_code" },
+  { table: "transfer_item_locations", column: "to_location_code" },
+  { table: "issue_item_locations", column: "location_code" },
+];
+
 export async function updateLocation(
+  originalLocationCode: string,
   location: Location
 ): Promise<void> {
+
+  const newLocationCode = location.location_code.trim().toUpperCase();
+  const codeChanged = newLocationCode !== originalLocationCode;
+
+  if (codeChanged) {
+    const exists = await locationExists(newLocationCode);
+
+    if (exists) {
+      throw new Error("Location Code already exists.");
+    }
+  }
 
   const { error } = await supabase
     .from("location_master")
     .update({
+      location_code: newLocationCode,
       location_description: location.location_description,
     })
-    .eq("location_code", location.location_code);
+    .eq("location_code", originalLocationCode);
 
   if (error) throw error;
+
+  if (!codeChanged) return;
+
+  // Cascade the rename so materials/stock already allocated to the old
+  // code follow the location to its new code.
+  for (const { table, column } of LOCATION_CODE_DEPENDENTS) {
+    const { error: cascadeError } = await supabase
+      .from(table)
+      .update({ [column]: newLocationCode })
+      .eq(column, originalLocationCode);
+
+    if (cascadeError) throw cascadeError;
+  }
 }
 
 export async function deleteLocation(

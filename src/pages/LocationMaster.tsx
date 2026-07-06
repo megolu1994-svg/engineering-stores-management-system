@@ -309,7 +309,7 @@ export default function LocationMaster() {
     async (location: Location) => {
       try {
         if (selectedLocation) {
-          await updateLocation(location);
+          await updateLocation(selectedLocation.location_code, location);
 
           setSnackbarSeverity("success");
           setSnackbarMessage("Location updated successfully.");
