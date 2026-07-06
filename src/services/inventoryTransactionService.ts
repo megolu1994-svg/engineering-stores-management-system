@@ -48,11 +48,22 @@ const TRANSACTION_PREFIX: Record<InventoryTransactionType, string> = {
   LOCATION_TRANSFER: "TRF",
 };
 
-function generateTransactionNumber(type: InventoryTransactionType): string {
-  const prefix = TRANSACTION_PREFIX[type] ?? "TXN";
+/**
+ * Generates a short unique code under the given prefix. Used both for
+ * `transaction_no` (one per ledger row) and, by callers like
+ * materialAllocationService, as a shared `reference_number` correlating
+ * the OUT+IN pair of a single logical movement (e.g. one Allocation),
+ * so the Movement report can merge them back into one displayed row.
+ */
+export function generateReferenceNumber(prefix: string): string {
   const timestamp = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${prefix}-${timestamp}-${random}`;
+}
+
+function generateTransactionNumber(type: InventoryTransactionType): string {
+  const prefix = TRANSACTION_PREFIX[type] ?? "TXN";
+  return generateReferenceNumber(prefix);
 }
 
 /**

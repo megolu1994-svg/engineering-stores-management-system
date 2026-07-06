@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -485,6 +485,21 @@ interface MovementRow {
   created_by: string | null;
 }
 
+/** A single row as rendered in the Movement report - one displayed row per
+ * logical move (From -> To), after merging paired OUT/IN ledger rows. */
+interface MovementDisplayRow {
+  key: string;
+  created_at: string;
+  transaction_type: InventoryTransactionType;
+  reference_number: string | null;
+  quantity: number;
+  from: string;
+  to: string;
+  material_code: string;
+  material_description: string;
+  created_by: string | null;
+}
+
 interface ReceiptHistoryRow {
   id: number;
   drc_number: string;
@@ -776,23 +791,105 @@ export default function Reports() {
     return { from: "-", to: row.location_code };
   }
 
+  /**
+   * Every stock move (Allocation, Location Transfer, ...) is logged as a
+   * paired OUT+IN row in `inventory_transactions` - one row per location
+   * whose balance changed, which is what lets each location have its own
+   * accurate running balance. Rows in a pair share `reference_number`
+   * (generated per move), so here they're grouped back into a single
+   * From -> To row for display. Rows without a reference_number (e.g.
+   * Opening Stock, Adjustment, or legacy rows predating this) are shown
+   * as-is via `movementFromTo`.
+   */
+  function buildMovementDisplayRows(rows: MovementRow[]): MovementDisplayRow[] {
+    const singles: MovementRow[] = [];
+    const groups = new Map<string, MovementRow[]>();
+
+    rows.forEach((row) => {
+      if (!row.reference_number) {
+        singles.push(row);
+        return;
+      }
+      const key = `${row.reference_number}|${row.material_code}|${row.transaction_type}`;
+      const list = groups.get(key);
+      if (list) {
+        list.push(row);
+      } else {
+        groups.set(key, [row]);
+      }
+    });
+
+    const merged: MovementDisplayRow[] = [];
+
+    groups.forEach((group) => {
+      const sorted = [...group].sort((a, b) => a.id - b.id);
+
+      for (let i = 0; i < sorted.length; i += 2) {
+        const rowA = sorted[i];
+        const rowB = sorted[i + 1];
+
+        if (!rowB || rowA.movement === rowB.movement) {
+          singles.push(rowA);
+          if (rowB) singles.push(rowB);
+          continue;
+        }
+
+        const outRow = rowA.movement === "OUT" ? rowA : rowB;
+        const inRow = rowA.movement === "IN" ? rowA : rowB;
+
+        merged.push({
+          key: `${rowA.id}-${rowB.id}`,
+          created_at: rowB.created_at > rowA.created_at ? rowB.created_at : rowA.created_at,
+          transaction_type: rowA.transaction_type,
+          reference_number: rowA.reference_number,
+          quantity: rowA.quantity,
+          from: outRow.location_code,
+          to: inRow.location_code,
+          material_code: rowA.material_code,
+          material_description: rowA.material_description,
+          created_by: rowA.created_by,
+        });
+      }
+    });
+
+    singles.forEach((row) => {
+      const { from, to } = movementFromTo(row);
+      merged.push({
+        key: String(row.id),
+        created_at: row.created_at,
+        transaction_type: row.transaction_type,
+        reference_number: row.reference_number,
+        quantity: row.quantity,
+        from,
+        to,
+        material_code: row.material_code,
+        material_description: row.material_description,
+        created_by: row.created_by,
+      });
+    });
+
+    return merged.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  }
+
+  const movementDisplayRows = useMemo(
+    () => buildMovementDisplayRows(movementRows),
+    [movementRows]
+  );
+
   function handleExportMovement() {
     downloadWorkbook(
       ["Date", "Transaction Type", "Reference", "Material Code", "Description", "Quantity", "From Location", "To Location", "User"],
-      movementRows.map((r) => {
-        const { from, to } = movementFromTo(r);
-        return [
-          formatReportDateTime(r.created_at),
-          r.transaction_type,
-          safeText(r.reference_number),
-          r.material_code,
-          safeText(r.material_description),
-          safeNumber(r.quantity),
-          from,
-          to,
-          safeText(r.created_by),
-        ];
-      }),
+      movementDisplayRows.map((r) => [
+        formatReportDateTime(r.created_at),
+        r.transaction_type,
+        safeText(r.reference_number),
+        r.material_code,
+        safeText(r.material_description),
+        safeNumber(r.quantity),
+        r.from,
+        r.to,
+        safeText(r.created_by),
+      ]),
       "Movement_History.xlsx",
       "Movement History"
     );
@@ -1193,7 +1290,7 @@ export default function Reports() {
             <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
               <CircularProgress />
             </Box>
-          ) : movementRows.length === 0 ? (
+          ) : movementDisplayRows.length === 0 ? (
             <Card variant="outlined" sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
               <Typography variant="body2" color="text.secondary">
                 No movement history found.
@@ -1203,10 +1300,9 @@ export default function Reports() {
             <>
               {/* ---- Mobile/tablet: card list (unchanged) ---- */}
               <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
-                {movementRows.map((row) => {
-                  const { from, to } = movementFromTo(row);
+                {movementDisplayRows.map((row) => {
                   return (
-                    <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                    <Card key={row.key} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
                       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
@@ -1243,13 +1339,13 @@ export default function Reports() {
                           <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
                             From
                           </Typography>
-                          <Typography variant="body2" noWrap>{from}</Typography>
+                          <Typography variant="body2" noWrap>{row.from}</Typography>
                         </Grid>
                         <Grid size={6}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
                             To
                           </Typography>
-                          <Typography variant="body2" noWrap>{to}</Typography>
+                          <Typography variant="body2" noWrap>{row.to}</Typography>
                         </Grid>
                         <Grid size={12}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
@@ -1283,10 +1379,9 @@ export default function Reports() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {movementRows.map((row) => {
-                      const { from, to } = movementFromTo(row);
+                    {movementDisplayRows.map((row) => {
                       return (
-                        <TableRow key={row.id} hover sx={{ height: 60 }}>
+                        <TableRow key={row.key} hover sx={{ height: 60 }}>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 700 }}>
                               {row.material_code}
@@ -1300,8 +1395,8 @@ export default function Reports() {
                             <Chip size="small" label={row.transaction_type.replace("_", " ")} sx={{ fontWeight: 700 }} />
                           </TableCell>
                           <TableCell align="right">{safeNumber(row.quantity)}</TableCell>
-                          <TableCell>{from}</TableCell>
-                          <TableCell>{to}</TableCell>
+                          <TableCell>{row.from}</TableCell>
+                          <TableCell>{row.to}</TableCell>
                           <TableCell>{formatReportDateTime(row.created_at)}</TableCell>
                           <TableCell>{safeText(row.created_by)}</TableCell>
                         </TableRow>

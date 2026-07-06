@@ -4,6 +4,7 @@ import type { MaterialAllocation } from "../types/materialAllocation";
 import {
   applyStockMovement,
   reverseStockMovement,
+  generateReferenceNumber,
 } from "./inventoryTransactionService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
@@ -74,6 +75,10 @@ export async function addAllocation(
     );
   }
 
+  // Shared by both halves of this move, so the Movement report can pair
+  // the OUT (UNALLOCATED) and IN (target location) rows back into one.
+  const referenceNumber = generateReferenceNumber("ALC");
+
   // OUT of UNALLOCATED.
   await applyStockMovement({
     materialCode: allocation.material_code,
@@ -83,6 +88,7 @@ export async function addAllocation(
     allocationId: unallocatedRow?.id,
     transactionType: "ALLOCATION",
     referenceType: "ALLOCATION",
+    referenceNumber,
   });
 
   // IN to the target location.
@@ -93,6 +99,7 @@ export async function addAllocation(
     newQuantity: allocation.quantity,
     transactionType: "ALLOCATION",
     referenceType: "ALLOCATION",
+    referenceNumber,
   });
 }
 
@@ -124,6 +131,10 @@ export async function updateAllocation(
   const prevQuantity = Number(data.quantity);
   const delta = quantity - prevQuantity;
 
+  // Shared by both halves of this move, so the Movement report can pair
+  // the UNALLOCATED and target-location rows back into one.
+  const referenceNumber = generateReferenceNumber("ALC");
+
   if (delta !== 0) {
     const unallocatedRow = await getUnallocatedRow(materialCode);
     const unallocatedQty = unallocatedRow?.quantity ?? 0;
@@ -142,6 +153,7 @@ export async function updateAllocation(
       allocationId: unallocatedRow?.id,
       transactionType: "ALLOCATION",
       referenceType: "ALLOCATION",
+      referenceNumber,
     });
   }
 
@@ -153,6 +165,7 @@ export async function updateAllocation(
     allocationId: id,
     transactionType: "ALLOCATION",
     referenceType: "ALLOCATION",
+    referenceNumber,
   });
 }
 
@@ -178,6 +191,10 @@ export async function deleteAllocation(id: number): Promise<void> {
   const materialCode = data.material_code as string;
   const prevQuantity = Number(data.quantity);
 
+  // Shared by both halves of this move, so the Movement report can pair
+  // the target-location and UNALLOCATED rows back into one.
+  const referenceNumber = generateReferenceNumber("ALC");
+
   await reverseStockMovement({
     materialCode,
     locationCode: data.location_code,
@@ -185,6 +202,7 @@ export async function deleteAllocation(id: number): Promise<void> {
     prevQuantity,
     transactionType: "ALLOCATION",
     referenceType: "ALLOCATION",
+    referenceNumber,
   });
 
   if (prevQuantity > 0) {
@@ -199,6 +217,7 @@ export async function deleteAllocation(id: number): Promise<void> {
       allocationId: unallocatedRow?.id,
       transactionType: "ALLOCATION",
       referenceType: "ALLOCATION",
+      referenceNumber,
     });
   }
 }
