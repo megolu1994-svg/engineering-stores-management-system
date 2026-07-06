@@ -62,7 +62,7 @@ import {
 import { supabase } from "../config/supabase";
 import type { InventoryTransactionType } from "../services/inventoryTransactionService";
 
-function safeNumber(value: number | null | undefined): number {
+function safeNumber(value: number | string | null | undefined): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
@@ -923,7 +923,7 @@ export default function Reports() {
             sap_po_number: string | null;
             gem_order_number: string | null;
             vendor_name: string;
-            package_details: { quantity: number }[] | null;
+            package_details: { quantity: string | number }[] | null;
             receipt_datetime: string;
           }[]
         ).map((r) => ({
