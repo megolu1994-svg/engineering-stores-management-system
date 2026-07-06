@@ -77,6 +77,11 @@ const bottomNavItems = [
 
 const TOOLBAR_HEIGHT = { xs: 48, sm: 52, md: 76 };
 
+// Desktop header is a single fixed strip spanning the full page width; the
+// sidebar and main content both start exactly at its bottom edge so there's
+// one straight seam instead of two independently-sized purple regions.
+const DESKTOP_HEADER_HEIGHT = TOOLBAR_HEIGHT.md;
+
 // Lets a page (currently just Dashboard) render its search field into the
 // desktop header's toolbar, next to the brand logo, instead of in its own
 // page content - purely a portal target, so the page keeps full ownership
@@ -147,27 +152,8 @@ export default function AppLayout() {
     }
   }
 
-  const drawer = (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-
-      <Box
-        sx={{
-          minHeight: 120,
-          bgcolor: BRAND_PURPLE,
-          display: "flex",
-          alignItems: "center",
-          gap: { xs: 1.25, md: 1 },
-          px: { xs: 3, md: 2 },
-        }}
-      >
-        <BrandLogo size={40} />
-        <Typography
-          noWrap
-          sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: { xs: "1rem", md: "0.9rem" } }}
-        >
-          DUMAD STORE
-        </Typography>
-      </Box>
+  const menuList = (
+    <>
 
       <List sx={{ flexGrow: 1, py: 1 }}>
 
@@ -221,6 +207,44 @@ export default function AppLayout() {
         </Typography>
       </Box>
 
+    </>
+  );
+
+  // Mobile temporary drawer - unchanged, keeps its own purple brand box since
+  // the mobile UI must stay pixel-identical.
+  const mobileDrawerContent = (
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+
+      <Box
+        sx={{
+          minHeight: 120,
+          bgcolor: BRAND_PURPLE,
+          display: "flex",
+          alignItems: "center",
+          gap: { xs: 1.25, md: 1 },
+          px: { xs: 3, md: 2 },
+        }}
+      >
+        <BrandLogo size={40} />
+        <Typography
+          noWrap
+          sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: { xs: "1rem", md: "0.9rem" } }}
+        >
+          DUMAD STORE
+        </Typography>
+      </Box>
+
+      {menuList}
+
+    </Box>
+  );
+
+  // Desktop permanent sidebar - no brand box of its own; the brand now lives
+  // in the single full-width header strip above it, so there's exactly one
+  // purple region instead of two mismatched ones.
+  const desktopDrawerContent = (
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      {menuList}
     </Box>
   );
 
@@ -241,8 +265,7 @@ export default function AppLayout() {
           sx={{
             zIndex: theme.zIndex.drawer + 1,
             bgcolor: BRAND_PURPLE,
-            width: { md: `calc(100% - ${drawerWidth}px)` },
-            ml: { md: `${drawerWidth}px` },
+            width: "100%",
           }}
         >
 
@@ -263,10 +286,8 @@ export default function AppLayout() {
 
             )}
 
-            {/* Mobile only: centered brand, unchanged. On desktop the
-                sidebar already carries the logo + "DUMAD STORE" once, so
-                this header never repeats it - see the search slot and
-                account controls below instead. */}
+            {/* Mobile only: centered brand, unchanged - desktop shows its
+                own left-aligned brand block instead (see below). */}
             {mobile && (
               <Box
                 sx={{
@@ -284,6 +305,29 @@ export default function AppLayout() {
                 <Typography
                   sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
                   noWrap
+                >
+                  DUMAD STORE
+                </Typography>
+              </Box>
+            )}
+
+            {/* Desktop-only: brand block sized to the sidebar width so its
+                right edge lines up with the sidebar/content seam below,
+                keeping the header on the same grid as the rest of the page. */}
+            {!mobile && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  width: drawerWidth,
+                  flexShrink: 0,
+                }}
+              >
+                <BrandLogo size={32} />
+                <Typography
+                  noWrap
+                  sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: "0.9rem" }}
                 >
                   DUMAD STORE
                 </Typography>
@@ -356,7 +400,7 @@ export default function AppLayout() {
             sx={{ width: MOBILE_DRAWER_WIDTH, maxWidth: "85vw", height: "100%" }}
           >
 
-            {drawer}
+            {mobileDrawerContent}
 
           </Box>
 
@@ -373,11 +417,13 @@ export default function AppLayout() {
               width: drawerWidth,
               boxSizing: "border-box",
               border: "none",
+              top: DESKTOP_HEADER_HEIGHT,
+              height: `calc(100% - ${DESKTOP_HEADER_HEIGHT}px)`,
             },
           }}
         >
 
-          {drawer}
+          {desktopDrawerContent}
 
         </Drawer>
 
