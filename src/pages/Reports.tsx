@@ -404,21 +404,31 @@ function ExportSummaryRow({
       sx={{
         display: "flex",
         alignItems: "center",
-        gap: 1.5,
-        p: 1.5,
+        gap: { xs: 1.5, md: 2 },
+        p: { xs: 1.5, md: 2 },
         border: "1px solid",
         borderColor: "divider",
         borderRadius: 2,
         flexWrap: "wrap",
       }}
     >
-      <Avatar sx={{ bgcolor: BRAND_PURPLE_SOFT, color: BRAND_PURPLE, width: 44, height: 44 }}>
+      <Avatar
+        sx={{
+          bgcolor: BRAND_PURPLE_SOFT,
+          color: BRAND_PURPLE,
+          width: { xs: 44, md: 56 },
+          height: { xs: 44, md: 56 },
+          "& svg": { fontSize: { xs: 22, md: 28 } },
+        }}
+      >
         {report.icon}
       </Avatar>
 
       <Box sx={{ flex: 1, minWidth: 180 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>{report.title}</Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.9rem", md: "1.05rem" } }}>
+          {report.title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: "0.75rem", md: "0.85rem" } }}>
           {report.description}
         </Typography>
       </Box>
