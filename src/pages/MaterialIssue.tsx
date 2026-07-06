@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Alert,
@@ -6,22 +6,11 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
-  Collapse,
   IconButton,
-  InputAdornment,
   MenuItem,
   Paper,
   Snackbar,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tabs,
   TextField,
   Typography,
   useMediaQuery,
@@ -33,27 +22,17 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import PlaceIcon from "@mui/icons-material/Place";
 import SendIcon from "@mui/icons-material/Send";
-import SearchIcon from "@mui/icons-material/Search";
-import Inventory2Icon from "@mui/icons-material/Inventory2";
-import ListAltIcon from "@mui/icons-material/ListAlt";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import MaterialSearch from "../components/MaterialSearch";
 
 import {
   createIssue,
   getMaterialStockLocations,
-  searchIssues,
-  getIssueItems,
-  getIssueItemLocations,
   summarizeIssue,
   validateIssue,
   ISSUE_TYPES,
   type IssueType,
-  type IssueHeader,
-  type IssueItem,
-  type IssueItemLocation,
   type IssueMaterialInput,
   type IssueLocationInput,
 } from "../services/issueService";
@@ -62,14 +41,9 @@ import { BOTTOM_NAV_OFFSET, CONTENT_MAX_WIDTH, DRAWER_WIDTH } from "../component
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
-import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import { usePersistentState } from "../hooks/usePersistentState";
-import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
-
-const TAB_NEW_ISSUE = 0;
-const TAB_REGISTER = 1;
 
 interface LocationRowState {
   rowKey: string;
@@ -115,27 +89,9 @@ const emptyHeader = {
   remarks: "",
 };
 
-function formatDateTime(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default function MaterialIssue() {
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
-
-  const [activeTab, setActiveTab] = usePersistentState(
-    "materialIssue.activeTab",
-    TAB_NEW_ISSUE
-  );
-  const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -341,9 +297,6 @@ export default function MaterialIssue() {
       const issue = await createIssue(header, materialInputs);
       showSnackbar(`Issue ${issue.issue_number} saved.`, "success");
       resetForm();
-      if (activeTab === TAB_REGISTER) {
-        loadIssues();
-      }
     } catch {
       showSnackbar(
         "Something went wrong while saving the issue. Please check stock availability and try again.",
@@ -351,62 +304,6 @@ export default function MaterialIssue() {
       );
     } finally {
       setSaving(false);
-    }
-  }
-
-  // ---------------- Register / Reports ----------------
-  const [issues, setIssues] = useState<IssueHeader[]>([]);
-  const [loadingIssues, setLoadingIssues] = useState(false);
-  const [issueSearch, setIssueSearch] = useState("");
-
-  const loadIssues = useCallback(async () => {
-    setLoadingIssues(true);
-    try {
-      const data = await searchIssues({ search: issueSearch });
-      setIssues(data);
-    } catch {
-      showSnackbar("Failed to load issues.", "error");
-    } finally {
-      setLoadingIssues(false);
-    }
-  }, [issueSearch]);
-
-  useEffect(() => {
-    if (activeTab !== TAB_REGISTER) return;
-    const timer = setTimeout(() => {
-      loadIssues();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [activeTab, loadIssues]);
-
-  // ---------------- Issue detail (expand row) ----------------
-  const [expandedIssueId, setExpandedIssueId] = useState<number | null>(null);
-  const [expandedItems, setExpandedItems] = useState<
-    (IssueItem & { locations: IssueItemLocation[] })[]
-  >([]);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-
-  async function toggleExpand(issueId: number) {
-    if (expandedIssueId === issueId) {
-      setExpandedIssueId(null);
-      setExpandedItems([]);
-      return;
-    }
-
-    setExpandedIssueId(issueId);
-    setLoadingDetail(true);
-
-    try {
-      const items = await getIssueItems(issueId);
-      const withLocations = await Promise.all(
-        items.map(async (item) => ({
-          ...item,
-          locations: await getIssueItemLocations(item.id),
-        }))
-      );
-      setExpandedItems(withLocations);
-    } finally {
-      setLoadingDetail(false);
     }
   }
 
@@ -422,554 +319,387 @@ export default function MaterialIssue() {
         Material Issue
       </Typography>
 
-      <Tabs
-        value={activeTab}
-        onChange={(_, value) => setActiveTab(value)}
-        variant={mobile ? "fullWidth" : "standard"}
+      <Box
         sx={{
-          minHeight: 52,
-          borderBottom: 1,
-          borderColor: "divider",
-          mb: { xs: 2, md: 3 },
-          borderRadius: { xs: 2, md: 0 },
-          bgcolor: { xs: "grey.50", md: "transparent" },
-          "& .MuiTab-root": {
-            fontWeight: 700,
-            textTransform: "none",
-            minHeight: 52,
-            px: { xs: 2, md: 3 },
-          },
+          display: "flex",
+          flexDirection: "column",
+          gap: 1.5,
+          pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
         }}
       >
-        <Tab icon={<SendIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="New Issue" />
-        <Tab icon={<ListAltIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Issue Register" />
-      </Tabs>
+        {/* ---- Issue Header ---- */}
+        <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}>
+          <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>
+              Issue Details
+            </Typography>
 
-      <SwipeableTabPanel activeTab={activeTab} direction={direction}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <TextField
+                select
+                label="Issue Type"
+                size="small"
+                fullWidth
+                value={header.issue_type}
+                onChange={(e) => updateHeader("issue_type", e.target.value as IssueType)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              >
+                {ISSUE_TYPES.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {type}
+                  </MenuItem>
+                ))}
+              </TextField>
 
-      {activeTab === TAB_NEW_ISSUE && (
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 1.5,
-            pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
-          }}
-        >
-          {/* ---- Issue Header ---- */}
-          <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}>
-            <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-              <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>
-                Issue Details
-              </Typography>
-
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
                 <TextField
-                  select
-                  label="Issue Type"
+                  label="Department"
                   size="small"
                   fullWidth
-                  value={header.issue_type}
-                  onChange={(e) => updateHeader("issue_type", e.target.value as IssueType)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                >
-                  {ISSUE_TYPES.map((type) => (
-                    <MenuItem key={type} value={type}>
-                      {type}
-                    </MenuItem>
-                  ))}
-                </TextField>
-
-                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                  <TextField
-                    label="Department"
-                    size="small"
-                    fullWidth
-                    required
-                    value={header.department}
-                    onChange={(e) => updateHeader("department", e.target.value)}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                  <TextField
-                    label="User / Section"
-                    size="small"
-                    fullWidth
-                    value={header.user_section}
-                    onChange={(e) => updateHeader("user_section", e.target.value)}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                </Box>
-
-                <TextField
-                  label="SAP Reservation Number"
-                  size="small"
-                  fullWidth
-                  value={header.sap_reservation_number}
-                  onChange={(e) => updateHeader("sap_reservation_number", e.target.value)}
+                  required
+                  value={header.department}
+                  onChange={(e) => updateHeader("department", e.target.value)}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
-
-                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                  <TextField
-                    label="Work Order / Notification"
-                    size="small"
-                    fullWidth
-                    value={header.work_order_number}
-                    onChange={(e) => updateHeader("work_order_number", e.target.value)}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                  <TextField
-                    label="Cost Center"
-                    size="small"
-                    fullWidth
-                    value={header.cost_center}
-                    onChange={(e) => updateHeader("cost_center", e.target.value)}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                </Box>
-
-                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                  <TextField
-                    label="Issued By"
-                    size="small"
-                    fullWidth
-                    required
-                    value={header.issued_by}
-                    onChange={(e) => updateHeader("issued_by", e.target.value)}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                  <TextField
-                    label="Received By"
-                    size="small"
-                    fullWidth
-                    required
-                    value={header.received_by}
-                    onChange={(e) => updateHeader("received_by", e.target.value)}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  />
-                </Box>
-
                 <TextField
-                  label="Remarks"
+                  label="User / Section"
                   size="small"
                   fullWidth
-                  multiline
-                  minRows={2}
-                  value={header.remarks}
-                  onChange={(e) => updateHeader("remarks", e.target.value)}
+                  value={header.user_section}
+                  onChange={(e) => updateHeader("user_section", e.target.value)}
                   sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
               </Box>
-            </CardContent>
-          </Card>
 
-          {/* ---- Materials ---- */}
-          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mt: 0.5 }}>
-            Materials
-          </Typography>
+              <TextField
+                label="SAP Reservation Number"
+                size="small"
+                fullWidth
+                value={header.sap_reservation_number}
+                onChange={(e) => updateHeader("sap_reservation_number", e.target.value)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
 
-          {materialRows.map((row) => (
-            <Card
-              key={row.rowKey}
-              elevation={0}
-              sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
-            >
-              <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-                <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <MaterialSearch
-                      value={row.material}
-                      onChange={(material) => handleMaterialSelect(row.rowKey, material)}
-                    />
-                  </Box>
-                  <IconButton
-                    size="small"
-                    onClick={() => removeMaterialRow(row.rowKey)}
-                    aria-label="Remove material"
-                    sx={{ mt: 0.5 }}
-                  >
-                    <DeleteIcon fontSize="small" color="error" />
-                  </IconButton>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
+                <TextField
+                  label="Work Order / Notification"
+                  size="small"
+                  fullWidth
+                  value={header.work_order_number}
+                  onChange={(e) => updateHeader("work_order_number", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                <TextField
+                  label="Cost Center"
+                  size="small"
+                  fullWidth
+                  value={header.cost_center}
+                  onChange={(e) => updateHeader("cost_center", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
+                <TextField
+                  label="Issued By"
+                  size="small"
+                  fullWidth
+                  required
+                  value={header.issued_by}
+                  onChange={(e) => updateHeader("issued_by", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                <TextField
+                  label="Received By"
+                  size="small"
+                  fullWidth
+                  required
+                  value={header.received_by}
+                  onChange={(e) => updateHeader("received_by", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+
+              <TextField
+                label="Remarks"
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                value={header.remarks}
+                onChange={(e) => updateHeader("remarks", e.target.value)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* ---- Materials ---- */}
+        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mt: 0.5 }}>
+          Materials
+        </Typography>
+
+        {materialRows.map((row) => (
+          <Card
+            key={row.rowKey}
+            elevation={0}
+            sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+          >
+            <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+              <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <MaterialSearch
+                    value={row.material}
+                    onChange={(material) => handleMaterialSelect(row.rowKey, material)}
+                  />
                 </Box>
+                <IconButton
+                  size="small"
+                  onClick={() => removeMaterialRow(row.rowKey)}
+                  aria-label="Remove material"
+                  sx={{ mt: 0.5 }}
+                >
+                  <DeleteIcon fontSize="small" color="error" />
+                </IconButton>
+              </Box>
 
-                {row.material && (
-                  <Box sx={{ mt: 1.25 }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        p: 1,
-                        borderRadius: 2,
-                        bgcolor: "grey.50",
-                      }}
-                    >
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                          {row.material.material_code}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                          {row.material.short_description}
-                        </Typography>
-                      </Box>
-
-                      {row.loadingStock ? (
-                        <CircularProgress size={18} />
-                      ) : (
-                        <Box sx={{ textAlign: "right", flexShrink: 0 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                            Available
-                          </Typography>
-                          <Typography sx={{ fontWeight: 800 }} color="primary.main">
-                            {row.totalAvailableQty} {row.material.uom}
-                          </Typography>
-                        </Box>
-                      )}
+              {row.material && (
+                <Box sx={{ mt: 1.25 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      p: 1,
+                      borderRadius: 2,
+                      bgcolor: "grey.50",
+                    }}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                        {row.material.material_code}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                        {row.material.short_description}
+                      </Typography>
                     </Box>
 
-                    {!row.loadingStock && row.stockLocations.length === 0 && (
-                      <Alert severity="warning" sx={{ mt: 1, py: 0.25 }}>
-                        No stock available for this material at any location.
-                      </Alert>
+                    {row.loadingStock ? (
+                      <CircularProgress size={18} />
+                    ) : (
+                      <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          Available
+                        </Typography>
+                        <Typography sx={{ fontWeight: 800 }} color="primary.main">
+                          {row.totalAvailableQty} {row.material.uom}
+                        </Typography>
+                      </Box>
                     )}
+                  </Box>
 
-                    {row.locations.length > 0 && (
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, mt: 1 }}>
-                        {row.locations.map((loc) => (
-                          <Box
-                            key={loc.rowKey}
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 1,
-                              p: 1,
-                              borderRadius: 2,
-                              bgcolor: "background.paper",
-                              border: "1px solid",
-                              borderColor: "divider",
-                            }}
-                          >
-                            <Box sx={{ minWidth: 0, flex: 1 }}>
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
-                                <PlaceIcon sx={{ fontSize: 14 }} color="action" />
-                                <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                                  {loc.location_code}
-                                </Typography>
-                              </Box>
-                              <Typography variant="caption" color="text.secondary">
-                                Available: {loc.availableQty}
+                  {!row.loadingStock && row.stockLocations.length === 0 && (
+                    <Alert severity="warning" sx={{ mt: 1, py: 0.25 }}>
+                      No stock available for this material at any location.
+                    </Alert>
+                  )}
+
+                  {row.locations.length > 0 && (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, mt: 1 }}>
+                      {row.locations.map((loc) => (
+                        <Box
+                          key={loc.rowKey}
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            p: 1,
+                            borderRadius: 2,
+                            bgcolor: "background.paper",
+                            border: "1px solid",
+                            borderColor: "divider",
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+                              <PlaceIcon sx={{ fontSize: 14 }} color="action" />
+                              <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                                {loc.location_code}
                               </Typography>
                             </Box>
-
-                            <TextField
-                              label="Issue Qty"
-                              type="number"
-                              size="small"
-                              value={loc.issueQty}
-                              onChange={(e) =>
-                                updateIssueQty(row.rowKey, loc.rowKey, e.target.value)
-                              }
-                              error={Number(loc.issueQty) > loc.availableQty}
-                              slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
-                              sx={{
-                                width: 110,
-                                flexShrink: 0,
-                                "& .MuiOutlinedInput-root": { borderRadius: 2 },
-                              }}
-                            />
-
-                            <IconButton
-                              size="small"
-                              onClick={() => removeLocationRow(row.rowKey, loc.rowKey)}
-                              aria-label="Remove location"
-                            >
-                              <DeleteIcon fontSize="small" color="error" />
-                            </IconButton>
+                            <Typography variant="caption" color="text.secondary">
+                              Available: {loc.availableQty}
+                            </Typography>
                           </Box>
+
+                          <TextField
+                            label="Issue Qty"
+                            type="number"
+                            size="small"
+                            value={loc.issueQty}
+                            onChange={(e) =>
+                              updateIssueQty(row.rowKey, loc.rowKey, e.target.value)
+                            }
+                            error={Number(loc.issueQty) > loc.availableQty}
+                            slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
+                            sx={{
+                              width: 110,
+                              flexShrink: 0,
+                              "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                            }}
+                          />
+
+                          <IconButton
+                            size="small"
+                            onClick={() => removeLocationRow(row.rowKey, loc.rowKey)}
+                            aria-label="Remove location"
+                          >
+                            <DeleteIcon fontSize="small" color="error" />
+                          </IconButton>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+
+                  {row.stockLocations.length > 0 && (
+                    <TextField
+                      select
+                      size="small"
+                      fullWidth
+                      label="Add Location"
+                      value=""
+                      onChange={(e) => {
+                        const allocation = row.stockLocations.find(
+                          (a) => a.location_code === e.target.value
+                        );
+                        if (allocation) addLocationRow(row.rowKey, allocation);
+                      }}
+                      sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      slotProps={{
+                        inputLabel: { shrink: true },
+                        select: {
+                          displayEmpty: true,
+                          renderValue: () => (
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "primary.main" }}>
+                              <AddIcon fontSize="small" />
+                              <span>Add Location</span>
+                            </Box>
+                          ),
+                        },
+                      }}
+                    >
+                      {row.stockLocations
+                        .filter(
+                          (a) =>
+                            !row.locations.some(
+                              (l) => l.location_code === a.location_code
+                            )
+                        )
+                        .map((a) => (
+                          <MenuItem key={a.location_code} value={a.location_code}>
+                            {a.location_code} (available: {a.quantity})
+                          </MenuItem>
                         ))}
-                      </Box>
-                    )}
+                    </TextField>
+                  )}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        ))}
 
-                    {row.stockLocations.length > 0 && (
-                      <TextField
-                        select
-                        size="small"
-                        fullWidth
-                        label="Add Location"
-                        value=""
-                        onChange={(e) => {
-                          const allocation = row.stockLocations.find(
-                            (a) => a.location_code === e.target.value
-                          );
-                          if (allocation) addLocationRow(row.rowKey, allocation);
-                        }}
-                        sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                        slotProps={{
-                          inputLabel: { shrink: true },
-                          select: {
-                            displayEmpty: true,
-                            renderValue: () => (
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "primary.main" }}>
-                                <AddIcon fontSize="small" />
-                                <span>Add Location</span>
-                              </Box>
-                            ),
-                          },
-                        }}
-                      >
-                        {row.stockLocations
-                          .filter(
-                            (a) =>
-                              !row.locations.some(
-                                (l) => l.location_code === a.location_code
-                              )
-                          )
-                          .map((a) => (
-                            <MenuItem key={a.location_code} value={a.location_code}>
-                              {a.location_code} (available: {a.quantity})
-                            </MenuItem>
-                          ))}
-                      </TextField>
-                    )}
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+        <Button
+          variant="outlined"
+          startIcon={<AddIcon fontSize="small" />}
+          onClick={addMaterialRow}
+          sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
+        >
+          Add Material
+        </Button>
 
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon fontSize="small" />}
-            onClick={addMaterialRow}
-            sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
-          >
-            Add Material
-          </Button>
+        {/* ---- Summary ---- */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 1.5,
+            borderRadius: 2,
+            boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+            display: "flex",
+            justifyContent: "space-around",
+            textAlign: "center",
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              {summary.totalMaterials}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Materials
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              {summary.totalLocations}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Locations
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800 }} color="primary.main">
+              {summary.totalQuantity}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Total Qty
+            </Typography>
+          </Box>
+        </Paper>
 
-          {/* ---- Summary ---- */}
-          <Paper
-            elevation={0}
-            sx={{
-              p: 1.5,
-              borderRadius: 2,
-              boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
-              display: "flex",
-              justifyContent: "space-around",
-              textAlign: "center",
-            }}
-          >
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                {summary.totalMaterials}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Materials
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                {summary.totalLocations}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Locations
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800 }} color="primary.main">
-                {summary.totalQuantity}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Total Qty
-              </Typography>
-            </Box>
-          </Paper>
-
-          {/* ---- Sticky Save bar ---- */}
+        {/* ---- Sticky Save bar ---- */}
+        <Box
+          sx={{
+            position: "fixed",
+            left: { xs: 0, md: DRAWER_WIDTH },
+            right: 0,
+            bottom: mobile ? BOTTOM_NAV_OFFSET : 0,
+            zIndex: 10,
+            bgcolor: "background.paper",
+            borderTop: "1px solid",
+            borderColor: "divider",
+            p: 1.25,
+          }}
+        >
           <Box
             sx={{
-              position: "fixed",
-              left: { xs: 0, md: DRAWER_WIDTH },
-              right: 0,
-              bottom: mobile ? BOTTOM_NAV_OFFSET : 0,
-              zIndex: 10,
-              bgcolor: "background.paper",
-              borderTop: "1px solid",
-              borderColor: "divider",
-              p: 1.25,
+              display: "flex",
+              gap: 1,
+              maxWidth: CONTENT_MAX_WIDTH,
+              mx: "auto",
             }}
           >
-            <Box
-              sx={{
-                display: "flex",
-                gap: 1,
-                maxWidth: CONTENT_MAX_WIDTH,
-                mx: "auto",
-              }}
+            <Button
+              onClick={resetForm}
+              disabled={saving}
+              startIcon={<RestartAltIcon fontSize="small" />}
+              sx={{ minHeight: 48, borderRadius: 2, fontWeight: 600 }}
             >
-              <Button
-                onClick={resetForm}
-                disabled={saving}
-                startIcon={<RestartAltIcon fontSize="small" />}
-                sx={{ minHeight: 48, borderRadius: 2, fontWeight: 600 }}
-              >
-                Reset
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleSave}
-                disabled={saving}
-                fullWidth
-                startIcon={
-                  saving ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />
-                }
-                sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
-              >
-                Save Issue
-              </Button>
-            </Box>
+              Reset
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              disabled={saving}
+              fullWidth
+              startIcon={
+                saving ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />
+              }
+              sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
+            >
+              Save Issue
+            </Button>
           </Box>
         </Box>
-      )}
-
-      {activeTab === TAB_REGISTER && (
-        <Box>
-          <TextField
-            size="small"
-            placeholder="Search Issue No, Material, Department or Reservation"
-            value={issueSearch}
-            onChange={(e) => setIssueSearch(e.target.value)}
-            fullWidth
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-            sx={{ mb: 1.5, "& .MuiOutlinedInput-root": { borderRadius: 2, bgcolor: "background.paper" } }}
-          />
-
-          {loadingIssues ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-              <CircularProgress size={28} />
-            </Box>
-          ) : issues.length === 0 ? (
-            <Card variant="outlined" sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                No issues found.
-              </Typography>
-            </Card>
-          ) : (
-            <>
-              {/* ---- Mobile/tablet: card list (unchanged) ---- */}
-              <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
-                {issues.map((issue) => (
-                  <Card
-                    key={issue.id}
-                    variant="outlined"
-                    sx={{ borderRadius: 2, px: 1.25, py: 1 }}
-                    onClick={() => toggleExpand(issue.id)}
-                  >
-                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                          {issue.issue_number}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" noWrap>
-                          {issue.department}
-                        </Typography>
-                      </Box>
-                      <Chip size="small" label={issue.issue_type} sx={{ fontWeight: 700 }} />
-                    </Box>
-
-                    <Box sx={{ display: "flex", justifyContent: "space-between", mt: 0.75 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatDateTime(issue.issue_datetime)}
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }} color="primary.main">
-                        {issue.total_quantity} qty / {issue.total_materials} materials
-                      </Typography>
-                    </Box>
-
-                    {expandedIssueId === issue.id && (
-                      <IssueDetail loading={loadingDetail} items={expandedItems} />
-                    )}
-                  </Card>
-                ))}
-              </Box>
-
-              {/* ---- Desktop: proper table with expandable detail row ---- */}
-              <TableContainer
-                component={Card}
-                elevation={0}
-                sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
-              >
-                <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
-                  <TableHead>
-                    <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
-                      <TableCell>Issue No.</TableCell>
-                      <TableCell>Department</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Date</TableCell>
-                      <TableCell align="right">Materials</TableCell>
-                      <TableCell align="right">Total Qty</TableCell>
-                      <TableCell align="right" width={56} />
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {issues.map((issue) => (
-                      <Fragment key={issue.id}>
-                        <TableRow
-                          hover
-                          onClick={() => toggleExpand(issue.id)}
-                          sx={{ cursor: "pointer", height: 60 }}
-                        >
-                          <TableCell sx={{ fontWeight: 700 }}>{issue.issue_number}</TableCell>
-                          <TableCell>{issue.department}</TableCell>
-                          <TableCell>
-                            <Chip size="small" label={issue.issue_type} sx={{ fontWeight: 700 }} />
-                          </TableCell>
-                          <TableCell>{formatDateTime(issue.issue_datetime)}</TableCell>
-                          <TableCell align="right">{issue.total_materials}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 700, color: "primary.main" }}>
-                            {issue.total_quantity}
-                          </TableCell>
-                          <TableCell align="right">
-                            <IconButton
-                              size="small"
-                              aria-label="Expand issue details"
-                              sx={{
-                                transform: expandedIssueId === issue.id ? "rotate(180deg)" : "none",
-                                transition: "transform 0.15s",
-                              }}
-                            >
-                              <ExpandMoreIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-
-                        {expandedIssueId === issue.id && (
-                          <TableRow>
-                            <TableCell colSpan={7} sx={{ bgcolor: "grey.50", py: 2 }}>
-                              <Collapse in timeout="auto">
-                                <IssueDetail loading={loadingDetail} items={expandedItems} />
-                              </Collapse>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </Fragment>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </>
-          )}
-        </Box>
-      )}
-
-      </SwipeableTabPanel>
+      </Box>
 
       <Snackbar
         open={snackbar.open}
@@ -985,58 +715,6 @@ export default function MaterialIssue() {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
-  );
-}
-
-function IssueDetail({
-  loading,
-  items,
-}: {
-  loading: boolean;
-  items: (IssueItem & { locations: IssueItemLocation[] })[];
-}) {
-  if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
-        <CircularProgress size={20} />
-      </Box>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-        No material lines found.
-      </Typography>
-    );
-  }
-
-  return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
-      {items.map((item) => (
-        <Box key={item.id} sx={{ p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.5 }}>
-            <Inventory2Icon fontSize="small" color="action" />
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {item.material_code} - {item.short_description}
-            </Typography>
-          </Box>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-            {item.locations.map((loc) => (
-              <Chip
-                key={loc.id}
-                size="small"
-                icon={<PlaceIcon />}
-                label={`${loc.location_code}: ${loc.issue_qty}`}
-              />
-            ))}
-          </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-            Total: {item.total_issue_qty} {item.uom}
-          </Typography>
-        </Box>
-      ))}
     </Box>
   );
 }
