@@ -3,6 +3,7 @@ import { applyStockMovement } from "./inventoryTransactionService";
 import {
   downloadBulkImportReport,
   type BulkImportReportRow,
+  type BulkImportRowStatus,
 } from "../utils/bulkImportReport";
 
 /* =========================================================================
@@ -708,6 +709,12 @@ export interface GrnImportRow {
   rowNumber: number;
   material_code: string;
   quantity: number;
+  /** Every raw Excel row that fed into this row (present when duplicate
+   *  Material Codes were summed into one). Lets the import report list
+   *  every raw row that was submitted, not just the first occurrence of
+   *  each Material Code. Absent (or a single entry) when there was no
+   *  duplicate to merge. */
+  contributions?: { rowNumber: number; quantity: number }[];
 }
 
 export interface GrnFormatInvalidRow {
@@ -773,7 +780,10 @@ export function parseGrnExcelRows(
   rawRows: Record<string, unknown>[]
 ): GrnParseResult {
   const invalidRows: GrnFormatInvalidRow[] = [];
-  const merged = new Map<string, { rowNumber: number; quantity: number }>();
+  const merged = new Map<
+    string,
+    { rowNumber: number; quantity: number; contributions: { rowNumber: number; quantity: number }[] }
+  >();
 
   let totalRecords = 0;
   let rawValidRowCount = 0;
@@ -832,8 +842,13 @@ export function parseGrnExcelRows(
 
     if (existing) {
       existing.quantity += quantity;
+      existing.contributions.push({ rowNumber, quantity });
     } else {
-      merged.set(key, { rowNumber, quantity });
+      merged.set(key, {
+        rowNumber,
+        quantity,
+        contributions: [{ rowNumber, quantity }],
+      });
     }
   });
 
@@ -842,6 +857,7 @@ export function parseGrnExcelRows(
       rowNumber: v.rowNumber,
       material_code: materialCode,
       quantity: v.quantity,
+      contributions: v.contributions,
     })
   );
 
@@ -1115,17 +1131,48 @@ const GRN_REPORT_COLUMNS = [
 
 /**
  * Builds and immediately downloads a combined Excel report for a GRN bulk
- * import, covering every row submitted: rows rejected for format reasons
- * (missing code, bad quantity), rows rejected because the Material Code is
- * unknown, rows imported successfully, and rows that failed while being
- * applied - along with the reason for anything other than a clean success.
+ * import, covering every RAW row submitted - including every row that was
+ * merged into another because it shared a duplicate Material Code, since
+ * `mergedRows` carries each raw contributor's original row number and
+ * quantity. Format-rejected rows, rows rejected because the Material Code
+ * is unknown, rows imported successfully, and rows that failed while
+ * being applied all get a row per raw contributor, along with the reason
+ * for anything other than a clean success.
  */
 export function downloadGrnImportReport(
   totalRecords: number,
   formatInvalidRows: GrnFormatInvalidRow[],
+  mergedRows: GrnImportRow[],
   unknownMaterials: GrnImportRow[],
   summary: GrnImportSummary
 ): void {
+  const contributionsByCode = new Map<
+    string,
+    { rowNumber: number; quantity: number }[]
+  >();
+
+  mergedRows.forEach((row) => {
+    contributionsByCode.set(
+      row.material_code,
+      row.contributions ?? [{ rowNumber: row.rowNumber, quantity: row.quantity }]
+    );
+  });
+
+  function expandByRawRow(
+    materialCode: string,
+    status: BulkImportRowStatus,
+    reason: string | undefined
+  ): BulkImportReportRow[] {
+    const contributions = contributionsByCode.get(materialCode) ?? [];
+
+    return contributions.map((c) => ({
+      rowNumber: c.rowNumber,
+      status,
+      reason,
+      data: { material_code: materialCode, quantity: c.quantity },
+    }));
+  }
+
   const formatRejected: BulkImportReportRow[] = formatInvalidRows.map((row) => ({
     rowNumber: row.rowNumber,
     status: "Rejected",
@@ -1136,37 +1183,27 @@ export function downloadGrnImportReport(
     },
   }));
 
-  const unknownRejected: BulkImportReportRow[] = unknownMaterials.map((row) => ({
-    rowNumber: row.rowNumber,
-    status: "Rejected",
-    reason: `Material Code "${row.material_code}" was not found.`,
-    data: {
-      material_code: row.material_code,
-      quantity: row.quantity,
-    },
-  }));
+  const unknownRejected: BulkImportReportRow[] = unknownMaterials.flatMap((row) =>
+    expandByRawRow(
+      row.material_code,
+      "Rejected",
+      `Material Code "${row.material_code}" was not found.`
+    )
+  );
 
-  const succeeded: BulkImportReportRow[] = summary.successes.map((row) => ({
-    rowNumber: row.rowNumber,
-    status: "Imported",
-    data: {
-      material_code: row.material_code,
-      quantity: row.quantity,
-    },
-  }));
+  const succeeded: BulkImportReportRow[] = summary.successes.flatMap((row) =>
+    expandByRawRow(row.material_code, "Imported", undefined)
+  );
 
-  const failed: BulkImportReportRow[] = summary.failures.map((row) => ({
-    rowNumber: row.rowNumber,
-    status: "Failed",
-    reason: row.error,
-    data: {
-      material_code: row.material_code,
-      quantity: row.quantity,
-    },
-  }));
+  const failed: BulkImportReportRow[] = summary.failures.flatMap((row) =>
+    expandByRawRow(row.material_code, "Failed", row.error)
+  );
 
   const safeGrnNumber =
     summary.grnNumber.replace(/[^a-zA-Z0-9_-]/g, "_") || "Import";
+
+  const rawValidRowCount = totalRecords - formatInvalidRows.length;
+  const duplicateCodeCount = rawValidRowCount - mergedRows.length;
 
   downloadBulkImportReport({
     fileNamePrefix: `GRN_${safeGrnNumber}`,
@@ -1175,6 +1212,7 @@ export function downloadGrnImportReport(
     summary: [
       { label: "Total Excel Rows", value: totalRecords },
       { label: "Format Rejected", value: formatInvalidRows.length },
+      { label: "Duplicate Material Code Rows Merged", value: duplicateCodeCount },
       { label: "Unknown Material Rejected", value: unknownMaterials.length },
       { label: "Imported", value: summary.imported },
       { label: "Failed", value: summary.failed },

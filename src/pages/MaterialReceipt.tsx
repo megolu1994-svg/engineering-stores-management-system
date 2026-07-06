@@ -909,6 +909,7 @@ export default function MaterialReceipt() {
       downloadGrnImportReport(
         grnTotalRecords,
         grnFormatInvalidRows,
+        grnMergedRows,
         grnUnknownMaterials,
         summary
       );
