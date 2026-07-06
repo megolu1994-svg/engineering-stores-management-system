@@ -222,7 +222,7 @@ export default function OpeningStockTab() {
 
       setSummary(result);
 
-      downloadOpeningStockImportReport(validation, result);
+      await downloadOpeningStockImportReport(validation, result, file?.name);
 
       showSnackbar(
         `Opening stock import complete. Applied: ${result.applied}, Failed: ${result.failed}. Result report downloaded.`,
@@ -235,13 +235,17 @@ export default function OpeningStockTab() {
     }
   }
 
-  function handleDownloadReport() {
+  async function handleDownloadReport() {
     if (!validation || !summary) {
       return;
     }
 
-    downloadOpeningStockImportReport(validation, summary);
-    showSnackbar("Import report downloaded.", "success");
+    try {
+      await downloadOpeningStockImportReport(validation, summary, file?.name);
+      showSnackbar("Import report downloaded.", "success");
+    } catch {
+      showSnackbar("Failed to download the import report.", "error");
+    }
   }
 
   const previewRows = validation

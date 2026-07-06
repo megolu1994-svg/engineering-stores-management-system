@@ -1,10 +1,10 @@
 import { supabase } from "../config/supabase";
 import { applyStockMovement } from "./inventoryTransactionService";
 import {
-  downloadBulkImportReport,
   type BulkImportReportRow,
   type BulkImportRowStatus,
 } from "../utils/bulkImportReport";
+import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
 /* =========================================================================
  * Material Receipt - DRC Management (Sprint 1)
@@ -1137,22 +1137,24 @@ const GRN_REPORT_COLUMNS = [
 ];
 
 /**
- * Builds and immediately downloads a combined Excel report for a GRN bulk
- * import, covering every RAW row submitted - including every row that was
- * merged into another because it shared a duplicate Material Code, since
- * `mergedRows` carries each raw contributor's original row number and
- * quantity. Format-rejected rows, rows rejected because the Material Code
- * is unknown, rows imported successfully, and rows that failed while
- * being applied all get a row per raw contributor, along with the reason
- * for anything other than a clean success.
+ * Builds a combined Excel report for a GRN bulk import, covering every RAW
+ * row submitted - including every row that was merged into another
+ * because it shared a duplicate Material Code, since `mergedRows` carries
+ * each raw contributor's original row number and quantity. Format-rejected
+ * rows, rows rejected because the Material Code is unknown, rows imported
+ * successfully, and rows that failed while being applied all get a row
+ * per raw contributor, along with the reason for anything other than a
+ * clean success. Saves the report to Reports > Import Reports history and
+ * then downloads it immediately.
  */
-export function downloadGrnImportReport(
+export async function downloadGrnImportReport(
   totalRecords: number,
   formatInvalidRows: GrnFormatInvalidRow[],
   mergedRows: GrnImportRow[],
   unknownMaterials: GrnImportRow[],
-  summary: GrnImportSummary
-): void {
+  summary: GrnImportSummary,
+  fileName?: string | null
+): Promise<void> {
   const contributionsByCode = new Map<
     string,
     { rowNumber: number; quantity: number }[]
@@ -1212,7 +1214,13 @@ export function downloadGrnImportReport(
   const rawValidRowCount = totalRecords - formatInvalidRows.length;
   const duplicateCodeCount = rawValidRowCount - mergedRows.length;
 
-  downloadBulkImportReport({
+  await recordAndDownloadBulkImportReport({
+    importType: "GRN",
+    fileName: fileName ?? summary.grnNumber,
+    totalRows: totalRecords,
+    successCount: succeeded.length,
+    rejectedCount: formatRejected.length + unknownRejected.length,
+    failedCount: failed.length,
     fileNamePrefix: `GRN_${safeGrnNumber}`,
     columns: GRN_REPORT_COLUMNS,
     rows: [...formatRejected, ...unknownRejected, ...succeeded, ...failed],

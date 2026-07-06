@@ -235,7 +235,7 @@ export default function MaterialMaster() {
 
       setImportSummary(summary);
 
-      downloadMaterialImportReport(importValidation, summary);
+      await downloadMaterialImportReport(importValidation, summary, importFile?.name);
 
       setSnackbarSeverity(summary.failed > 0 ? "error" : "success");
       setSnackbarMessage(
@@ -254,14 +254,19 @@ export default function MaterialMaster() {
     }
   }
 
-  function handleDownloadImportReport() {
+  async function handleDownloadImportReport() {
     if (!importValidation || !importSummary) {
       return;
     }
 
-    downloadMaterialImportReport(importValidation, importSummary);
-    setSnackbarSeverity("success");
-    setSnackbarMessage("Import report downloaded.");
+    try {
+      await downloadMaterialImportReport(importValidation, importSummary, importFile?.name);
+      setSnackbarSeverity("success");
+      setSnackbarMessage("Import report downloaded.");
+    } catch {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Failed to download the import report.");
+    }
     setSnackbarOpen(true);
   }
 

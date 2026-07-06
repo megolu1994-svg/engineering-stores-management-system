@@ -1,9 +1,7 @@
 import { supabase } from "../config/supabase";
 import type { Material } from "../types/material";
-import {
-  downloadBulkImportReport,
-  type BulkImportReportRow,
-} from "../utils/bulkImportReport";
+import { type BulkImportReportRow } from "../utils/bulkImportReport";
+import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
 export async function getMaterials(): Promise<Material[]> {
   const PAGE_SIZE = 1000;
@@ -680,16 +678,18 @@ const MATERIAL_REPORT_COLUMNS = [
 ];
 
 /**
- * Builds and immediately downloads a combined Excel report for a Material
- * Master bulk import, covering every row submitted: rows rejected by
- * validation before the import ran, rows that imported/updated
- * successfully, and rows that failed during the import itself - along
- * with the reason for anything other than a clean success.
+ * Builds a combined Excel report for a Material Master bulk import,
+ * covering every row submitted: rows rejected by validation before the
+ * import ran, rows that imported/updated successfully, and rows that
+ * failed during the import itself - along with the reason for anything
+ * other than a clean success. Saves the report to Reports > Import
+ * Reports history and then downloads it immediately.
  */
-export function downloadMaterialImportReport(
+export async function downloadMaterialImportReport(
   validation: MaterialValidationResult,
-  summary: MaterialImportSummary
-): void {
+  summary: MaterialImportSummary,
+  fileName?: string | null
+): Promise<void> {
   const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
     rowNumber: row.rowNumber,
     status: "Rejected",
@@ -722,7 +722,13 @@ export function downloadMaterialImportReport(
     },
   }));
 
-  downloadBulkImportReport({
+  await recordAndDownloadBulkImportReport({
+    importType: "Material Master",
+    fileName,
+    totalRows: validation.totalRecords,
+    successCount: summary.imported + summary.updated,
+    rejectedCount: validation.invalidRows.length,
+    failedCount: summary.failed,
     fileNamePrefix: "Material_Import",
     columns: MATERIAL_REPORT_COLUMNS,
     rows: [...rejected, ...succeeded, ...failed],

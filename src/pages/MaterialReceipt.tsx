@@ -907,12 +907,13 @@ export default function MaterialReceipt() {
       const grns = await getGrnHistory(viewReceipt.id);
       setGrnHistory(grns);
 
-      downloadGrnImportReport(
+      await downloadGrnImportReport(
         grnTotalRecords,
         grnFormatInvalidRows,
         grnMergedRows,
         grnUnknownMaterials,
-        summary
+        summary,
+        grnFile?.name
       );
 
       resetGrnForm();

@@ -42,6 +42,7 @@ import InboxIcon from "@mui/icons-material/Inbox";
 import HistoryIcon from "@mui/icons-material/History";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import OutputIcon from "@mui/icons-material/Output";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 
 import MaterialSearch from "../components/MaterialSearch";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
@@ -61,6 +62,11 @@ import {
 } from "../services/inventoryOverviewService";
 import { supabase } from "../config/supabase";
 import type { InventoryTransactionType } from "../services/inventoryTransactionService";
+import {
+  listBulkImportHistory,
+  downloadHistoryReport,
+  type BulkImportHistoryListItem,
+} from "../services/bulkImportHistoryService";
 
 function safeNumber(value: number | string | null | undefined): number {
   const n = Number(value);
@@ -471,6 +477,7 @@ const TAB_MATERIAL_SUMMARY = 0;
 const TAB_MOVEMENT_HISTORY = 1;
 const TAB_RECEIPT_HISTORY = 2;
 const TAB_ISSUE_HISTORY = 3;
+const TAB_IMPORT_REPORTS = 4;
 
 interface MovementRow {
   id: number;
@@ -563,7 +570,7 @@ export default function Reports() {
 
   const [activeTab, setActiveTab] = useState(TAB_MATERIAL_SUMMARY);
 
-  const { direction } = useSwipeTabs(activeTab, setActiveTab, 4);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 5);
 
   // ---------------- Material Summary ----------------
   const [material, setMaterial] = useState<Material | null>(null);
@@ -1019,6 +1026,51 @@ export default function Reports() {
     );
   }
 
+  // ---------------- Import Reports ----------------
+  const [importHistory, setImportHistory] = useState<BulkImportHistoryListItem[]>([]);
+  const [loadingImportHistory, setLoadingImportHistory] = useState(false);
+  const [downloadingImportReportId, setDownloadingImportReportId] = useState<
+    number | null
+  >(null);
+
+  useEffect(() => {
+    if (activeTab !== TAB_IMPORT_REPORTS) return;
+
+    let cancelled = false;
+    setLoadingImportHistory(true);
+
+    async function load() {
+      try {
+        const rows = await listBulkImportHistory();
+        if (!cancelled) setImportHistory(rows);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setImportHistory([]);
+      } finally {
+        if (!cancelled) setLoadingImportHistory(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
+  async function handleDownloadImportHistoryReport(id: number) {
+    setDownloadingImportReportId(id);
+
+    try {
+      await downloadHistoryReport(id);
+    } catch (err) {
+      console.error(err);
+      setExportError("Something went wrong while downloading this import report. Please try again.");
+    } finally {
+      setDownloadingImportReportId(null);
+    }
+  }
+
   function handlePrint() {
     window.print();
   }
@@ -1068,6 +1120,7 @@ export default function Reports() {
         <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Movement" />
         <Tab icon={<LocalShippingIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Receipts" />
         <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Issues" />
+        <Tab icon={<UploadFileIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Import Reports" />
       </Tabs>
 
       <SwipeableTabPanel activeTab={activeTab} direction={direction}>
@@ -1553,6 +1606,138 @@ export default function Reports() {
                         <TableCell>{row.department}</TableCell>
                         <TableCell align="right">{safeNumber(row.total_quantity)}</TableCell>
                         <TableCell>{formatReportDate(row.issue_datetime)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+        </>
+      )}
+
+      {activeTab === TAB_IMPORT_REPORTS && (
+        <>
+          {loadingImportHistory ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : importHistory.length === 0 ? (
+            <Card variant="outlined" sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                No bulk imports have been run yet.
+              </Typography>
+            </Card>
+          ) : (
+            <>
+              {/* ---- Mobile/tablet: card list ---- */}
+              <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
+                {importHistory.map((row) => (
+                  <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                          {row.import_type}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {safeText(row.file_name)}
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={
+                          downloadingImportReportId === row.id ? (
+                            <CircularProgress size={16} color="inherit" />
+                          ) : (
+                            <DownloadIcon fontSize="small" />
+                          )
+                        }
+                        onClick={() => handleDownloadImportHistoryReport(row.id)}
+                        disabled={downloadingImportReportId === row.id}
+                        sx={{ borderRadius: 2, fontWeight: 600, flexShrink: 0 }}
+                      >
+                        Download
+                      </Button>
+                    </Box>
+
+                    <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Date
+                        </Typography>
+                        <Typography variant="body2" noWrap>{formatReportDateTime(row.created_at)}</Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Total Rows
+                        </Typography>
+                        <Typography variant="body2" noWrap>{row.total_rows}</Typography>
+                      </Grid>
+                    </Grid>
+
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.75 }}>
+                      <Chip size="small" label={`Success: ${row.success_count}`} color="success" />
+                      <Chip size="small" label={`Rejected: ${row.rejected_count}`} color="warning" />
+                      <Chip size="small" label={`Failed: ${row.failed_count}`} color="error" />
+                    </Box>
+                  </Card>
+                ))}
+              </Box>
+
+              {/* ---- Desktop: proper table ---- */}
+              <TableContainer
+                component={Card}
+                elevation={0}
+                sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+              >
+                <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                  <TableHead>
+                    <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>File Name</TableCell>
+                      <TableCell align="right">Total Rows</TableCell>
+                      <TableCell align="right">Success</TableCell>
+                      <TableCell align="right">Rejected</TableCell>
+                      <TableCell align="right">Failed</TableCell>
+                      <TableCell align="right">Report</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importHistory.map((row) => (
+                      <TableRow key={row.id} hover sx={{ height: 60 }}>
+                        <TableCell>{formatReportDateTime(row.created_at)}</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>{row.import_type}</TableCell>
+                        <TableCell>{safeText(row.file_name)}</TableCell>
+                        <TableCell align="right">{row.total_rows}</TableCell>
+                        <TableCell align="right">
+                          <Chip size="small" label={row.success_count} color="success" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip size="small" label={row.rejected_count} color="warning" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip size="small" label={row.failed_count} color="error" />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={
+                              downloadingImportReportId === row.id ? (
+                                <CircularProgress size={16} color="inherit" />
+                              ) : (
+                                <DownloadIcon fontSize="small" />
+                              )
+                            }
+                            onClick={() => handleDownloadImportHistoryReport(row.id)}
+                            disabled={downloadingImportReportId === row.id}
+                            sx={{ borderRadius: 2, fontWeight: 600 }}
+                          >
+                            Download
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

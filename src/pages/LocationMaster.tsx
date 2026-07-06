@@ -223,7 +223,7 @@ export default function LocationMaster() {
 
       setImportSummary(summary);
 
-      downloadLocationImportReport(importValidation, summary);
+      await downloadLocationImportReport(importValidation, summary, importFile?.name);
 
       setSnackbarSeverity(summary.failed > 0 ? "error" : "success");
       setSnackbarMessage(
@@ -241,14 +241,19 @@ export default function LocationMaster() {
     }
   }
 
-  function handleDownloadImportReport() {
+  async function handleDownloadImportReport() {
     if (!importValidation || !importSummary) {
       return;
     }
 
-    downloadLocationImportReport(importValidation, importSummary);
-    setSnackbarSeverity("success");
-    setSnackbarMessage("Import report downloaded.");
+    try {
+      await downloadLocationImportReport(importValidation, importSummary, importFile?.name);
+      setSnackbarSeverity("success");
+      setSnackbarMessage("Import report downloaded.");
+    } catch {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Failed to download the import report.");
+    }
     setSnackbarOpen(true);
   }
 

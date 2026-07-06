@@ -235,7 +235,7 @@ export default function ImportExport() {
 
       setMaterialSummary(summary);
 
-      downloadMaterialImportReport(materialValidation, summary);
+      await downloadMaterialImportReport(materialValidation, summary, materialFile?.name);
 
       showSnackbar(
         `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}. Result report downloaded.`,
@@ -248,13 +248,17 @@ export default function ImportExport() {
     }
   }
 
-  function handleDownloadMaterialReport() {
+  async function handleDownloadMaterialReport() {
     if (!materialValidation || !materialSummary) {
       return;
     }
 
-    downloadMaterialImportReport(materialValidation, materialSummary);
-    showSnackbar("Import report downloaded.", "success");
+    try {
+      await downloadMaterialImportReport(materialValidation, materialSummary, materialFile?.name);
+      showSnackbar("Import report downloaded.", "success");
+    } catch {
+      showSnackbar("Failed to download the import report.", "error");
+    }
   }
 
   // ---------------- Location Master ----------------
@@ -359,7 +363,7 @@ export default function ImportExport() {
 
       setLocationSummary(summary);
 
-      downloadLocationImportReport(locationValidation, summary);
+      await downloadLocationImportReport(locationValidation, summary, locationFile?.name);
 
       showSnackbar(
         `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}. Result report downloaded.`,
@@ -372,13 +376,17 @@ export default function ImportExport() {
     }
   }
 
-  function handleDownloadLocationReport() {
+  async function handleDownloadLocationReport() {
     if (!locationValidation || !locationSummary) {
       return;
     }
 
-    downloadLocationImportReport(locationValidation, locationSummary);
-    showSnackbar("Import report downloaded.", "success");
+    try {
+      await downloadLocationImportReport(locationValidation, locationSummary, locationFile?.name);
+      showSnackbar("Import report downloaded.", "success");
+    } catch {
+      showSnackbar("Failed to download the import report.", "error");
+    }
   }
 
   // ---------------- Derived preview data ----------------
