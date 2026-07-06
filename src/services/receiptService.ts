@@ -5,6 +5,7 @@ import {
   type BulkImportRowStatus,
 } from "../utils/bulkImportReport";
 import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
+import { sendMail } from "./mailService";
 
 /* =========================================================================
  * Material Receipt - DRC Management (Sprint 1)
@@ -42,7 +43,9 @@ export type InspectionStatus =
   | "Pending Inspection"
   | "Accepted"
   | "Rejected"
-  | "Accepted with Remarks";
+  | "Accepted with Remarks"
+  | "Shortage"
+  | "Discrepancy";
 
 export interface PackageDetailRow {
   /** Free text - usually numeric, but may be a note like "Uncountable". */
@@ -1317,6 +1320,22 @@ function formatMailDate(value: string | null): string {
 }
 
 /**
+ * Escapes text before it's interpolated into an email/preview HTML
+ * string. Several fields here (vendor_name, inspection_remarks) are
+ * free-text entered by staff, and the resulting HTML is later rendered
+ * with dangerouslySetInnerHTML in the Send Mail preview - so this isn't
+ * optional.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
  * Builds the HTML body for an "inspection required" email addressed to
  * the user department responsible for inspecting a DRC. Returns an HTML
  * string only - this function never sends anything.
@@ -1326,13 +1345,13 @@ export function generateInspectionMail(receipt: ReceiptHeader): string {
     <div style="font-family: Arial, sans-serif; color: #1a1a1a; line-height: 1.6;">
       <h2 style="margin-bottom: 4px;">Inspection Required</h2>
       <table style="border-collapse: collapse; margin: 12px 0;">
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${receipt.drc_number}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${receipt.vendor_name}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.drc_number)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${escapeHtml(receipt.vendor_name)}</td></tr>
         <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Receipt Date</td><td style="padding: 4px 0;">${formatMailDate(receipt.receipt_datetime)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">SAP PO Number</td><td style="padding: 4px 0;">${receipt.sap_po_number ?? "-"}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">GeM Order Number</td><td style="padding: 4px 0;">${receipt.gem_order_number ?? "-"}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">SAP PO Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.sap_po_number ?? "-")}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">GeM Order Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.gem_order_number ?? "-")}</td></tr>
       </table>
-      <p>Please complete inspection within 7 days.</p>
+      <p>Please complete inspection and counting of the received material, and record the outcome in the DRC.</p>
     </div>
   `.trim();
 }
@@ -1346,16 +1365,98 @@ export function generateSupplierIssueMail(
   receipt: ReceiptHeader,
   issueType: string
 ): string {
+  const instruction =
+    issueType === "Shortage"
+      ? "Please arrange to supply the short-received material mentioned above at the earliest. The DRC will be moved forward for GRN only after the short quantity is received."
+      : issueType === "Discrepancy"
+      ? "Please resolve the discrepancy noted above - by replacing the affected item(s) and/or supplying any missing documents - at the earliest. The DRC will be moved forward for GRN only after the discrepancy is resolved."
+      : "Please resolve the above issue at the earliest.";
+
   return `
     <div style="font-family: Arial, sans-serif; color: #1a1a1a; line-height: 1.6;">
       <h2 style="margin-bottom: 4px;">Material Receipt Issue</h2>
       <table style="border-collapse: collapse; margin: 12px 0;">
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${receipt.drc_number}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${receipt.vendor_name}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Issue Type</td><td style="padding: 4px 0;">${issueType}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Inspection Remarks</td><td style="padding: 4px 0;">${receipt.inspection_remarks ?? "-"}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.drc_number)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${escapeHtml(receipt.vendor_name)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Issue Type</td><td style="padding: 4px 0;">${escapeHtml(issueType)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Inspection Remarks</td><td style="padding: 4px 0;">${escapeHtml(receipt.inspection_remarks ?? "-")}</td></tr>
       </table>
-      <p>Please resolve the above issue at the earliest.</p>
+      <p>${instruction}</p>
     </div>
   `.trim();
+}
+
+/* =========================================================================
+ * Mail Sending + Log
+ *
+ * Actually dispatches a DRC mail (via the `send-drc-mail` Edge Function,
+ * see mailService.ts) and records the outcome - sent or failed - to
+ * receipt_mail_log, so every notification ever sent for a DRC stays
+ * visible in its Mail History regardless of whether the send succeeded.
+ * ========================================================================= */
+
+export type DrcMailType = "Inspection Request" | "Shortage" | "Discrepancy" | "Rejected";
+
+export interface MailLogEntry {
+  id: number;
+  receipt_id: number;
+  mail_type: DrcMailType;
+  recipient_email: string;
+  subject: string;
+  status: "Sent" | "Failed";
+  error_message: string | null;
+  sent_by: string | null;
+  sent_at: string;
+}
+
+/**
+ * Sends a DRC notification mail and logs the outcome. Never throws - a
+ * failed send is recorded with status "Failed" and returned to the
+ * caller so the UI can show the real SMTP error, rather than losing the
+ * attempt.
+ */
+export async function sendDrcMail(
+  receiptId: number,
+  mailType: DrcMailType,
+  recipients: string[],
+  subject: string,
+  html: string,
+  sentBy: string
+): Promise<{ success: boolean; error?: string }> {
+  const result = await sendMail({ to: recipients, subject, html });
+
+  const { error: logError } = await supabase.from("receipt_mail_log").insert([
+    {
+      receipt_id: receiptId,
+      mail_type: mailType,
+      recipient_email: recipients.join(", "),
+      subject,
+      status: result.success ? "Sent" : "Failed",
+      error_message: result.success ? null : result.error ?? "Unknown error.",
+      sent_by: sentBy.trim() || null,
+    },
+  ]);
+
+  if (logError) {
+    console.error("Failed to record mail log entry:", logError);
+  }
+
+  return result;
+}
+
+export async function getDrcMailHistory(
+  receiptId: number
+): Promise<MailLogEntry[]> {
+  const { data, error } = await supabase
+    .from("receipt_mail_log")
+    .select("*")
+    .eq("receipt_id", receiptId)
+    .order("sent_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return (data ?? []) as MailLogEntry[];
 }

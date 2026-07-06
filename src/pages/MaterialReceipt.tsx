@@ -60,6 +60,8 @@ import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DescriptionIcon from "@mui/icons-material/Description";
+import EmailIcon from "@mui/icons-material/Email";
+import SendIcon from "@mui/icons-material/Send";
 
 import {
   createReceipt,
@@ -77,6 +79,11 @@ import {
   downloadGrnImportReport,
   getGrnHistory,
   buildGrnTemplateRows,
+  // Mail
+  generateInspectionMail,
+  generateSupplierIssueMail,
+  sendDrcMail,
+  getDrcMailHistory,
   type ReceiptHeader,
   type ReceiptFormInput,
   type ReceiptSummary,
@@ -86,10 +93,13 @@ import {
   type GrnImportRow,
   type GrnFormatInvalidRow,
   type GrnHistoryEntry,
+  type DrcMailType,
+  type MailLogEntry,
   // Sprint 3
   type PackageDetailRow,
   type AttachmentFile,
 } from "../services/receiptService";
+import { parseRecipientList, isValidEmail } from "../services/mailService";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 import { usePersistentState } from "../hooks/usePersistentState";
 
@@ -98,8 +108,10 @@ type SnackbarSeverity = "success" | "error" | "warning" | "info";
 const INSPECTION_STATUSES: InspectionStatus[] = [
   "Pending Inspection",
   "Accepted",
-  "Rejected",
   "Accepted with Remarks",
+  "Shortage",
+  "Discrepancy",
+  "Rejected",
 ];
 
 const emptyPackageRow: PackageDetailRow = {
@@ -669,6 +681,8 @@ export default function MaterialReceipt() {
     setSaving(true);
 
     try {
+      let createdReceipt: ReceiptHeader | null = null;
+
       if (editingReceipt) {
         const updated = await updateReceipt(
           editingReceipt.id,
@@ -692,10 +706,17 @@ export default function MaterialReceipt() {
             : undefined
         );
         showSnackbar(`DRC ${created.drc_number} created.`, "success");
+        createdReceipt = created;
       }
 
       closeForm();
       await refreshAll();
+
+      // Prompt to notify the user department to inspect the material as
+      // soon as a new DRC is created.
+      if (createdReceipt) {
+        openMailDialog(createdReceipt, "Inspection Request");
+      }
     } catch (err) {
       const isDuplicateDrcNumber =
         manualDrcEntry &&
@@ -718,6 +739,84 @@ export default function MaterialReceipt() {
 
   // ---------------- View DRC ----------------
   const [viewReceipt, setViewReceipt] = useState<ReceiptHeader | null>(null);
+
+  // ---------------- Mail (Inspection request / Supplier notice) ----------------
+  const [mailDialogOpen, setMailDialogOpen] = useState(false);
+  const [mailDialogReceipt, setMailDialogReceipt] = useState<ReceiptHeader | null>(
+    null
+  );
+  const [mailType, setMailType] = useState<DrcMailType>("Inspection Request");
+  const [mailRecipient, setMailRecipient] = useState("");
+  const [mailSubject, setMailSubject] = useState("");
+  const [mailBody, setMailBody] = useState("");
+  const [mailSentBy, setMailSentBy] = useState("");
+  const [sendingMail, setSendingMail] = useState(false);
+  const [mailHistory, setMailHistory] = useState<MailLogEntry[]>([]);
+
+  function openMailDialog(receipt: ReceiptHeader, type: DrcMailType) {
+    const subject =
+      type === "Inspection Request"
+        ? `Inspection Required - DRC ${receipt.drc_number}`
+        : `Material Receipt Issue (${type}) - DRC ${receipt.drc_number}`;
+
+    const html =
+      type === "Inspection Request"
+        ? generateInspectionMail(receipt)
+        : generateSupplierIssueMail(receipt, type);
+
+    setMailDialogReceipt(receipt);
+    setMailType(type);
+    setMailSubject(subject);
+    setMailBody(html);
+    setMailRecipient("");
+    setMailSentBy("");
+    setMailDialogOpen(true);
+  }
+
+  async function handleSendMail() {
+    if (!mailDialogReceipt) return;
+
+    const recipients = parseRecipientList(mailRecipient);
+
+    if (recipients.length === 0 || recipients.some((r) => !isValidEmail(r))) {
+      showSnackbar("Please enter a valid recipient email address.", "warning");
+      return;
+    }
+    if (!mailSubject.trim()) {
+      showSnackbar("Please enter a subject.", "warning");
+      return;
+    }
+
+    setSendingMail(true);
+
+    try {
+      const result = await sendDrcMail(
+        mailDialogReceipt.id,
+        mailType,
+        recipients,
+        mailSubject.trim(),
+        mailBody,
+        mailSentBy
+      );
+
+      if (result.success) {
+        showSnackbar("Mail sent successfully.", "success");
+        setMailDialogOpen(false);
+      } else {
+        showSnackbar(
+          `Mail could not be sent: ${result.error ?? "Unknown error."}`,
+          "error"
+        );
+      }
+
+      if (viewReceipt && viewReceipt.id === mailDialogReceipt.id) {
+        const history = await getDrcMailHistory(mailDialogReceipt.id);
+        setMailHistory(history);
+      }
+    } finally {
+      setSendingMail(false);
+    }
+  }
 
   // ---------------- Sprint 2: Inspection ----------------
   const [inspectionStatusInput, setInspectionStatusInput] =
@@ -760,11 +859,12 @@ export default function MaterialReceipt() {
     setGrnKnownRows([]);
   }
 
-  // Load Inspection + GRN history whenever a DRC is opened for viewing.
+  // Load Inspection + GRN + Mail history whenever a DRC is opened for viewing.
   useEffect(() => {
     if (!viewReceipt) {
       setInspectionHistory([]);
       setGrnHistory([]);
+      setMailHistory([]);
       return;
     }
 
@@ -778,10 +878,12 @@ export default function MaterialReceipt() {
     Promise.all([
       getInspectionHistory(viewReceipt.id),
       getGrnHistory(viewReceipt.id),
-    ]).then(([inspections, grns]) => {
+      getDrcMailHistory(viewReceipt.id),
+    ]).then(([inspections, grns, mails]) => {
       if (cancelled) return;
       setInspectionHistory(inspections);
       setGrnHistory(grns);
+      setMailHistory(mails);
     });
 
     return () => {
@@ -794,7 +896,9 @@ export default function MaterialReceipt() {
 
     if (
       (inspectionStatusInput === "Rejected" ||
-        inspectionStatusInput === "Accepted with Remarks") &&
+        inspectionStatusInput === "Accepted with Remarks" ||
+        inspectionStatusInput === "Shortage" ||
+        inspectionStatusInput === "Discrepancy") &&
       !inspectionRemarksInput.trim()
     ) {
       showSnackbar(
@@ -832,6 +936,15 @@ export default function MaterialReceipt() {
       );
 
       await refreshAll();
+
+      // Shortage / Discrepancy outcomes need the supplier notified so the
+      // material can be topped up / corrected before GRN.
+      if (
+        inspectionStatusInput === "Shortage" ||
+        inspectionStatusInput === "Discrepancy"
+      ) {
+        openMailDialog(updated, inspectionStatusInput);
+      }
     } catch {
       showSnackbar("Something went wrong while saving the inspection.", "error");
     } finally {
@@ -2193,8 +2306,41 @@ export default function MaterialReceipt() {
               </Box>
 
               {viewReceipt.status === "Pending Inspection" ||
-              viewReceipt.inspection_status === "Rejected" ? (
+              viewReceipt.inspection_status === "Rejected" ||
+              viewReceipt.inspection_status === "Shortage" ||
+              viewReceipt.inspection_status === "Discrepancy" ? (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<EmailIcon fontSize="small" />}
+                    onClick={() =>
+                      openMailDialog(viewReceipt, "Inspection Request")
+                    }
+                    sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                  >
+                    Send Inspection Mail to Department
+                  </Button>
+
+                  {(viewReceipt.inspection_status === "Shortage" ||
+                    viewReceipt.inspection_status === "Discrepancy") && (
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      fullWidth
+                      startIcon={<EmailIcon fontSize="small" />}
+                      onClick={() =>
+                        openMailDialog(
+                          viewReceipt,
+                          viewReceipt.inspection_status as DrcMailType
+                        )
+                      }
+                      sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                    >
+                      Resend Supplier Mail ({viewReceipt.inspection_status})
+                    </Button>
+                  )}
+
                   <TextField
                     select
                     label="Inspection Status"
@@ -2562,6 +2708,53 @@ export default function MaterialReceipt() {
                   ))}
                 </Box>
               )}
+
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5, mt: 1.5 }}>
+                Mail History
+              </Typography>
+              {mailHistory.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No mail sent yet.
+                </Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {mailHistory.map((m) => (
+                    <Box
+                      key={m.id}
+                      sx={{
+                        p: 1,
+                        borderRadius: 2,
+                        bgcolor: "grey.50",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.25,
+                      }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+                        <Chip size="small" label={m.mail_type} sx={{ fontWeight: 600 }} />
+                        <Chip
+                          size="small"
+                          label={m.status}
+                          color={m.status === "Sent" ? "success" : "error"}
+                        />
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: "break-word" }}>
+                        To: {m.recipient_email}
+                      </Typography>
+                      <Typography variant="body2">{m.subject}</Typography>
+                      {m.error_message && (
+                        <Typography variant="caption" color="error">
+                          {m.error_message}
+                        </Typography>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        {formatDateTime(m.sent_at)}
+                        {m.sent_by ? ` - by ${m.sent_by}` : ""}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              )}
             </DialogContent>
 
             <DialogActions sx={{ p: 1.5 }}>
@@ -2588,6 +2781,92 @@ export default function MaterialReceipt() {
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      <Dialog
+        open={mailDialogOpen}
+        onClose={() => setMailDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        fullScreen={mobile}
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: 700 }}>
+          <EmailIcon fontSize="small" />
+          {mailType === "Inspection Request"
+            ? "Send Inspection Mail"
+            : `Notify Supplier - ${mailType}`}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <TextField
+            label={
+              mailType === "Inspection Request"
+                ? "Department Email"
+                : "Supplier Email"
+            }
+            placeholder="name@example.com, name2@example.com"
+            size="small"
+            fullWidth
+            required
+            value={mailRecipient}
+            onChange={(e) => setMailRecipient(e.target.value)}
+            helperText="Separate multiple recipients with a comma."
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          />
+
+          <TextField
+            label="Subject"
+            size="small"
+            fullWidth
+            value={mailSubject}
+            onChange={(e) => setMailSubject(e.target.value)}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          />
+
+          <TextField
+            label="Sent By"
+            size="small"
+            fullWidth
+            value={mailSentBy}
+            onChange={(e) => setMailSentBy(e.target.value)}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          />
+
+          <Typography variant="caption" color="text.secondary">
+            Preview
+          </Typography>
+          <Box
+            sx={{
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 2,
+              p: 1.5,
+              bgcolor: "grey.50",
+              maxHeight: 260,
+              overflowY: "auto",
+            }}
+            dangerouslySetInnerHTML={{ __html: mailBody }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 1.5 }}>
+          <Button onClick={() => setMailDialogOpen(false)} disabled={sendingMail}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={
+              sendingMail ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <SendIcon fontSize="small" />
+              )
+            }
+            onClick={handleSendMail}
+            disabled={sendingMail}
+            sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
+          >
+            Send Mail
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <Snackbar
