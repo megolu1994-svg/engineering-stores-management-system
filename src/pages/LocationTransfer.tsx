@@ -17,7 +17,10 @@ import {
   Tabs,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+
+import { useTheme } from "@mui/material/styles";
 
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -53,6 +56,8 @@ import {
 import type { Material } from "../types/material";
 import type { Location } from "../types/location";
 import type { MaterialAllocation } from "../types/materialAllocation";
+
+import { BOTTOM_NAV_OFFSET } from "../components/AppLayout";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -119,6 +124,9 @@ function formatDateTime(value: string): string {
 }
 
 export default function LocationTransfer() {
+  const theme = useTheme();
+  const mobile = useMediaQuery(theme.breakpoints.down("md"));
+
   const [activeTab, setActiveTab] = useState(TAB_NEW_TRANSFER);
 
   const [snackbar, setSnackbar] = useState<{
@@ -464,7 +472,14 @@ export default function LocationTransfer() {
       </Tabs>
 
       {activeTab === TAB_NEW_TRANSFER && (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, pb: 10 }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.5,
+            pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
+          }}
+        >
           {/* ---- Transfer Header ---- */}
           <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}>
             <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
@@ -823,7 +838,7 @@ export default function LocationTransfer() {
               position: "fixed",
               left: 0,
               right: 0,
-              bottom: 0,
+              bottom: mobile ? BOTTOM_NAV_OFFSET : 0,
               zIndex: 10,
               bgcolor: "background.paper",
               borderTop: "1px solid",

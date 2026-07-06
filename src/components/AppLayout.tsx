@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import {
   AppBar,
   Avatar,
+  BottomNavigation,
+  BottomNavigationAction,
   Box,
   Divider,
   Drawer,
@@ -52,7 +54,22 @@ const menuItems = [
   { text: "Settings", path: "/settings", icon: <SettingsIcon /> },
 ];
 
+const bottomNavItems = [
+  { label: "Inventory", path: "/allocation", icon: <FactCheckIcon /> },
+  { label: "Material Receipt", path: "/material-receipt", icon: <LocalShippingIcon /> },
+  { label: "Dashboard", path: "/", icon: <HomeIcon /> },
+  { label: "Material Issue", path: "/material-issue", icon: <OutputIcon /> },
+  { label: "Reports", path: "/reports", icon: <BarChartIcon /> },
+];
+
 const TOOLBAR_HEIGHT = { xs: 48, sm: 52 };
+
+// Height of the fixed bottom navigation bar shown on mobile (below the "md"
+// breakpoint) - exported so pages with their own fixed/sticky bottom bars
+// (e.g. a "Save" action bar) can lift themselves above it instead of being
+// hidden underneath.
+export const BOTTOM_NAV_HEIGHT = 56;
+export const BOTTOM_NAV_OFFSET = `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))`;
 
 function BrandLogo({ size = 32 }: { size?: number }) {
   return (
@@ -297,6 +314,10 @@ export default function AppLayout() {
             xs: 2,
             md: 3,
           },
+
+          pb: mobile
+            ? `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom) + 16px)`
+            : { xs: 2, md: 3 },
         }}
       >
 
@@ -305,6 +326,46 @@ export default function AppLayout() {
         <Outlet />
 
       </Box>
+
+      {mobile && !mobileOpen && (
+
+        <BottomNavigation
+          showLabels={false}
+          value={location.pathname}
+          onChange={(_event, newValue: string) => handleNavigate(newValue)}
+          sx={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: BOTTOM_NAV_HEIGHT,
+            paddingBottom: "env(safe-area-inset-bottom)",
+            zIndex: theme.zIndex.drawer + 1,
+            borderTop: "1px solid #E5E7EB",
+          }}
+        >
+
+          {bottomNavItems.map((item) => (
+
+            <BottomNavigationAction
+              key={item.path}
+              value={item.path}
+              icon={item.icon}
+              aria-label={item.label}
+              sx={{
+                minWidth: 0,
+                color: "#6B7280",
+                "&.Mui-selected": {
+                  color: BRAND_PURPLE,
+                },
+              }}
+            />
+
+          ))}
+
+        </BottomNavigation>
+
+      )}
 
     </Box>
 
