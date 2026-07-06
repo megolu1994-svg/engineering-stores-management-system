@@ -673,6 +673,7 @@ export default function LocationTransfer() {
                         }}
                         sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                         slotProps={{
+                          inputLabel: { shrink: true },
                           select: {
                             displayEmpty: true,
                             renderValue: () => (
