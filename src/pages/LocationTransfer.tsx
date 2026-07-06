@@ -69,6 +69,13 @@ interface MaterialRowState {
   rowKey: string;
   material: Material | null;
   stockLocations: MaterialAllocation[];
+  /** Every allocation row for this material, including zero-quantity
+   * ones. A location can have an existing (but empty) allocation row
+   * that `stockLocations` excludes since it isn't a valid FROM option -
+   * this list is used to find that row's id so transferring stock IN
+   * updates it instead of inserting a duplicate (material_code,
+   * location_code) row. */
+  allStockLocations: MaterialAllocation[];
   stockSummary: MaterialStockSummary;
   locations: LocationRowState[];
   loadingStock: boolean;
@@ -83,6 +90,7 @@ function emptyMaterialRow(): MaterialRowState {
     rowKey: makeKey(),
     material: null,
     stockLocations: [],
+    allStockLocations: [],
     stockSummary: emptyStockSummary,
     locations: [],
     loadingStock: false,
@@ -147,6 +155,7 @@ export default function LocationTransfer() {
               ...row,
               material,
               stockLocations: [],
+              allStockLocations: [],
               stockSummary: emptyStockSummary,
               locations: [],
               loadingStock: !!material,
@@ -168,6 +177,7 @@ export default function LocationTransfer() {
             ? {
                 ...row,
                 stockLocations: activeAllocations,
+                allStockLocations: allocations,
                 stockSummary,
                 loadingStock: false,
               }
@@ -236,12 +246,15 @@ export default function LocationTransfer() {
           locations: row.locations.map((l) => {
             if (l.rowKey !== locationRowKey) return l;
 
-            // If the material already has stock at the chosen TO
-            // location, use that existing allocation's quantity/id so
-            // the Inventory Engine updates it instead of creating a
-            // duplicate row.
+            // If the material already has an allocation row at the
+            // chosen TO location - even a zero-quantity one left over
+            // from an earlier transfer/issue - use its id so the
+            // Inventory Engine updates that row instead of inserting a
+            // duplicate (material_code, location_code) row, which the
+            // database rejects. Must check the unfiltered list since
+            // `stockLocations` excludes zero-quantity rows.
             const existing = to
-              ? row.stockLocations.find(
+              ? row.allStockLocations.find(
                   (a) => a.location_code === to.location_code
                 )
               : undefined;
