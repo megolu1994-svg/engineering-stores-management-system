@@ -37,6 +37,7 @@ import PlaceIcon from "@mui/icons-material/Place";
 import {
   parseMaterialExcelRows,
   bulkImportMaterials,
+  downloadMaterialImportReport,
   type MaterialValidationResult,
   type MaterialImportSummary,
   type MaterialImportFailure,
@@ -45,9 +46,11 @@ import {
 import {
   parseLocationExcelRows,
   bulkImportLocations,
+  downloadLocationImportReport,
   type LocationValidationResult,
   type LocationImportSummary,
 } from "../services/locationService";
+
 
 const IMPORT_BATCH_SIZE = 500;
 const PREVIEW_ROW_LIMIT = 20;
@@ -232,8 +235,10 @@ export default function ImportExport() {
 
       setMaterialSummary(summary);
 
+      downloadMaterialImportReport(materialValidation, summary);
+
       showSnackbar(
-        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}.`,
+        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}. Result report downloaded.`,
         summary.failed > 0 ? "warning" : "success"
       );
     } catch {
@@ -243,34 +248,13 @@ export default function ImportExport() {
     }
   }
 
-  function handleDownloadFailedMaterials() {
-    if (!materialSummary || materialSummary.failures.length === 0) {
+  function handleDownloadMaterialReport() {
+    if (!materialValidation || !materialSummary) {
       return;
     }
 
-    downloadWorkbook(
-      [
-        "Material Code",
-        "Description",
-        "UoM",
-        "HSN",
-        "Material Group",
-        "Error",
-        "Row Number",
-      ],
-      materialSummary.failures.map((failure: MaterialImportFailure) => [
-        failure.material_code,
-        failure.short_description,
-        failure.uom,
-        failure.hsn_code,
-        failure.material_group,
-        `${failure.errorCategory}: ${failure.error}`,
-        failure.rowNumber,
-      ]),
-      "Material_Import_Failed_Records.xlsx"
-    );
-
-    showSnackbar("Failed records downloaded.", "success");
+    downloadMaterialImportReport(materialValidation, materialSummary);
+    showSnackbar("Import report downloaded.", "success");
   }
 
   // ---------------- Location Master ----------------
@@ -375,8 +359,10 @@ export default function ImportExport() {
 
       setLocationSummary(summary);
 
+      downloadLocationImportReport(locationValidation, summary);
+
       showSnackbar(
-        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}.`,
+        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}. Result report downloaded.`,
         summary.failed > 0 ? "warning" : "success"
       );
     } catch {
@@ -384,6 +370,15 @@ export default function ImportExport() {
     } finally {
       setLocationImporting(false);
     }
+  }
+
+  function handleDownloadLocationReport() {
+    if (!locationValidation || !locationSummary) {
+      return;
+    }
+
+    downloadLocationImportReport(locationValidation, locationSummary);
+    showSnackbar("Import report downloaded.", "success");
   }
 
   // ---------------- Derived preview data ----------------
@@ -722,6 +717,16 @@ export default function ImportExport() {
                         {materialSummary.failed}
                       </Alert>
 
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<DownloadIcon />}
+                        onClick={handleDownloadMaterialReport}
+                        sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                      >
+                        Download Import Report
+                      </Button>
+
                       <Box
                         sx={{
                           p: 2,
@@ -820,10 +825,10 @@ export default function ImportExport() {
                               variant="outlined"
                               color="error"
                               startIcon={<DownloadIcon />}
-                              onClick={handleDownloadFailedMaterials}
+                              onClick={handleDownloadMaterialReport}
                               sx={{ borderRadius: 2, fontWeight: 600 }}
                             >
-                              Download Failed Records
+                              Download Import Report
                             </Button>
                           </Box>
 
@@ -1095,14 +1100,51 @@ export default function ImportExport() {
                   )}
 
                   {locationSummary && (
-                    <Alert
-                      severity={locationSummary.failed > 0 ? "warning" : "success"}
-                      sx={{ borderRadius: 2 }}
-                    >
-                      Import complete. Imported: {locationSummary.imported},
-                      Updated: {locationSummary.updated}, Failed:{" "}
-                      {locationSummary.failed}
-                    </Alert>
+                    <Box sx={{ ...columnFlexSx, gap: 1.5 }}>
+                      <Alert
+                        severity={locationSummary.failed > 0 ? "warning" : "success"}
+                        sx={{ borderRadius: 2 }}
+                      >
+                        Import complete. Imported: {locationSummary.imported},
+                        Updated: {locationSummary.updated}, Failed:{" "}
+                        {locationSummary.failed}
+                      </Alert>
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<DownloadIcon />}
+                        onClick={handleDownloadLocationReport}
+                        sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                      >
+                        Download Import Report
+                      </Button>
+
+                      {locationSummary.failures.length > 0 && (
+                        <TableContainer
+                          sx={{ maxHeight: 260, overflowX: "auto", borderRadius: 2 }}
+                        >
+                          <Table size="small" stickyHeader>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Location Code</TableCell>
+                                <TableCell>Row</TableCell>
+                                <TableCell>Reason</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {locationSummary.failures.map((failure, index) => (
+                                <TableRow key={`${failure.location_code}-${index}`}>
+                                  <TableCell>{failure.location_code}</TableCell>
+                                  <TableCell>{failure.rowNumber}</TableCell>
+                                  <TableCell>{failure.error}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                    </Box>
                   )}
                 </Box>
               </Box>

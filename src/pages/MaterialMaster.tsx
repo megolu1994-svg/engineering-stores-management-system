@@ -53,6 +53,7 @@ import {
   updateMaterial,
   parseMaterialExcelRows,
   bulkImportMaterials,
+  downloadMaterialImportReport,
   getMaterialsCount,
   getLastMaterialUpdate,
   type MaterialValidationResult,
@@ -234,9 +235,11 @@ export default function MaterialMaster() {
 
       setImportSummary(summary);
 
+      downloadMaterialImportReport(importValidation, summary);
+
       setSnackbarSeverity(summary.failed > 0 ? "error" : "success");
       setSnackbarMessage(
-        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}.`
+        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}. Result report downloaded.`
       );
       setSnackbarOpen(true);
 
@@ -249,6 +252,17 @@ export default function MaterialMaster() {
     } finally {
       setImporting(false);
     }
+  }
+
+  function handleDownloadImportReport() {
+    if (!importValidation || !importSummary) {
+      return;
+    }
+
+    downloadMaterialImportReport(importValidation, importSummary);
+    setSnackbarSeverity("success");
+    setSnackbarMessage("Import report downloaded.");
+    setSnackbarOpen(true);
   }
 
   const importPreviewRows = importValidation
@@ -726,13 +740,52 @@ export default function MaterialMaster() {
               )}
 
               {importSummary && (
-                <Alert
-                  severity={importSummary.failed > 0 ? "warning" : "success"}
-                  sx={{ borderRadius: 2 }}
-                >
-                  Import complete. Imported: {importSummary.imported}, Updated:{" "}
-                  {importSummary.updated}, Failed: {importSummary.failed}
-                </Alert>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                  <Alert
+                    severity={importSummary.failed > 0 ? "warning" : "success"}
+                    sx={{ borderRadius: 2 }}
+                  >
+                    Import complete. Imported: {importSummary.imported}, Updated:{" "}
+                    {importSummary.updated}, Failed: {importSummary.failed}
+                  </Alert>
+
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleDownloadImportReport}
+                    sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                  >
+                    Download Import Report
+                  </Button>
+
+                  {importSummary.failures.length > 0 && (
+                    <TableContainer
+                      sx={{ maxHeight: 260, overflowX: "auto", borderRadius: 2 }}
+                    >
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Material Code</TableCell>
+                            <TableCell>Row</TableCell>
+                            <TableCell>Reason</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {importSummary.failures.map((failure, index) => (
+                            <TableRow key={`${failure.material_code}-${index}`}>
+                              <TableCell>{failure.material_code}</TableCell>
+                              <TableCell>{failure.rowNumber}</TableCell>
+                              <TableCell>
+                                {failure.errorCategory}: {failure.error}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Box>
               )}
             </Box>
           </CardContent>

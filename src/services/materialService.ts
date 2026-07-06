@@ -1,5 +1,9 @@
 import { supabase } from "../config/supabase";
 import type { Material } from "../types/material";
+import {
+  downloadBulkImportReport,
+  type BulkImportReportRow,
+} from "../utils/bulkImportReport";
 
 export async function getMaterials(): Promise<Material[]> {
   const PAGE_SIZE = 1000;
@@ -459,12 +463,23 @@ export interface MaterialImportFailure {
   errorCategory: MaterialImportErrorCategory;
 }
 
+export interface MaterialImportSuccess {
+  material_code: string;
+  rowNumber: number;
+  short_description: string;
+  uom: string;
+  hsn_code: string;
+  material_group: string;
+  status: "Imported" | "Updated";
+}
+
 export interface MaterialImportSummary {
   totalRows: number;
   imported: number;
   updated: number;
   failed: number;
   timeTakenMs: number;
+  successes: MaterialImportSuccess[];
   failures: MaterialImportFailure[];
 }
 
@@ -560,6 +575,7 @@ export async function bulkImportMaterials(
     updated: 0,
     failed: 0,
     timeTakenMs: 0,
+    successes: [],
     failures: [],
   };
 
@@ -610,11 +626,23 @@ export async function bulkImportMaterials(
 
         if (upsertError) throw upsertError;
 
-        if (existingSet.has(row.material_code)) {
+        const status = existingSet.has(row.material_code) ? "Updated" : "Imported";
+
+        if (status === "Updated") {
           summary.updated += 1;
         } else {
           summary.imported += 1;
         }
+
+        summary.successes.push({
+          material_code: row.material_code,
+          rowNumber: row.rowNumber,
+          short_description: row.short_description,
+          uom: row.uom,
+          hsn_code: row.hsn_code,
+          material_group: row.material_group,
+          status,
+        });
       } catch (err) {
         summary.failed += 1;
 
@@ -641,4 +669,71 @@ export async function bulkImportMaterials(
   summary.timeTakenMs = Date.now() - startedAt;
 
   return summary;
+}
+
+const MATERIAL_REPORT_COLUMNS = [
+  { header: "Material Code", key: "material_code" },
+  { header: "Description", key: "short_description" },
+  { header: "UoM", key: "uom" },
+  { header: "HSN Code", key: "hsn_code" },
+  { header: "Material Group", key: "material_group" },
+];
+
+/**
+ * Builds and immediately downloads a combined Excel report for a Material
+ * Master bulk import, covering every row submitted: rows rejected by
+ * validation before the import ran, rows that imported/updated
+ * successfully, and rows that failed during the import itself - along
+ * with the reason for anything other than a clean success.
+ */
+export function downloadMaterialImportReport(
+  validation: MaterialValidationResult,
+  summary: MaterialImportSummary
+): void {
+  const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Rejected",
+    reason: row.errors.join("; "),
+    data: { ...row.fields },
+  }));
+
+  const succeeded: BulkImportReportRow[] = summary.successes.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: row.status,
+    data: {
+      material_code: row.material_code,
+      short_description: row.short_description,
+      uom: row.uom,
+      hsn_code: row.hsn_code,
+      material_group: row.material_group,
+    },
+  }));
+
+  const failed: BulkImportReportRow[] = summary.failures.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Failed",
+    reason: `${row.errorCategory}: ${row.error}`,
+    data: {
+      material_code: row.material_code,
+      short_description: row.short_description,
+      uom: row.uom,
+      hsn_code: row.hsn_code,
+      material_group: row.material_group,
+    },
+  }));
+
+  downloadBulkImportReport({
+    fileNamePrefix: "Material_Import",
+    columns: MATERIAL_REPORT_COLUMNS,
+    rows: [...rejected, ...succeeded, ...failed],
+    summary: [
+      { label: "Total Excel Rows", value: validation.totalRecords },
+      { label: "Sent for Import", value: summary.totalRows },
+      { label: "Rejected (validation)", value: validation.invalidRows.length },
+      { label: "Imported", value: summary.imported },
+      { label: "Updated", value: summary.updated },
+      { label: "Failed", value: summary.failed },
+      { label: "Time Taken (s)", value: (summary.timeTakenMs / 1000).toFixed(1) },
+    ],
+  });
 }

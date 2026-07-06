@@ -7,6 +7,12 @@ import {
   generateReferenceNumber,
 } from "./inventoryTransactionService";
 
+import {
+  downloadBulkImportReport,
+  type BulkImportReportRow,
+  type BulkImportRowStatus,
+} from "../utils/bulkImportReport";
+
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 
 interface UnallocatedRow {
@@ -485,10 +491,18 @@ export interface OpeningStockImportFailure {
   error: string;
 }
 
+export interface OpeningStockImportSuccess {
+  material_code: string;
+  location_code: string;
+  rowNumber: number;
+  quantity: number;
+}
+
 export interface OpeningStockImportSummary {
   totalRows: number;
   applied: number;
   failed: number;
+  successes: OpeningStockImportSuccess[];
   failures: OpeningStockImportFailure[];
 }
 
@@ -505,6 +519,7 @@ export async function bulkApplyOpeningStock(
     totalRows: rows.length,
     applied: 0,
     failed: 0,
+    successes: [],
     failures: [],
   };
 
@@ -520,6 +535,12 @@ export async function bulkApplyOpeningStock(
       );
 
       summary.applied += 1;
+      summary.successes.push({
+        material_code: row.material_code,
+        location_code: row.location_code,
+        rowNumber: row.rowNumber,
+        quantity: row.quantity,
+      });
     } catch (err) {
       summary.failed += 1;
 
@@ -539,6 +560,69 @@ export async function bulkApplyOpeningStock(
   }
 
   return summary;
+}
+
+const OPENING_STOCK_REPORT_COLUMNS = [
+  { header: "Material Code", key: "material_code" },
+  { header: "Location Code", key: "location_code" },
+  { header: "Quantity", key: "quantity" },
+];
+
+/**
+ * Builds and immediately downloads a combined Excel report for an Opening
+ * Stock bulk import, covering every row submitted: rows rejected by
+ * validation before the import ran, rows applied successfully, and rows
+ * that failed during the import itself - along with the reason for
+ * anything other than a clean success.
+ */
+export function downloadOpeningStockImportReport(
+  validation: OpeningStockValidationResult,
+  summary: OpeningStockImportSummary
+): void {
+  const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Rejected",
+    reason: row.errors.join("; "),
+    data: {
+      material_code: row.material_code,
+      location_code: row.location_code,
+      quantity: row.quantityRaw,
+    },
+  }));
+
+  const succeeded: BulkImportReportRow[] = summary.successes.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Applied",
+    data: {
+      material_code: row.material_code,
+      location_code: row.location_code,
+      quantity: row.quantity,
+    },
+  }));
+
+  const failed: BulkImportReportRow[] = summary.failures.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Failed",
+    reason: row.error,
+    data: {
+      material_code: row.material_code,
+      location_code: row.location_code,
+      quantity: "",
+    },
+  }));
+
+  downloadBulkImportReport({
+    fileNamePrefix: "Opening_Stock_Import",
+    columns: OPENING_STOCK_REPORT_COLUMNS,
+    rows: [...rejected, ...succeeded, ...failed],
+    summary: [
+      { label: "Total Excel Rows", value: validation.totalRecords },
+      { label: "Sent for Import", value: summary.totalRows },
+      { label: "Rejected (validation)", value: validation.invalidRows.length },
+      { label: "Applied", value: summary.applied },
+      { label: "Failed", value: summary.failed },
+    ],
+  });
 }
 
 /* =========================================================================
@@ -953,6 +1037,72 @@ export async function bulkApplyAllocation(
   }
 
   return summary;
+}
+
+const ALLOCATION_REPORT_COLUMNS = [
+  { header: "Material Code", key: "material_code" },
+  { header: "Location Code", key: "location_code" },
+  { header: "Requested Quantity", key: "requestedQuantity" },
+  { header: "Applied Quantity", key: "appliedQuantity" },
+];
+
+const ALLOCATION_OUTCOME_STATUS: Record<
+  AllocationImportOutcome["status"],
+  BulkImportRowStatus
+> = {
+  applied: "Applied",
+  partial: "Partial",
+  failed: "Failed",
+};
+
+/**
+ * Builds and immediately downloads a combined Excel report for a Bulk
+ * Allocate import, covering every row submitted: rows rejected by
+ * validation before the import ran, and every outcome (applied, partial,
+ * or failed) recorded while applying the rest - along with the reason for
+ * anything other than a clean, full allocation.
+ */
+export function downloadAllocationImportReport(
+  validation: AllocationValidationResult,
+  summary: AllocationImportSummary
+): void {
+  const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Rejected",
+    reason: row.errors.join("; "),
+    data: {
+      material_code: row.material_code,
+      location_code: row.location_code,
+      requestedQuantity: row.quantityRaw,
+      appliedQuantity: "",
+    },
+  }));
+
+  const outcomes: BulkImportReportRow[] = summary.outcomes.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: ALLOCATION_OUTCOME_STATUS[row.status],
+    reason: row.message,
+    data: {
+      material_code: row.material_code,
+      location_code: row.location_code,
+      requestedQuantity: row.requestedQuantity,
+      appliedQuantity: row.appliedQuantity,
+    },
+  }));
+
+  downloadBulkImportReport({
+    fileNamePrefix: "Bulk_Allocate_Import",
+    columns: ALLOCATION_REPORT_COLUMNS,
+    rows: [...rejected, ...outcomes],
+    summary: [
+      { label: "Total Excel Rows", value: validation.totalRecords },
+      { label: "Sent for Import", value: summary.totalRows },
+      { label: "Rejected (validation)", value: validation.invalidRows.length },
+      { label: "Applied", value: summary.applied },
+      { label: "Partial", value: summary.partial },
+      { label: "Failed", value: summary.failed },
+    ],
+  });
 }
 
 /* =========================================================================
