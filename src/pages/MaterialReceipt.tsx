@@ -1306,11 +1306,12 @@ export default function MaterialReceipt() {
             alignItems: "center",
             justifyContent: "space-between",
             fontWeight: 700,
-            color: BRAND_PURPLE,
+            backgroundColor: BRAND_PURPLE,
+            color: "#FFFFFF",
           }}
         >
           {editingReceipt ? `Edit DRC - ${editingReceipt.drc_number}` : "Create DRC"}
-          <IconButton onClick={closeForm} size="small">
+          <IconButton onClick={closeForm} size="small" sx={{ color: "#FFFFFF" }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
