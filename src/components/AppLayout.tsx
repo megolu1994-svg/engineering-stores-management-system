@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, type MouseEvent } from "react";
 
 import {
   AppBar,
   Avatar,
+  Badge,
   BottomNavigation,
   BottomNavigationAction,
   Box,
@@ -13,10 +14,12 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Popover,
   Toolbar,
   Typography,
   useMediaQuery,
 } from "@mui/material";
+import { keyframes } from "@emotion/react";
 
 import MenuIcon from "@mui/icons-material/Menu";
 import HomeIcon from "@mui/icons-material/Home";
@@ -40,6 +43,7 @@ import {
 
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
+import { useInventoryNotifications } from "../hooks/useInventoryNotifications";
 
 // Desktop permanent sidebar width only - the mobile temporary drawer is
 // untouched and keeps its own (wider) width below, since the mobile UI
@@ -55,6 +59,32 @@ export const DRAWER_WIDTH = drawerWidth;
 export const CONTENT_MAX_WIDTH = 1536;
 
 const APP_VERSION = "1.0.0";
+
+const bellRing = keyframes`
+  0% { transform: rotate(0deg); }
+  15% { transform: rotate(16deg); }
+  30% { transform: rotate(-14deg); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-8deg); }
+  75% { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+`;
+
+function formatNotificationTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffSec = Math.max(0, Math.round(diffMs / 1000));
+
+  if (diffSec < 60) return "just now";
+
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+
+  const diffDay = Math.round(diffHour / 24);
+  return `${diffDay}d ago`;
+}
 
 const menuItems = [
   { text: "Dashboard", path: "/", icon: <HomeIcon /> },
@@ -129,6 +159,23 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
+
+  // Desktop-only: gated by `!mobile` so the realtime subscription itself
+  // (not just the bell UI) has no footprint on mobile.
+  const { notifications, unreadCount, ringKey, markAllRead } =
+    useInventoryNotifications(!mobile);
+
+  const [notificationsAnchorEl, setNotificationsAnchorEl] =
+    useState<HTMLElement | null>(null);
+
+  function handleOpenNotifications(event: MouseEvent<HTMLElement>) {
+    setNotificationsAnchorEl(event.currentTarget);
+    markAllRead();
+  }
+
+  function handleCloseNotifications() {
+    setNotificationsAnchorEl(null);
+  }
 
   useEffect(() => {
     function handleSwipeOpenDrawer() {
@@ -344,18 +391,74 @@ export default function AppLayout() {
               </Box>
             )}
 
-            {/* Desktop-only: notifications + account, future-ready
-                placeholders (no backing functionality yet) so the header
-                isn't left empty once the duplicate brand text is gone. */}
+            {/* Desktop-only: notifications + account. Notifications are
+                wired to realtime inventory/DRC activity (see
+                useInventoryNotifications) - deliberately not shown on
+                mobile at all. */}
             {!mobile && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, ml: 2, flexShrink: 0 }}>
                 <IconButton
+                  key={ringKey}
                   size="small"
                   aria-label="Notifications"
-                  sx={{ color: "#FFFFFF" }}
+                  onClick={handleOpenNotifications}
+                  sx={{
+                    color: "#FFFFFF",
+                    animation: ringKey > 0 ? `${bellRing} 0.6s ease-in-out` : "none",
+                  }}
                 >
-                  <NotificationsNoneIcon fontSize="small" />
+                  <Badge
+                    badgeContent={unreadCount}
+                    color="error"
+                    max={9}
+                    overlap="circular"
+                  >
+                    <NotificationsNoneIcon fontSize="small" />
+                  </Badge>
                 </IconButton>
+
+                <Popover
+                  open={Boolean(notificationsAnchorEl)}
+                  anchorEl={notificationsAnchorEl}
+                  onClose={handleCloseNotifications}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                  transformOrigin={{ vertical: "top", horizontal: "right" }}
+                >
+                  <Box sx={{ width: 340, maxHeight: 420, overflowY: "auto" }}>
+
+                    <Typography sx={{ px: 2, py: 1.5, fontWeight: 700, color: "#111827" }}>
+                      Notifications
+                    </Typography>
+
+                    <Divider />
+
+                    {notifications.length === 0 ? (
+                      <Typography sx={{ px: 2, py: 3, color: "#6B7280", textAlign: "center" }}>
+                        No new notifications
+                      </Typography>
+                    ) : (
+                      <List disablePadding>
+                        {notifications.map((notification) => (
+                          <ListItemButton
+                            key={notification.id}
+                            divider
+                            sx={{ alignItems: "flex-start", py: 1.25 }}
+                          >
+                            <ListItemText
+                              primary={notification.message}
+                              secondary={formatNotificationTime(notification.createdAt)}
+                              slotProps={{
+                                primary: { sx: { fontSize: 14, fontWeight: 600, color: "#111827" } },
+                                secondary: { sx: { fontSize: 12, color: "#6B7280" } },
+                              }}
+                            />
+                          </ListItemButton>
+                        ))}
+                      </List>
+                    )}
+
+                  </Box>
+                </Popover>
 
                 <Divider
                   orientation="vertical"
