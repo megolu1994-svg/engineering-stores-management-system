@@ -878,11 +878,10 @@ export default function Reports() {
 
   function handleExportMovement() {
     downloadWorkbook(
-      ["Date", "Transaction Type", "Reference", "Material Code", "Description", "Quantity", "From Location", "To Location", "User"],
+      ["Date", "Transaction Type", "Material Code", "Description", "Quantity", "From Location", "To Location", "User"],
       movementDisplayRows.map((r) => [
         formatReportDateTime(r.created_at),
         r.transaction_type,
-        safeText(r.reference_number),
         r.material_code,
         safeText(r.material_description),
         safeNumber(r.quantity),
@@ -1311,9 +1310,6 @@ export default function Reports() {
                           <Typography variant="body2" color="text.secondary" noWrap sx={{ display: "block" }}>
                             {safeText(row.material_description)}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                            {safeText(row.reference_number)}
-                          </Typography>
                         </Box>
                         <Chip
                           size="small"
@@ -1369,7 +1365,6 @@ export default function Reports() {
                   <TableHead>
                     <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
                       <TableCell>Material</TableCell>
-                      <TableCell>Reference</TableCell>
                       <TableCell>Type</TableCell>
                       <TableCell align="right">Qty</TableCell>
                       <TableCell>From</TableCell>
@@ -1390,7 +1385,6 @@ export default function Reports() {
                               {safeText(row.material_description)}
                             </Typography>
                           </TableCell>
-                          <TableCell>{safeText(row.reference_number)}</TableCell>
                           <TableCell>
                             <Chip size="small" label={row.transaction_type.replace("_", " ")} sx={{ fontWeight: 700 }} />
                           </TableCell>
