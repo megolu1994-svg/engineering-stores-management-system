@@ -229,12 +229,16 @@ export default function AdjustmentTab() {
                 if (value) setDirection(value);
               }}
               sx={{
+                gap: 1,
                 "& .MuiToggleButton-root": {
                   minHeight: 40,
-                  borderRadius: 2,
+                  borderRadius: "8px !important",
                   fontWeight: 700,
                   textTransform: "none",
                   gap: 0.5,
+                  marginLeft: "0px !important",
+                  borderLeft: "1px solid !important",
+                  borderColor: "divider",
                 },
               }}
             >
