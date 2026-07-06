@@ -37,6 +37,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import { BRAND_PURPLE } from "../theme";
 
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
@@ -1305,6 +1306,7 @@ export default function MaterialReceipt() {
             alignItems: "center",
             justifyContent: "space-between",
             fontWeight: 700,
+            color: BRAND_PURPLE,
           }}
         >
           {editingReceipt ? `Edit DRC - ${editingReceipt.drc_number}` : "Create DRC"}
