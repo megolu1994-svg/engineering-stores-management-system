@@ -1,5 +1,9 @@
 import { supabase } from "../config/supabase";
 import type { Location } from "../types/location";
+import {
+  downloadBulkImportReport,
+  type BulkImportReportRow,
+} from "../utils/bulkImportReport";
 
 export async function getLocations(): Promise<Location[]> {
   const { data, error } = await supabase
@@ -306,25 +310,47 @@ export function parseLocationExcelRows(
 
 export interface LocationImportFailure {
   location_code: string;
+  rowNumber: number;
+  location_description: string;
   error: string;
 }
 
+export interface LocationImportSuccess {
+  location_code: string;
+  rowNumber: number;
+  location_description: string;
+  status: "Imported" | "Updated";
+}
+
 export interface LocationImportSummary {
+  totalRows: number;
   imported: number;
   updated: number;
   failed: number;
+  successes: LocationImportSuccess[];
   failures: LocationImportFailure[];
 }
 
+/**
+ * Imports locations in an enterprise-safe way, mirroring
+ * `bulkImportMaterials`: rows are still read/chunked in batches of
+ * `batchSize` for memory efficiency, but within each batch every location
+ * is upserted INDIVIDUALLY. A single failing row is caught and recorded as
+ * a failure - it never aborts the batch or causes any other row to be
+ * skipped. Every row passed in ends up as imported, updated, or failed:
+ *   imported + updated + failed === rows.length
+ */
 export async function bulkImportLocations(
   rows: LocationImportRow[],
   batchSize: number,
   onProgress?: (processed: number, total: number) => void
 ): Promise<LocationImportSummary> {
   const summary: LocationImportSummary = {
+    totalRows: rows.length,
     imported: 0,
     updated: 0,
     failed: 0,
+    successes: [],
     failures: [],
   };
 
@@ -335,6 +361,8 @@ export async function bulkImportLocations(
     const batch = rows.slice(i, i + batchSize);
     const codes = batch.map((row) => row.location_code);
 
+    let existingSet = new Set<string>();
+
     try {
       const { data: existing, error: fetchError } = await supabase
         .from("location_master")
@@ -343,53 +371,126 @@ export async function bulkImportLocations(
 
       if (fetchError) throw fetchError;
 
-      const existingSet = new Set(
+      existingSet = new Set(
         (existing ?? []).map(
           (item: { location_code: string }) => item.location_code
         )
       );
+    } catch {
+      // If the existence check itself fails, every row in this batch is
+      // still attempted individually below. Worst case, imported/updated
+      // counts may be swapped for this batch, but no row is lost.
+      existingSet = new Set();
+    }
 
-      const payload = batch.map((row) => ({
-        location_code: row.location_code,
-        location_description: row.location_description,
-        is_active: true,
-      }));
+    for (const row of batch) {
+      try {
+        const { error: upsertError } = await supabase
+          .from("location_master")
+          .upsert(
+            {
+              location_code: row.location_code,
+              location_description: row.location_description,
+              is_active: true,
+            },
+            { onConflict: "location_code" }
+          );
 
-      const { error: upsertError } = await supabase
-        .from("location_master")
-        .upsert(payload, { onConflict: "location_code" });
+        if (upsertError) throw upsertError;
 
-      if (upsertError) throw upsertError;
+        const status = existingSet.has(row.location_code) ? "Updated" : "Imported";
 
-      batch.forEach((row) => {
-        if (existingSet.has(row.location_code)) {
+        if (status === "Updated") {
           summary.updated += 1;
         } else {
           summary.imported += 1;
         }
-      });
-    } catch (err) {
-      summary.failed += batch.length;
 
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unknown error during import.";
+        summary.successes.push({
+          location_code: row.location_code,
+          rowNumber: row.rowNumber,
+          location_description: row.location_description,
+          status,
+        });
+      } catch (err) {
+        summary.failed += 1;
 
-      batch.forEach((row) => {
         summary.failures.push({
           location_code: row.location_code,
-          error: message,
+          rowNumber: row.rowNumber,
+          location_description: row.location_description,
+          error:
+            err instanceof Error ? err.message : "Unknown error during import.",
         });
-      });
-    }
+      }
 
-    processed += batch.length;
+      processed += 1;
 
-    if (onProgress) {
-      onProgress(processed, total);
+      if (onProgress) {
+        onProgress(processed, total);
+      }
     }
   }
 
   return summary;
+}
+
+const LOCATION_REPORT_COLUMNS = [
+  { header: "Location Code", key: "location_code" },
+  { header: "Description", key: "location_description" },
+];
+
+/**
+ * Builds and immediately downloads a combined Excel report for a Location
+ * Master bulk import, covering every row submitted: rows rejected by
+ * validation before the import ran, rows that imported/updated
+ * successfully, and rows that failed during the import itself - along
+ * with the reason for anything other than a clean success.
+ */
+export function downloadLocationImportReport(
+  validation: LocationValidationResult,
+  summary: LocationImportSummary
+): void {
+  const rejected: BulkImportReportRow[] = validation.invalidRows.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Rejected",
+    reason: row.errors.join("; "),
+    data: {
+      location_code: row.fields.location_code,
+      location_description: row.fields.location_description,
+    },
+  }));
+
+  const succeeded: BulkImportReportRow[] = summary.successes.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: row.status,
+    data: {
+      location_code: row.location_code,
+      location_description: row.location_description,
+    },
+  }));
+
+  const failed: BulkImportReportRow[] = summary.failures.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Failed",
+    reason: row.error,
+    data: {
+      location_code: row.location_code,
+      location_description: row.location_description,
+    },
+  }));
+
+  downloadBulkImportReport({
+    fileNamePrefix: "Location_Import",
+    columns: LOCATION_REPORT_COLUMNS,
+    rows: [...rejected, ...succeeded, ...failed],
+    summary: [
+      { label: "Total Excel Rows", value: validation.totalRecords },
+      { label: "Sent for Import", value: summary.totalRows },
+      { label: "Rejected (validation)", value: validation.invalidRows.length },
+      { label: "Imported", value: summary.imported },
+      { label: "Updated", value: summary.updated },
+      { label: "Failed", value: summary.failed },
+    ],
+  });
 }

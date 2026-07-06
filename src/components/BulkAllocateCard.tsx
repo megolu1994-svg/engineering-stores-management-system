@@ -29,6 +29,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import {
   bulkApplyAllocation,
   validateAllocationExcelRows,
+  downloadAllocationImportReport,
   type AllocationValidationResult,
   type AllocationImportSummary,
 } from "../services/materialAllocationService";
@@ -206,8 +207,10 @@ export default function BulkAllocateCard({
 
       setSummary(result);
 
+      downloadAllocationImportReport(validation, result);
+
       onShowSnackbar(
-        `Bulk allocate complete. Applied: ${result.applied}, Partial: ${result.partial}, Failed: ${result.failed}.`,
+        `Bulk allocate complete. Applied: ${result.applied}, Partial: ${result.partial}, Failed: ${result.failed}. Result report downloaded.`,
         result.failed > 0 || result.partial > 0 ? "warning" : "success"
       );
 
@@ -217,6 +220,15 @@ export default function BulkAllocateCard({
     } finally {
       setImporting(false);
     }
+  }
+
+  function handleDownloadReport() {
+    if (!validation || !summary) {
+      return;
+    }
+
+    downloadAllocationImportReport(validation, summary);
+    onShowSnackbar("Import report downloaded.", "success");
   }
 
   const issueBreakdown = validation ? buildIssueBreakdown(validation) : null;
@@ -521,6 +533,18 @@ export default function BulkAllocateCard({
                 Applied: {summary.applied}, Partial: {summary.partial}, Failed:{" "}
                 {summary.failed}
               </Alert>
+            )}
+
+            {summary && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<DownloadIcon fontSize="small" />}
+                onClick={handleDownloadReport}
+                sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+              >
+                Download Import Report
+              </Button>
             )}
 
             {summary && summary.outcomes.length > 0 && (

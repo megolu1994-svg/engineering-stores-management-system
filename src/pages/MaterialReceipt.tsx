@@ -73,6 +73,7 @@ import {
   parseGrnExcelRows,
   validateGrnMaterials,
   importGrn,
+  downloadGrnImportReport,
   getGrnHistory,
   buildGrnTemplateRows,
   type ReceiptHeader,
@@ -698,6 +699,7 @@ export default function MaterialReceipt() {
   const grnFileInputRef = useRef<HTMLInputElement | null>(null);
   const [grnFile, setGrnFile] = useState<File | null>(null);
   const [grnPreviewLoading, setGrnPreviewLoading] = useState(false);
+  const [grnTotalRecords, setGrnTotalRecords] = useState(0);
   const [grnMergedRows, setGrnMergedRows] = useState<GrnImportRow[]>([]);
   const [grnFormatInvalidRows, setGrnFormatInvalidRows] = useState<
     GrnFormatInvalidRow[]
@@ -714,6 +716,7 @@ export default function MaterialReceipt() {
     setGrnDate("");
     setUploadedBy("");
     setGrnFile(null);
+    setGrnTotalRecords(0);
     setGrnMergedRows([]);
     setGrnFormatInvalidRows([]);
     setGrnUnknownMaterials([]);
@@ -811,6 +814,7 @@ export default function MaterialReceipt() {
   function handleGrnFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setGrnFile(file);
+    setGrnTotalRecords(0);
     setGrnMergedRows([]);
     setGrnFormatInvalidRows([]);
     setGrnUnknownMaterials([]);
@@ -835,6 +839,7 @@ export default function MaterialReceipt() {
       }) as Record<string, unknown>[];
 
       const parsed = parseGrnExcelRows(rawRows);
+      setGrnTotalRecords(parsed.totalRecords);
       setGrnFormatInvalidRows(parsed.invalidRows);
       setGrnMergedRows(parsed.mergedRows);
 
@@ -901,12 +906,19 @@ export default function MaterialReceipt() {
       const grns = await getGrnHistory(viewReceipt.id);
       setGrnHistory(grns);
 
+      downloadGrnImportReport(
+        grnTotalRecords,
+        grnFormatInvalidRows,
+        grnUnknownMaterials,
+        summary
+      );
+
       resetGrnForm();
 
       showSnackbar(
         summary.closed
-          ? `GRN imported. ${summary.imported} material(s), ${summary.totalQuantity} total quantity. DRC closed.`
-          : `GRN import failed for all materials (${summary.failed} failure(s)).`,
+          ? `GRN imported. ${summary.imported} material(s), ${summary.totalQuantity} total quantity. DRC closed. Result report downloaded.`
+          : `GRN import failed for all materials (${summary.failed} failure(s)). Result report downloaded.`,
         summary.closed ? "success" : "error"
       );
 

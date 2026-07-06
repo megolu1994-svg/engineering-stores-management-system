@@ -1,5 +1,9 @@
 import { supabase } from "../config/supabase";
 import { applyStockMovement } from "./inventoryTransactionService";
+import {
+  downloadBulkImportReport,
+  type BulkImportReportRow,
+} from "../utils/bulkImportReport";
 
 /* =========================================================================
  * Material Receipt - DRC Management (Sprint 1)
@@ -901,7 +905,14 @@ export async function validateGrnMaterials(
 export interface GrnImportFailure {
   material_code: string;
   quantity: number;
+  rowNumber: number;
   error: string;
+}
+
+export interface GrnImportSuccess {
+  material_code: string;
+  quantity: number;
+  rowNumber: number;
 }
 
 export interface GrnImportSummary {
@@ -911,6 +922,7 @@ export interface GrnImportSummary {
   imported: number;
   failed: number;
   totalQuantity: number;
+  successes: GrnImportSuccess[];
   failures: GrnImportFailure[];
   closed: boolean;
   receipt: ReceiptHeader | null;
@@ -944,6 +956,7 @@ export async function importGrn(
     imported: 0,
     failed: 0,
     totalQuantity: 0,
+    successes: [],
     failures: [],
     closed: false,
     receipt: null,
@@ -1012,11 +1025,17 @@ export async function importGrn(
 
       summary.imported += 1;
       summary.totalQuantity += row.quantity;
+      summary.successes.push({
+        material_code: row.material_code,
+        quantity: row.quantity,
+        rowNumber: row.rowNumber,
+      });
     } catch (err) {
       summary.failed += 1;
       summary.failures.push({
         material_code: row.material_code,
         quantity: row.quantity,
+        rowNumber: row.rowNumber,
         error: err instanceof Error ? err.message : "Unknown error.",
       });
     }
@@ -1087,6 +1106,81 @@ export async function importGrn(
   }
 
   return summary;
+}
+
+const GRN_REPORT_COLUMNS = [
+  { header: "Material Code", key: "material_code" },
+  { header: "Quantity", key: "quantity" },
+];
+
+/**
+ * Builds and immediately downloads a combined Excel report for a GRN bulk
+ * import, covering every row submitted: rows rejected for format reasons
+ * (missing code, bad quantity), rows rejected because the Material Code is
+ * unknown, rows imported successfully, and rows that failed while being
+ * applied - along with the reason for anything other than a clean success.
+ */
+export function downloadGrnImportReport(
+  totalRecords: number,
+  formatInvalidRows: GrnFormatInvalidRow[],
+  unknownMaterials: GrnImportRow[],
+  summary: GrnImportSummary
+): void {
+  const formatRejected: BulkImportReportRow[] = formatInvalidRows.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Rejected",
+    reason: row.errors.join("; "),
+    data: {
+      material_code: row.material_code,
+      quantity: row.quantityRaw,
+    },
+  }));
+
+  const unknownRejected: BulkImportReportRow[] = unknownMaterials.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Rejected",
+    reason: `Material Code "${row.material_code}" was not found.`,
+    data: {
+      material_code: row.material_code,
+      quantity: row.quantity,
+    },
+  }));
+
+  const succeeded: BulkImportReportRow[] = summary.successes.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Imported",
+    data: {
+      material_code: row.material_code,
+      quantity: row.quantity,
+    },
+  }));
+
+  const failed: BulkImportReportRow[] = summary.failures.map((row) => ({
+    rowNumber: row.rowNumber,
+    status: "Failed",
+    reason: row.error,
+    data: {
+      material_code: row.material_code,
+      quantity: row.quantity,
+    },
+  }));
+
+  const safeGrnNumber =
+    summary.grnNumber.replace(/[^a-zA-Z0-9_-]/g, "_") || "Import";
+
+  downloadBulkImportReport({
+    fileNamePrefix: `GRN_${safeGrnNumber}`,
+    columns: GRN_REPORT_COLUMNS,
+    rows: [...formatRejected, ...unknownRejected, ...succeeded, ...failed],
+    summary: [
+      { label: "Total Excel Rows", value: totalRecords },
+      { label: "Format Rejected", value: formatInvalidRows.length },
+      { label: "Unknown Material Rejected", value: unknownMaterials.length },
+      { label: "Imported", value: summary.imported },
+      { label: "Failed", value: summary.failed },
+      { label: "Total Quantity", value: summary.totalQuantity },
+    ],
+  });
 }
 
 export interface GrnHistoryEntry {

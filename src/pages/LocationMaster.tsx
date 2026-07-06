@@ -46,6 +46,7 @@ import {
   updateLocation,
   parseLocationExcelRows,
   bulkImportLocations,
+  downloadLocationImportReport,
   type LocationValidationResult,
   type LocationImportSummary,
 } from "../services/locationService";
@@ -222,9 +223,11 @@ export default function LocationMaster() {
 
       setImportSummary(summary);
 
+      downloadLocationImportReport(importValidation, summary);
+
       setSnackbarSeverity(summary.failed > 0 ? "error" : "success");
       setSnackbarMessage(
-        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}.`
+        `Import complete. Imported: ${summary.imported}, Updated: ${summary.updated}, Failed: ${summary.failed}. Result report downloaded.`
       );
       setSnackbarOpen(true);
 
@@ -236,6 +239,17 @@ export default function LocationMaster() {
     } finally {
       setImporting(false);
     }
+  }
+
+  function handleDownloadImportReport() {
+    if (!importValidation || !importSummary) {
+      return;
+    }
+
+    downloadLocationImportReport(importValidation, importSummary);
+    setSnackbarSeverity("success");
+    setSnackbarMessage("Import report downloaded.");
+    setSnackbarOpen(true);
   }
 
   const importPreviewRows = importValidation
@@ -585,13 +599,50 @@ export default function LocationMaster() {
               )}
 
               {importSummary && (
-                <Alert
-                  severity={importSummary.failed > 0 ? "warning" : "success"}
-                  sx={{ borderRadius: 2 }}
-                >
-                  Import complete. Imported: {importSummary.imported}, Updated:{" "}
-                  {importSummary.updated}, Failed: {importSummary.failed}
-                </Alert>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                  <Alert
+                    severity={importSummary.failed > 0 ? "warning" : "success"}
+                    sx={{ borderRadius: 2 }}
+                  >
+                    Import complete. Imported: {importSummary.imported}, Updated:{" "}
+                    {importSummary.updated}, Failed: {importSummary.failed}
+                  </Alert>
+
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleDownloadImportReport}
+                    sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                  >
+                    Download Import Report
+                  </Button>
+
+                  {importSummary.failures.length > 0 && (
+                    <TableContainer
+                      sx={{ maxHeight: 260, overflowX: "auto", borderRadius: 2 }}
+                    >
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Location Code</TableCell>
+                            <TableCell>Row</TableCell>
+                            <TableCell>Reason</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {importSummary.failures.map((failure, index) => (
+                            <TableRow key={`${failure.location_code}-${index}`}>
+                              <TableCell>{failure.location_code}</TableCell>
+                              <TableCell>{failure.rowNumber}</TableCell>
+                              <TableCell>{failure.error}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Box>
               )}
             </Box>
           </CardContent>

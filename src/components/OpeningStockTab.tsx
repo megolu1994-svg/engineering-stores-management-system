@@ -39,6 +39,7 @@ import {
   applyOpeningStock,
   bulkApplyOpeningStock,
   parseOpeningStockExcelRows,
+  downloadOpeningStockImportReport,
   type OpeningStockValidationResult,
   type OpeningStockImportSummary,
 } from "../services/materialAllocationService";
@@ -221,8 +222,10 @@ export default function OpeningStockTab() {
 
       setSummary(result);
 
+      downloadOpeningStockImportReport(validation, result);
+
       showSnackbar(
-        `Opening stock import complete. Applied: ${result.applied}, Failed: ${result.failed}.`,
+        `Opening stock import complete. Applied: ${result.applied}, Failed: ${result.failed}. Result report downloaded.`,
         result.failed > 0 ? "warning" : "success"
       );
     } catch {
@@ -230,6 +233,15 @@ export default function OpeningStockTab() {
     } finally {
       setImporting(false);
     }
+  }
+
+  function handleDownloadReport() {
+    if (!validation || !summary) {
+      return;
+    }
+
+    downloadOpeningStockImportReport(validation, summary);
+    showSnackbar("Import report downloaded.", "success");
   }
 
   const previewRows = validation
@@ -483,6 +495,18 @@ export default function OpeningStockTab() {
                 >
                   Applied: {summary.applied}, Failed: {summary.failed}
                 </Alert>
+              )}
+
+              {summary && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<DownloadIcon fontSize="small" />}
+                  onClick={handleDownloadReport}
+                  sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                >
+                  Download Import Report
+                </Button>
               )}
 
               {summary && summary.failures.length > 0 && (
