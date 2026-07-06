@@ -63,6 +63,7 @@ import { uploadMaterialPhoto } from "../services/materialPhotoService";
 
 import type { Material } from "../types/material";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
+import { usePersistentState } from "../hooks/usePersistentState";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const IMPORT_BATCH_SIZE = 500;
@@ -103,10 +104,14 @@ export default function MaterialMaster() {
 
   const [search, setSearch] = useState("");
 
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = usePersistentState(
+    "materialMaster.showForm",
+    false
+  );
 
-  const [selectedMaterial, setSelectedMaterial] =
-    useState<Material | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = usePersistentState<
+    Material | null
+  >("materialMaster.selectedMaterial", null);
 
   const [deleteMaterialData, setDeleteMaterialData] =
     useState<Material | null>(null);
@@ -357,7 +362,7 @@ export default function MaterialMaster() {
   }
 
   const handleSave = useCallback(
-    async (material: Material) => {
+    async (material: Material): Promise<boolean> => {
       try {
         if (selectedMaterial) {
           await updateMaterial(material);
@@ -384,10 +389,12 @@ export default function MaterialMaster() {
         setSelectedMaterial(null);
 
         setSnackbarOpen(true);
+        return true;
       } catch (error: any) {
         setSnackbarSeverity("error");
         setSnackbarMessage(error.message);
         setSnackbarOpen(true);
+        return false;
       }
     },
     [selectedMaterial, debouncedSearch, page, pageSize, loadMaterials]

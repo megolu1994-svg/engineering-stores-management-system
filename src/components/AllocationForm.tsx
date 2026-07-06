@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import {
   Box,
   Button,
@@ -9,6 +7,8 @@ import {
 } from "@mui/material";
 
 import LocationSearch from "./LocationSearch";
+
+import { usePersistentState } from "../hooks/usePersistentState";
 
 import type { Location } from "../types/location";
 
@@ -24,10 +24,10 @@ export default function AllocationForm({
 }: Props) {
 
   const [location, setLocation] =
-    useState<Location | null>(null);
+    usePersistentState<Location | null>("allocationForm.location", null);
 
   const [quantity, setQuantity] =
-    useState("");
+    usePersistentState("allocationForm.quantity", "");
 
   function handleAllocate() {
 

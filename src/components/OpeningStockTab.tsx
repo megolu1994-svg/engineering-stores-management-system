@@ -32,6 +32,8 @@ import DownloadIcon from "@mui/icons-material/Download";
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
 
+import { usePersistentState } from "../hooks/usePersistentState";
+
 import type { Material } from "../types/material";
 import type { Location } from "../types/location";
 
@@ -86,9 +88,16 @@ export default function OpeningStockTab() {
   }
 
   // ---------------- Manual entry ----------------
-  const [manualMaterial, setManualMaterial] = useState<Material | null>(null);
-  const [manualLocation, setManualLocation] = useState<Location | null>(null);
-  const [manualQuantity, setManualQuantity] = useState("");
+  const [manualMaterial, setManualMaterial] = usePersistentState<
+    Material | null
+  >("openingStock.manualMaterial", null);
+  const [manualLocation, setManualLocation] = usePersistentState<
+    Location | null
+  >("openingStock.manualLocation", null);
+  const [manualQuantity, setManualQuantity] = usePersistentState(
+    "openingStock.manualQuantity",
+    ""
+  );
   const [savingManual, setSavingManual] = useState(false);
 
   async function handleManualSubmit() {

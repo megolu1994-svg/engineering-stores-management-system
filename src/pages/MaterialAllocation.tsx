@@ -36,6 +36,7 @@ import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
 import LocationTransfer from "./LocationTransfer";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
+import { usePersistentState } from "../hooks/usePersistentState";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
 import type { Material } from "../types/material";
@@ -81,11 +82,17 @@ export default function MaterialAllocation() {
   const fullScreenDialogs = useMediaQuery(theme.breakpoints.down("sm"));
   const desktop = useMediaQuery(theme.breakpoints.up("md"));
 
-  const [activeTab, setActiveTab] = useState(TAB_ALLOCATION);
+  const [activeTab, setActiveTab] = usePersistentState(
+    "materialAllocation.activeTab",
+    TAB_ALLOCATION
+  );
 
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 5);
 
-  const [material, setMaterial] = useState<Material | null>(null);
+  const [material, setMaterial] = usePersistentState<Material | null>(
+    "materialAllocation.material",
+    null
+  );
 
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
 

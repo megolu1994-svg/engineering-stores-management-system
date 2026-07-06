@@ -53,6 +53,7 @@ import {
 
 import type { Location } from "../types/location";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
+import { usePersistentState } from "../hooks/usePersistentState";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const BROWSE_PAGE_SIZE = 50;
@@ -98,10 +99,14 @@ export default function LocationMaster() {
 
   const [search, setSearch] = useState("");
 
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = usePersistentState(
+    "locationMaster.showForm",
+    false
+  );
 
-  const [selectedLocation, setSelectedLocation] =
-    useState<Location | null>(null);
+  const [selectedLocation, setSelectedLocation] = usePersistentState<
+    Location | null
+  >("locationMaster.selectedLocation", null);
 
   const [deleteLocationData, setDeleteLocationData] =
     useState<Location | null>(null);
@@ -325,7 +330,7 @@ export default function LocationMaster() {
   }, [search, loadCurrentView]);
 
   const handleSave = useCallback(
-    async (location: Location) => {
+    async (location: Location): Promise<boolean> => {
       try {
         if (selectedLocation) {
           await updateLocation(selectedLocation.location_code, location);
@@ -347,11 +352,13 @@ export default function LocationMaster() {
         setSelectedLocation(null);
 
         setSnackbarOpen(true);
+        return true;
       } catch (error: any) {
         setSnackbarSeverity("error");
         setSnackbarMessage(error.message);
 
         setSnackbarOpen(true);
+        return false;
       }
     },
     [selectedLocation, search, loadCurrentView]
