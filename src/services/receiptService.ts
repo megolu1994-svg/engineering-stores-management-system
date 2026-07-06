@@ -44,7 +44,8 @@ export type InspectionStatus =
   | "Accepted with Remarks";
 
 export interface PackageDetailRow {
-  quantity: number;
+  /** Free text - usually numeric, but may be a note like "Uncountable". */
+  quantity: string;
   package_type: string;
   description: string;
 }
@@ -166,19 +167,27 @@ function toNullableNumber(value: string): number | null {
 }
 
 /**
- * Cleans up a Package Details table: drops fully-empty rows, and coerces
- * quantity to a non-negative number.
+ * Cleans up a Package Details table: drops fully-empty rows and trims text
+ * fields. Quantity is free text (e.g. "10" or "Uncountable"), so it is kept
+ * as-is rather than coerced to a number.
  */
 function cleanPackageDetails(rows: PackageDetailRow[]): PackageDetailRow[] {
   return rows
     .map((row) => ({
-      quantity: Number.isFinite(row.quantity) ? Number(row.quantity) : 0,
+      quantity: row.quantity.trim(),
       package_type: row.package_type.trim(),
       description: row.description.trim(),
     }))
-    .filter(
-      (row) => row.quantity > 0 || row.package_type || row.description
-    );
+    .filter((row) => row.quantity || row.package_type || row.description);
+}
+
+/** Best-effort numeric total for the legacy package_count column - rows with
+ * a non-numeric quantity (e.g. "Uncountable") simply don't contribute. */
+function sumPackageQuantities(rows: PackageDetailRow[]): number {
+  return rows.reduce((sum, row) => {
+    const n = Number(row.quantity);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
 }
 
 function buildPayload(input: ReceiptFormInput) {
@@ -198,9 +207,7 @@ function buildPayload(input: ReceiptFormInput) {
     // Legacy columns, derived for backward compatibility with anything
     // still reading package_count / package_type directly.
     package_count:
-      packageDetails.length > 0
-        ? packageDetails.reduce((sum, r) => sum + r.quantity, 0)
-        : null,
+      packageDetails.length > 0 ? sumPackageQuantities(packageDetails) : null,
     package_type: packageDetails[0]?.package_type || null,
 
     vendor_name: input.vendor_name.trim(),

@@ -101,7 +101,7 @@ const INSPECTION_STATUSES: InspectionStatus[] = [
 ];
 
 const emptyPackageRow: PackageDetailRow = {
-  quantity: 1,
+  quantity: "1",
   package_type: "",
   description: "",
 };
@@ -422,7 +422,7 @@ export default function MaterialReceipt() {
   function updatePackageRow(
     index: number,
     field: keyof PackageDetailRow,
-    value: string | number
+    value: string
   ) {
     setForm((prev) => {
       const rows = [...prev.package_details];
@@ -610,7 +610,7 @@ export default function MaterialReceipt() {
       return "Vehicle Number is required for receipt by vehicle.";
     }
     const validPackageRows = form.package_details.filter(
-      (row) => row.quantity > 0 && row.package_type.trim()
+      (row) => row.quantity.trim() && row.package_type.trim()
     );
     if (validPackageRows.length === 0) {
       return "Please enter at least one Package Details row with a Quantity and Package Type.";
@@ -1455,15 +1455,14 @@ export default function MaterialReceipt() {
                   >
                     <TextField
                       label="Qty"
-                      type="number"
+                      placeholder="e.g. 10 or Uncountable"
                       size="small"
                       value={row.quantity}
                       onChange={(e) =>
-                        updatePackageRow(index, "quantity", Number(e.target.value))
+                        updatePackageRow(index, "quantity", e.target.value)
                       }
-                      slotProps={{ htmlInput: { inputMode: "numeric", min: 0 } }}
                       sx={{
-                        width: { xs: "100%", sm: 84 },
+                        width: { xs: "100%", sm: 140 },
                         flexShrink: 0,
                         "& .MuiOutlinedInput-root": { borderRadius: 2 },
                       }}
