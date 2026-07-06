@@ -78,6 +78,7 @@ const TAB_ADJUSTMENT = 4;
 export default function MaterialAllocation() {
   const theme = useTheme();
   const fullScreenDialogs = useMediaQuery(theme.breakpoints.down("sm"));
+  const desktop = useMediaQuery(theme.breakpoints.up("md"));
 
   const [activeTab, setActiveTab] = useState(TAB_ALLOCATION);
 
@@ -382,54 +383,54 @@ export default function MaterialAllocation() {
       <Tabs
         value={activeTab}
         onChange={(_, value) => setActiveTab(value)}
-        variant="fullWidth"
+        variant={desktop ? "standard" : "fullWidth"}
         sx={{
-          minHeight: 56,
+          minHeight: { xs: 56, md: 48 },
           borderBottom: 1,
           borderColor: "divider",
-          mb: 1.5,
-          borderRadius: 2,
-          bgcolor: "grey.50",
+          mb: { xs: 1.5, md: 2.5 },
+          borderRadius: { xs: 2, md: 0 },
+          bgcolor: { xs: "grey.50", md: "transparent" },
           "& .MuiTab-root": {
             fontWeight: 700,
             textTransform: "none",
-            minHeight: 56,
+            minHeight: { xs: 56, md: 48 },
             minWidth: 0,
-            fontSize: "0.68rem",
+            fontSize: { xs: "0.68rem", md: "0.9rem" },
             lineHeight: 1.15,
-            px: 0.5,
+            px: { xs: 0.5, md: 2.5 },
             py: 0.5,
             gap: 0.25,
           },
           "& .MuiTabs-indicator": {
-            height: 3,
-            borderRadius: 3,
+            height: { xs: 3, md: 2 },
+            borderRadius: { xs: 3, md: 0 },
           },
         }}
       >
         <Tab
           icon={<Inventory2Icon sx={{ fontSize: 18 }} />}
-          iconPosition="top"
+          iconPosition={desktop ? "start" : "top"}
           label="Stock"
         />
         <Tab
           icon={<SwapHorizIcon sx={{ fontSize: 18 }} />}
-          iconPosition="top"
+          iconPosition={desktop ? "start" : "top"}
           label="Allocate"
         />
         <Tab
           icon={<CompareArrowsIcon sx={{ fontSize: 18 }} />}
-          iconPosition="top"
+          iconPosition={desktop ? "start" : "top"}
           label="Transfer"
         />
         <Tab
           icon={<PlaylistAddIcon sx={{ fontSize: 18 }} />}
-          iconPosition="top"
+          iconPosition={desktop ? "start" : "top"}
           label="Opening"
         />
         <Tab
           icon={<TuneIcon sx={{ fontSize: 18 }} />}
-          iconPosition="top"
+          iconPosition={desktop ? "start" : "top"}
           label="Adjust"
         />
       </Tabs>

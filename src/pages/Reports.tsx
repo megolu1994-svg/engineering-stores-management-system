@@ -18,10 +18,18 @@ import {
   Snackbar,
   Stack,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Tabs,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -535,6 +543,9 @@ function ExportPrintBar({
 }
 
 export default function Reports() {
+  const theme = useTheme();
+  const desktop = useMediaQuery(theme.breakpoints.up("md"));
+
   const [activeTab, setActiveTab] = useState(TAB_MATERIAL_SUMMARY);
 
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 4);
@@ -932,35 +943,35 @@ export default function Reports() {
       <Tabs
         value={activeTab}
         onChange={(_, value) => setActiveTab(value)}
-        variant="fullWidth"
+        variant={desktop ? "standard" : "fullWidth"}
         sx={{
-          minHeight: 56,
+          minHeight: { xs: 56, md: 48 },
           borderBottom: 1,
           borderColor: "divider",
-          mb: 2.5,
-          borderRadius: 2,
-          bgcolor: "grey.50",
+          mb: { xs: 2.5, md: 3 },
+          borderRadius: { xs: 2, md: 0 },
+          bgcolor: { xs: "grey.50", md: "transparent" },
           "& .MuiTab-root": {
             fontWeight: 700,
             textTransform: "none",
-            minHeight: 56,
+            minHeight: { xs: 56, md: 48 },
             minWidth: 0,
-            fontSize: "0.68rem",
+            fontSize: { xs: "0.68rem", md: "0.9rem" },
             lineHeight: 1.15,
-            px: 0.5,
+            px: { xs: 0.5, md: 2.5 },
             py: 0.5,
             gap: 0.25,
           },
           "& .MuiTabs-indicator": {
-            height: 3,
-            borderRadius: 3,
+            height: { xs: 3, md: 2 },
+            borderRadius: { xs: 3, md: 0 },
           },
         }}
       >
-        <Tab icon={<Inventory2Icon sx={{ fontSize: 18 }} />} iconPosition="top" label="Summary" />
-        <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Movement" />
-        <Tab icon={<LocalShippingIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Receipts" />
-        <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition="top" label="Issues" />
+        <Tab icon={<Inventory2Icon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Summary" />
+        <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Movement" />
+        <Tab icon={<LocalShippingIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Receipts" />
+        <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Issues" />
       </Tabs>
 
       <SwipeableTabPanel activeTab={activeTab} direction={direction}>
@@ -1189,66 +1200,117 @@ export default function Reports() {
               </Typography>
             </Card>
           ) : (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {movementRows.map((row) => {
-                const { from, to } = movementFromTo(row);
-                return (
-                  <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                          {row.material_code}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" noWrap sx={{ display: "block" }}>
-                          {safeText(row.material_description)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                          {safeText(row.reference_number)}
-                        </Typography>
+            <>
+              {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+              <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
+                {movementRows.map((row) => {
+                  const { from, to } = movementFromTo(row);
+                  return (
+                    <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                            {row.material_code}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" noWrap sx={{ display: "block" }}>
+                            {safeText(row.material_description)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                            {safeText(row.reference_number)}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={row.transaction_type.replace("_", " ")}
+                          sx={{ fontWeight: 700, fontSize: "0.65rem" }}
+                        />
                       </Box>
-                      <Chip
-                        size="small"
-                        label={row.transaction_type.replace("_", " ")}
-                        sx={{ fontWeight: 700, fontSize: "0.65rem" }}
-                      />
-                    </Box>
 
-                    <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
-                      <Grid size={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                          Qty
-                        </Typography>
-                        <Typography variant="body2" noWrap>{safeNumber(row.quantity)}</Typography>
+                      <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                        <Grid size={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                            Qty
+                          </Typography>
+                          <Typography variant="body2" noWrap>{safeNumber(row.quantity)}</Typography>
+                        </Grid>
+                        <Grid size={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                            Date
+                          </Typography>
+                          <Typography variant="body2" noWrap>{formatReportDateTime(row.created_at)}</Typography>
+                        </Grid>
+                        <Grid size={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                            From
+                          </Typography>
+                          <Typography variant="body2" noWrap>{from}</Typography>
+                        </Grid>
+                        <Grid size={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                            To
+                          </Typography>
+                          <Typography variant="body2" noWrap>{to}</Typography>
+                        </Grid>
+                        <Grid size={12}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                            User
+                          </Typography>
+                          <Typography variant="body2" noWrap>{safeText(row.created_by)}</Typography>
+                        </Grid>
                       </Grid>
-                      <Grid size={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                          Date
-                        </Typography>
-                        <Typography variant="body2" noWrap>{formatReportDateTime(row.created_at)}</Typography>
-                      </Grid>
-                      <Grid size={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                          From
-                        </Typography>
-                        <Typography variant="body2" noWrap>{from}</Typography>
-                      </Grid>
-                      <Grid size={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                          To
-                        </Typography>
-                        <Typography variant="body2" noWrap>{to}</Typography>
-                      </Grid>
-                      <Grid size={12}>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                          User
-                        </Typography>
-                        <Typography variant="body2" noWrap>{safeText(row.created_by)}</Typography>
-                      </Grid>
-                    </Grid>
-                  </Card>
-                );
-              })}
-            </Box>
+                    </Card>
+                  );
+                })}
+              </Box>
+
+              {/* ---- Desktop: proper table ---- */}
+              <TableContainer
+                component={Card}
+                elevation={0}
+                sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+              >
+                <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                  <TableHead>
+                    <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                      <TableCell>Material</TableCell>
+                      <TableCell>Reference</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell align="right">Qty</TableCell>
+                      <TableCell>From</TableCell>
+                      <TableCell>To</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>User</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {movementRows.map((row) => {
+                      const { from, to } = movementFromTo(row);
+                      return (
+                        <TableRow key={row.id} hover sx={{ height: 60 }}>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {row.material_code}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {safeText(row.material_description)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{safeText(row.reference_number)}</TableCell>
+                          <TableCell>
+                            <Chip size="small" label={row.transaction_type.replace("_", " ")} sx={{ fontWeight: 700 }} />
+                          </TableCell>
+                          <TableCell align="right">{safeNumber(row.quantity)}</TableCell>
+                          <TableCell>{from}</TableCell>
+                          <TableCell>{to}</TableCell>
+                          <TableCell>{formatReportDateTime(row.created_at)}</TableCell>
+                          <TableCell>{safeText(row.created_by)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
           )}
         </>
       )}
@@ -1268,40 +1330,73 @@ export default function Reports() {
               </Typography>
             </Card>
           ) : (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {receiptRows.map((row) => (
-                <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                        {row.drc_number}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {row.vendor_name}
+            <>
+              {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+              <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
+                {receiptRows.map((row) => (
+                  <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                          {row.drc_number}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {row.vendor_name}
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
+                        {safeNumber(row.package_qty)}
                       </Typography>
                     </Box>
-                    <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
-                      {safeNumber(row.package_qty)}
-                    </Typography>
-                  </Box>
 
-                  <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                        PO
-                      </Typography>
-                      <Typography variant="body2" noWrap>{safeText(row.po_number)}</Typography>
+                    <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          PO
+                        </Typography>
+                        <Typography variant="body2" noWrap>{safeText(row.po_number)}</Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Date
+                        </Typography>
+                        <Typography variant="body2" noWrap>{formatReportDate(row.receipt_datetime)}</Typography>
+                      </Grid>
                     </Grid>
-                    <Grid size={6}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                        Date
-                      </Typography>
-                      <Typography variant="body2" noWrap>{formatReportDate(row.receipt_datetime)}</Typography>
-                    </Grid>
-                  </Grid>
-                </Card>
-              ))}
-            </Box>
+                  </Card>
+                ))}
+              </Box>
+
+              {/* ---- Desktop: proper table ---- */}
+              <TableContainer
+                component={Card}
+                elevation={0}
+                sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+              >
+                <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                  <TableHead>
+                    <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                      <TableCell>DRC Number</TableCell>
+                      <TableCell>Vendor</TableCell>
+                      <TableCell>PO Number</TableCell>
+                      <TableCell align="right">Package Qty</TableCell>
+                      <TableCell>Date</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {receiptRows.map((row) => (
+                      <TableRow key={row.id} hover sx={{ height: 60 }}>
+                        <TableCell sx={{ fontWeight: 700 }}>{row.drc_number}</TableCell>
+                        <TableCell>{row.vendor_name}</TableCell>
+                        <TableCell>{safeText(row.po_number)}</TableCell>
+                        <TableCell align="right">{safeNumber(row.package_qty)}</TableCell>
+                        <TableCell>{formatReportDate(row.receipt_datetime)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
           )}
         </>
       )}
@@ -1321,29 +1416,60 @@ export default function Reports() {
               </Typography>
             </Card>
           ) : (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {issueRows.map((row) => (
-                <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                        {row.issue_number}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {row.department}
+            <>
+              {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+              <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
+                {issueRows.map((row) => (
+                  <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                          {row.issue_number}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {row.department}
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
+                        {safeNumber(row.total_quantity)}
                       </Typography>
                     </Box>
-                    <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
-                      {safeNumber(row.total_quantity)}
-                    </Typography>
-                  </Box>
 
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                    {formatReportDate(row.issue_datetime)}
-                  </Typography>
-                </Card>
-              ))}
-            </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                      {formatReportDate(row.issue_datetime)}
+                    </Typography>
+                  </Card>
+                ))}
+              </Box>
+
+              {/* ---- Desktop: proper table ---- */}
+              <TableContainer
+                component={Card}
+                elevation={0}
+                sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+              >
+                <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                  <TableHead>
+                    <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                      <TableCell>Issue No.</TableCell>
+                      <TableCell>Department</TableCell>
+                      <TableCell align="right">Total Qty</TableCell>
+                      <TableCell>Date</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {issueRows.map((row) => (
+                      <TableRow key={row.id} hover sx={{ height: 60 }}>
+                        <TableCell sx={{ fontWeight: 700 }}>{row.issue_number}</TableCell>
+                        <TableCell>{row.department}</TableCell>
+                        <TableCell align="right">{safeNumber(row.total_quantity)}</TableCell>
+                        <TableCell>{formatReportDate(row.issue_datetime)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
           )}
         </>
       )}

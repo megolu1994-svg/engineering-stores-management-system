@@ -88,7 +88,7 @@ export default function Settings() {
   }
 
   return (
-    <Box sx={{ pb: 4 }}>
+    <Box sx={{ pb: 4, maxWidth: { md: 980 }, mx: { md: "auto" } }}>
       <Typography
         variant="h5"
         sx={{

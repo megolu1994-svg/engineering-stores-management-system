@@ -8,6 +8,12 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -153,9 +159,15 @@ export default function MaterialMasterListView({
         </CardContent>
       </Card>
 
+      {/* ---- Mobile/tablet: card list (unchanged) ---- */}
       <Card
         elevation={0}
-        sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", overflow: "hidden" }}
+        sx={{
+          display: { xs: "block", md: "none" },
+          borderRadius: 3,
+          boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)",
+          overflow: "hidden",
+        }}
       >
         {materials.length === 0 ? (
           <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
@@ -259,6 +271,112 @@ export default function MaterialMasterListView({
               </Typography>
             </Box>
           ))
+        )}
+      </Card>
+
+      {/* ---- Desktop: proper table, comfortable padding + consistent row height ---- */}
+      <Card
+        elevation={0}
+        sx={{
+          display: { xs: "none", md: "block" },
+          borderRadius: 3,
+          boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)",
+          overflow: "hidden",
+        }}
+      >
+        {materials.length === 0 ? (
+          <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
+            <Typography variant="body2">No materials found.</Typography>
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+              <TableHead>
+                <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                  <TableCell>Material Code</TableCell>
+                  <TableCell>Description</TableCell>
+                  <TableCell>UoM</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {materials.map((material) => (
+                  <TableRow
+                    key={material.material_code}
+                    hover
+                    onClick={() => onRowClick(material)}
+                    sx={{ cursor: "pointer", height: 60 }}
+                  >
+                    <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>
+                      {material.material_code}
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 480 }}>
+                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                        {material.short_description}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={material.uom}
+                        size="small"
+                        sx={{
+                          height: 22,
+                          fontSize: "0.7rem",
+                          fontWeight: 700,
+                          bgcolor: BRAND_PURPLE_SOFT,
+                          color: BRAND_PURPLE,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0.5 }}>
+                        <IconButton
+                          color="primary"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(material);
+                          }}
+                          aria-label="Edit material"
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUploadPhoto(material, e.currentTarget);
+                          }}
+                          disabled={uploadingPhotoCode === material.material_code}
+                          aria-label="Add material photo"
+                          sx={{ color: "text.secondary" }}
+                        >
+                          {uploadingPhotoCode === material.material_code ? (
+                            <CircularProgress size={18} />
+                          ) : (
+                            <PhotoCameraIcon fontSize="small" />
+                          )}
+                        </IconButton>
+
+                        <IconButton
+                          color="error"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(material);
+                          }}
+                          aria-label="Delete material"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         )}
       </Card>
 

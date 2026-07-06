@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import {
   Alert,
@@ -8,12 +8,19 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Collapse,
   IconButton,
   InputAdornment,
   MenuItem,
   Paper,
   Snackbar,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Tabs,
   TextField,
   Typography,
@@ -30,6 +37,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import MaterialSearch from "../components/MaterialSearch";
 
@@ -396,18 +404,19 @@ export default function MaterialIssue() {
       <Tabs
         value={activeTab}
         onChange={(_, value) => setActiveTab(value)}
-        variant="fullWidth"
+        variant={mobile ? "fullWidth" : "standard"}
         sx={{
           minHeight: 52,
           borderBottom: 1,
           borderColor: "divider",
-          mb: 2,
-          borderRadius: 2,
-          bgcolor: "grey.50",
+          mb: { xs: 2, md: 3 },
+          borderRadius: { xs: 2, md: 0 },
+          bgcolor: { xs: "grey.50", md: "transparent" },
           "& .MuiTab-root": {
             fontWeight: 700,
             textTransform: "none",
             minHeight: 52,
+            px: { xs: 2, md: 3 },
           },
         }}
       >
@@ -831,41 +840,109 @@ export default function MaterialIssue() {
               </Typography>
             </Card>
           ) : (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {issues.map((issue) => (
-                <Card
-                  key={issue.id}
-                  variant="outlined"
-                  sx={{ borderRadius: 2, px: 1.25, py: 1 }}
-                  onClick={() => toggleExpand(issue.id)}
-                >
-                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                        {issue.issue_number}
+            <>
+              {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+              <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
+                {issues.map((issue) => (
+                  <Card
+                    key={issue.id}
+                    variant="outlined"
+                    sx={{ borderRadius: 2, px: 1.25, py: 1 }}
+                    onClick={() => toggleExpand(issue.id)}
+                  >
+                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                          {issue.issue_number}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {issue.department}
+                        </Typography>
+                      </Box>
+                      <Chip size="small" label={issue.issue_type} sx={{ fontWeight: 700 }} />
+                    </Box>
+
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mt: 0.75 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatDateTime(issue.issue_datetime)}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {issue.department}
+                      <Typography variant="body2" sx={{ fontWeight: 700 }} color="primary.main">
+                        {issue.total_quantity} qty / {issue.total_materials} materials
                       </Typography>
                     </Box>
-                    <Chip size="small" label={issue.issue_type} sx={{ fontWeight: 700 }} />
-                  </Box>
 
-                  <Box sx={{ display: "flex", justifyContent: "space-between", mt: 0.75 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {formatDateTime(issue.issue_datetime)}
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700 }} color="primary.main">
-                      {issue.total_quantity} qty / {issue.total_materials} materials
-                    </Typography>
-                  </Box>
+                    {expandedIssueId === issue.id && (
+                      <IssueDetail loading={loadingDetail} items={expandedItems} />
+                    )}
+                  </Card>
+                ))}
+              </Box>
 
-                  {expandedIssueId === issue.id && (
-                    <IssueDetail loading={loadingDetail} items={expandedItems} />
-                  )}
-                </Card>
-              ))}
-            </Box>
+              {/* ---- Desktop: proper table with expandable detail row ---- */}
+              <TableContainer
+                component={Card}
+                elevation={0}
+                sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+              >
+                <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                  <TableHead>
+                    <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                      <TableCell>Issue No.</TableCell>
+                      <TableCell>Department</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell align="right">Materials</TableCell>
+                      <TableCell align="right">Total Qty</TableCell>
+                      <TableCell align="right" width={56} />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {issues.map((issue) => (
+                      <Fragment key={issue.id}>
+                        <TableRow
+                          hover
+                          onClick={() => toggleExpand(issue.id)}
+                          sx={{ cursor: "pointer", height: 60 }}
+                        >
+                          <TableCell sx={{ fontWeight: 700 }}>{issue.issue_number}</TableCell>
+                          <TableCell>{issue.department}</TableCell>
+                          <TableCell>
+                            <Chip size="small" label={issue.issue_type} sx={{ fontWeight: 700 }} />
+                          </TableCell>
+                          <TableCell>{formatDateTime(issue.issue_datetime)}</TableCell>
+                          <TableCell align="right">{issue.total_materials}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, color: "primary.main" }}>
+                            {issue.total_quantity}
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton
+                              size="small"
+                              aria-label="Expand issue details"
+                              sx={{
+                                transform: expandedIssueId === issue.id ? "rotate(180deg)" : "none",
+                                transition: "transform 0.15s",
+                              }}
+                            >
+                              <ExpandMoreIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+
+                        {expandedIssueId === issue.id && (
+                          <TableRow>
+                            <TableCell colSpan={7} sx={{ bgcolor: "grey.50", py: 2 }}>
+                              <Collapse in timeout="auto">
+                                <IssueDetail loading={loadingDetail} items={expandedItems} />
+                              </Collapse>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
           )}
         </Box>
       )}

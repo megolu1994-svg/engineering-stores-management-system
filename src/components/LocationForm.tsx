@@ -66,7 +66,10 @@ export default function LocationForm({
 
   return (
 
-    <Paper elevation={3} sx={{ p: { xs: 2.5, sm: 4 }, mb: 3 }}>
+    <Paper
+      elevation={3}
+      sx={{ p: { xs: 2.5, sm: 4 }, mb: 3, maxWidth: { md: 860 }, mx: { md: "auto" } }}
+    >
 
       <Typography
         variant="h5"
