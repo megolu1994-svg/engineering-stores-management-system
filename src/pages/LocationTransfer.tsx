@@ -44,7 +44,7 @@ import type { Material } from "../types/material";
 import type { Location } from "../types/location";
 import type { MaterialAllocation } from "../types/materialAllocation";
 
-import { BOTTOM_NAV_OFFSET } from "../components/AppLayout";
+import { BOTTOM_NAV_OFFSET, CONTENT_MAX_WIDTH, DRAWER_WIDTH } from "../components/AppLayout";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -745,7 +745,7 @@ export default function LocationTransfer() {
         <Box
           sx={{
             position: "fixed",
-            left: 0,
+            left: { xs: 0, md: DRAWER_WIDTH },
             right: 0,
             bottom: mobile ? BOTTOM_NAV_OFFSET : 0,
             zIndex: 10,
@@ -753,30 +753,37 @@ export default function LocationTransfer() {
             borderTop: "1px solid",
             borderColor: "divider",
             p: 1.25,
-            display: "flex",
-            gap: 1,
           }}
         >
-          <Button
-            onClick={resetForm}
-            disabled={saving}
-            startIcon={<RestartAltIcon fontSize="small" />}
-            sx={{ minHeight: 48, borderRadius: 2, fontWeight: 600 }}
+          <Box
+            sx={{
+              display: "flex",
+              gap: 1,
+              maxWidth: CONTENT_MAX_WIDTH,
+              mx: "auto",
+            }}
           >
-            Reset
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving}
-            fullWidth
-            startIcon={
-              saving ? <CircularProgress size={18} color="inherit" /> : <SwapHorizIcon fontSize="small" />
-            }
-            sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
-          >
-            Save Transfer
-          </Button>
+            <Button
+              onClick={resetForm}
+              disabled={saving}
+              startIcon={<RestartAltIcon fontSize="small" />}
+              sx={{ minHeight: 48, borderRadius: 2, fontWeight: 600 }}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              disabled={saving}
+              fullWidth
+              startIcon={
+                saving ? <CircularProgress size={18} color="inherit" /> : <SwapHorizIcon fontSize="small" />
+              }
+              sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
+            >
+              Save Transfer
+            </Button>
+          </Box>
         </Box>
       </Box>
 

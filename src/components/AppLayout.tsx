@@ -41,6 +41,13 @@ import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 
 const drawerWidth = 280;
 
+// Exported so pages with their own fixed bottom bars (e.g. a "Save" action
+// bar) can offset themselves past the permanent desktop drawer and align
+// with the centered/max-width main content column instead of spanning the
+// full viewport width underneath it.
+export const DRAWER_WIDTH = drawerWidth;
+export const CONTENT_MAX_WIDTH = 1400;
+
 const APP_VERSION = "1.0.0";
 
 const menuItems = [
@@ -318,6 +325,17 @@ export default function AppLayout() {
           pb: mobile
             ? `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom) + 16px)`
             : { xs: 2, md: 3 },
+
+          // Below "md" this is a no-op (maxWidth: "none" leaves the mobile
+          // layout exactly as it was). At "md" and up it caps the content
+          // to a comfortable reading/working width and centers it (the
+          // "auto" margins absorb the flex container's leftover space) -
+          // without this, every page's cards/forms/lists stretch edge to
+          // edge on wide desktop monitors, which is what read as
+          // "unoptimized" desktop UI.
+          maxWidth: { xs: "none", md: CONTENT_MAX_WIDTH },
+          mx: "auto",
+          width: "100%",
         }}
       >
 
