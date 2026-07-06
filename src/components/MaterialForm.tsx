@@ -105,6 +105,8 @@ export default function MaterialForm({
         mb: 3,
         borderRadius: 3,
         boxShadow: "0 2px 14px rgba(15, 23, 42, 0.08)",
+        maxWidth: { md: 860 },
+        mx: { md: "auto" },
       }}
     >
 

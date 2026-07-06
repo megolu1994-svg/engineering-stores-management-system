@@ -5,12 +5,19 @@ import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
+import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 
@@ -107,7 +114,74 @@ export default function LocationTable({
 
   return (
     <>
-      <Stack spacing={0.75}>
+      {/* ---- Desktop: proper table ---- */}
+      <TableContainer
+        component={Card}
+        elevation={0}
+        sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, overflow: "hidden" }}
+      >
+        <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+          <TableHead>
+            <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+              <TableCell>Location Code</TableCell>
+              <TableCell>Description</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {locations.map((location) => (
+              <TableRow key={location.location_code} hover sx={{ height: 60 }}>
+                <TableCell sx={{ fontWeight: 700 }}>{location.location_code}</TableCell>
+                <TableCell sx={{ maxWidth: 480 }}>
+                  <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                    {location.location_description}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={location.is_active ? "Active" : "Inactive"}
+                    color={location.is_active ? "success" : "default"}
+                    sx={{ fontWeight: 700 }}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                    <IconButton
+                      color="default"
+                      size="small"
+                      onClick={() => setViewLocation(location)}
+                      aria-label="View location"
+                    >
+                      <VisibilityIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      color="primary"
+                      size="small"
+                      onClick={() => onEdit(location)}
+                      aria-label="Edit location"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      color="error"
+                      size="small"
+                      onClick={() => onDelete(location)}
+                      aria-label="Delete location"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+      <Stack spacing={0.75} sx={{ display: { xs: "flex", md: "none" } }}>
         {locations.map((location) => (
           <Card
             key={location.location_code}

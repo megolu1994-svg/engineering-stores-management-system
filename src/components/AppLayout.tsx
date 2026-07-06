@@ -27,6 +27,8 @@ import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import OutputIcon from "@mui/icons-material/Output";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import SettingsIcon from "@mui/icons-material/Settings";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
+import PersonIcon from "@mui/icons-material/Person";
 
 import { useTheme } from "@mui/material/styles";
 
@@ -39,14 +41,18 @@ import {
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 
-const drawerWidth = 280;
+// Desktop permanent sidebar width only - the mobile temporary drawer is
+// untouched and keeps its own (wider) width below, since the mobile UI
+// must stay pixel-identical.
+const drawerWidth = 220;
+const MOBILE_DRAWER_WIDTH = 280;
 
 // Exported so pages with their own fixed bottom bars (e.g. a "Save" action
 // bar) can offset themselves past the permanent desktop drawer and align
 // with the centered/max-width main content column instead of spanning the
 // full viewport width underneath it.
 export const DRAWER_WIDTH = drawerWidth;
-export const CONTENT_MAX_WIDTH = 1400;
+export const CONTENT_MAX_WIDTH = 1536;
 
 const APP_VERSION = "1.0.0";
 
@@ -150,12 +156,15 @@ export default function AppLayout() {
           bgcolor: BRAND_PURPLE,
           display: "flex",
           alignItems: "center",
-          gap: 1.25,
-          px: 3,
+          gap: { xs: 1.25, md: 1 },
+          px: { xs: 3, md: 2 },
         }}
       >
         <BrandLogo size={40} />
-        <Typography sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}>
+        <Typography
+          noWrap
+          sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: { xs: "1rem", md: "0.9rem" } }}
+        >
           DUMAD STORE
         </Typography>
       </Box>
@@ -171,8 +180,9 @@ export default function AppLayout() {
               selected={selected}
               onClick={() => handleNavigate(item.path)}
               sx={{
-                minHeight: { xs: 60, md: 64 },
-                pl: { xs: 3, md: 3.5 },
+                minHeight: { xs: 60, md: 58 },
+                pl: { xs: 3, md: 1.75 },
+                pr: { md: 1.25 },
                 color: selected ? BRAND_PURPLE : "#111827",
                 "&.Mui-selected": {
                   bgcolor: BRAND_PURPLE_SOFT,
@@ -184,7 +194,7 @@ export default function AppLayout() {
             >
               <ListItemIcon
                 sx={{
-                  minWidth: { xs: 40, md: 46 },
+                  minWidth: { xs: 40, md: 36 },
                   color: selected ? BRAND_PURPLE : "#111827",
                   "& svg": { fontSize: { xs: 24, md: 27 } },
                 }}
@@ -194,7 +204,7 @@ export default function AppLayout() {
 
               <ListItemText
                 primary={item.text}
-                slotProps={{ primary: { sx: { fontWeight: 600, fontSize: { xs: 16, md: 17 } } } }}
+                slotProps={{ primary: { sx: { fontWeight: 600, fontSize: { xs: 16, md: 17 }, whiteSpace: "nowrap" } } }}
               />
 
             </ListItemButton>
@@ -236,7 +246,7 @@ export default function AppLayout() {
           }}
         >
 
-          <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT, position: "relative" }}>
+          <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT, position: "relative", px: { md: 3 } }}>
 
             {mobile && (
 
@@ -253,37 +263,80 @@ export default function AppLayout() {
 
             )}
 
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                position: mobile ? "absolute" : "static",
-                left: 0,
-                right: 0,
-                justifyContent: "center",
-                pointerEvents: mobile ? "none" : "auto",
-              }}
-            >
-              <BrandLogo size={26} />
-              <Typography
-                sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
-                noWrap
+            {/* Mobile only: centered brand, unchanged. On desktop the
+                sidebar already carries the logo + "DUMAD STORE" once, so
+                this header never repeats it - see the search slot and
+                account controls below instead. */}
+            {mobile && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                }}
               >
-                DUMAD STORE
-              </Typography>
-            </Box>
+                <BrandLogo size={26} />
+                <Typography
+                  sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
+                  noWrap
+                >
+                  DUMAD STORE
+                </Typography>
+              </Box>
+            )}
 
             {/* Desktop-only: portal target for the active page's search
-                field (see useHeaderSlot) so it renders inline with the
-                logo, in one header row, instead of in a separate hero
-                block further down the page. Empty/unused on pages that
+                field (see useHeaderSlot), centered and width-capped rather
+                than stretched edge-to-edge. Empty/unused on pages that
                 don't portal anything into it. */}
             {!mobile && (
-              <Box
-                ref={setHeaderSlotEl}
-                sx={{ flexGrow: 1, ml: 3, display: "flex", alignItems: "center" }}
-              />
+              <Box sx={{ flexGrow: 1, display: "flex", justifyContent: "center" }}>
+                <Box ref={setHeaderSlotEl} sx={{ width: "100%", maxWidth: 640 }} />
+              </Box>
+            )}
+
+            {/* Desktop-only: notifications + account, future-ready
+                placeholders (no backing functionality yet) so the header
+                isn't left empty once the duplicate brand text is gone. */}
+            {!mobile && (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, ml: 2, flexShrink: 0 }}>
+                <IconButton
+                  size="small"
+                  aria-label="Notifications"
+                  sx={{ color: "#FFFFFF" }}
+                >
+                  <NotificationsNoneIcon fontSize="small" />
+                </IconButton>
+
+                <Divider
+                  orientation="vertical"
+                  flexItem
+                  sx={{ borderColor: "rgba(255,255,255,0.3)", my: 1 }}
+                />
+
+                <IconButton
+                  size="small"
+                  aria-label="Account settings"
+                  onClick={() => navigate("/settings")}
+                  sx={{ p: 0.25 }}
+                >
+                  <Avatar
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      bgcolor: "rgba(255,255,255,0.15)",
+                      color: "#FFFFFF",
+                    }}
+                  >
+                    <PersonIcon fontSize="small" />
+                  </Avatar>
+                </IconButton>
+              </Box>
             )}
 
           </Toolbar>
@@ -300,7 +353,7 @@ export default function AppLayout() {
         >
 
           <Box
-            sx={{ width: drawerWidth, maxWidth: "85vw", height: "100%" }}
+            sx={{ width: MOBILE_DRAWER_WIDTH, maxWidth: "85vw", height: "100%" }}
           >
 
             {drawer}
@@ -346,12 +399,17 @@ export default function AppLayout() {
 
           p: {
             xs: 2,
-            md: 3,
+            md: 4,
+          },
+
+          pt: {
+            xs: 2,
+            md: 4.5,
           },
 
           pb: mobile
             ? `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom) + 16px)`
-            : { xs: 2, md: 3 },
+            : { xs: 2, md: 4 },
 
           // Below "md" this is a no-op (maxWidth: "none" leaves the mobile
           // layout exactly as it was). At "md" and up it caps the content

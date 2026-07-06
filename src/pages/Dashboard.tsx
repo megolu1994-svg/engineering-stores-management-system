@@ -653,7 +653,8 @@ export default function Dashboard() {
           textColor="primary"
           indicatorColor="primary"
           sx={{
-            mb: 3,
+            mt: 0.5,
+            mb: 3.5,
             minHeight: 48,
             borderBottom: "1px solid",
             borderColor: "divider",

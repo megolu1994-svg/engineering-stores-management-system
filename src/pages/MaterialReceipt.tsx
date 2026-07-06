@@ -1163,67 +1163,120 @@ export default function MaterialReceipt() {
           </Typography>
         </Card>
       ) : (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {receipts.map((r) => (
-            <Card key={r.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                    {r.drc_number}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {r.vendor_name}
-                  </Typography>
+        <>
+          {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+          <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
+            {receipts.map((r) => (
+              <Card key={r.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                      {r.drc_number}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap>
+                      {r.vendor_name}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    size="small"
+                    label={r.status}
+                    color={statusColor(r.status)}
+                    sx={{ fontWeight: 700, fontSize: "0.65rem" }}
+                  />
                 </Box>
-                <Chip
-                  size="small"
-                  label={r.status}
-                  color={statusColor(r.status)}
-                  sx={{ fontWeight: 700, fontSize: "0.65rem" }}
-                />
-              </Box>
 
-              <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
-                <Grid size={6}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                    PO Number
-                  </Typography>
-                  <Typography variant="body2" noWrap>{r.po_number ?? "-"}</Typography>
+                <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                  <Grid size={6}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                      PO Number
+                    </Typography>
+                    <Typography variant="body2" noWrap>{r.po_number ?? "-"}</Typography>
+                  </Grid>
+                  <Grid size={6}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                      Invoice Number
+                    </Typography>
+                    <Typography variant="body2" noWrap>{r.invoice_number ?? "-"}</Typography>
+                  </Grid>
+                  <Grid size={6}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                      Receipt Date
+                    </Typography>
+                    <Typography variant="body2" noWrap>{formatDate(r.receipt_datetime)}</Typography>
+                  </Grid>
+                  <Grid size={6}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                      Vehicle Number
+                    </Typography>
+                    <Typography variant="body2" noWrap>{r.vehicle_number ?? "-"}</Typography>
+                  </Grid>
                 </Grid>
-                <Grid size={6}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                    Invoice Number
-                  </Typography>
-                  <Typography variant="body2" noWrap>{r.invoice_number ?? "-"}</Typography>
-                </Grid>
-                <Grid size={6}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                    Receipt Date
-                  </Typography>
-                  <Typography variant="body2" noWrap>{formatDate(r.receipt_datetime)}</Typography>
-                </Grid>
-                <Grid size={6}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
-                    Vehicle Number
-                  </Typography>
-                  <Typography variant="body2" noWrap>{r.vehicle_number ?? "-"}</Typography>
-                </Grid>
-              </Grid>
 
-              <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5, mt: 0.75 }}>
-                <IconButton size="small" onClick={() => setViewReceipt(r)} aria-label="View DRC">
-                  <VisibilityIcon fontSize="small" />
-                </IconButton>
-                <IconButton size="small" onClick={() => openEditForm(r)} aria-label="Edit DRC">
-                  <EditIcon fontSize="small" />
-                </IconButton>
-                <IconButton size="small" onClick={() => handlePrint(r)} aria-label="Print DRC">
-                  <PrintIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            </Card>
-          ))}
-        </Box>
+                <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5, mt: 0.75 }}>
+                  <IconButton size="small" onClick={() => setViewReceipt(r)} aria-label="View DRC">
+                    <VisibilityIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" onClick={() => openEditForm(r)} aria-label="Edit DRC">
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton size="small" onClick={() => handlePrint(r)} aria-label="Print DRC">
+                    <PrintIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              </Card>
+            ))}
+          </Box>
+
+          {/* ---- Desktop: proper table ---- */}
+          <TableContainer
+            component={Card}
+            elevation={0}
+            sx={{ display: { xs: "none", md: "block" }, borderRadius: 2.5, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+          >
+            <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+              <TableHead>
+                <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                  <TableCell>DRC Number</TableCell>
+                  <TableCell>Vendor</TableCell>
+                  <TableCell>PO Number</TableCell>
+                  <TableCell>Invoice Number</TableCell>
+                  <TableCell>Vehicle Number</TableCell>
+                  <TableCell>Receipt Date</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {receipts.map((r) => (
+                  <TableRow key={r.id} hover sx={{ height: 60 }}>
+                    <TableCell sx={{ fontWeight: 700 }}>{r.drc_number}</TableCell>
+                    <TableCell>{r.vendor_name}</TableCell>
+                    <TableCell>{r.po_number ?? "-"}</TableCell>
+                    <TableCell>{r.invoice_number ?? "-"}</TableCell>
+                    <TableCell>{r.vehicle_number ?? "-"}</TableCell>
+                    <TableCell>{formatDate(r.receipt_datetime)}</TableCell>
+                    <TableCell>
+                      <Chip size="small" label={r.status} color={statusColor(r.status)} sx={{ fontWeight: 700 }} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                        <IconButton size="small" onClick={() => setViewReceipt(r)} aria-label="View DRC">
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => openEditForm(r)} aria-label="Edit DRC">
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handlePrint(r)} aria-label="Print DRC">
+                          <PrintIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
       )}
 
       {/* ================= Create / Edit DRC ================= */}
