@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   Card,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -60,8 +61,10 @@ import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DescriptionIcon from "@mui/icons-material/Description";
-import EmailIcon from "@mui/icons-material/Email";
-import SendIcon from "@mui/icons-material/Send";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import TaskAltOutlinedIcon from "@mui/icons-material/TaskAltOutlined";
+import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 
 import {
   createReceipt,
@@ -79,11 +82,12 @@ import {
   downloadGrnImportReport,
   getGrnHistory,
   buildGrnTemplateRows,
+  // Documents
+  addReceiptDocument,
+  removeReceiptDocument,
+  DOCUMENT_TYPES,
   // Mail
-  generateInspectionMail,
-  generateSupplierIssueMail,
-  sendDrcMail,
-  getDrcMailHistory,
+  generateAiMail,
   type ReceiptHeader,
   type ReceiptFormInput,
   type ReceiptSummary,
@@ -94,25 +98,16 @@ import {
   type GrnFormatInvalidRow,
   type GrnHistoryEntry,
   type DrcMailType,
-  type MailLogEntry,
+  type DocumentType,
+  type DocumentUpload,
   // Sprint 3
   type PackageDetailRow,
   type AttachmentFile,
 } from "../services/receiptService";
-import { parseRecipientList, isValidEmail } from "../services/mailService";
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 import { usePersistentState } from "../hooks/usePersistentState";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
-
-const INSPECTION_STATUSES: InspectionStatus[] = [
-  "Pending Inspection",
-  "Accepted",
-  "Accepted with Remarks",
-  "Shortage",
-  "Discrepancy",
-  "Rejected",
-];
 
 const emptyPackageRow: PackageDetailRow = {
   quantity: "1",
@@ -456,7 +451,11 @@ export default function MaterialReceipt() {
   const [capturingPhoto, setCapturingPhoto] = useState(false);
 
   const documentInputRef = useRef<HTMLInputElement | null>(null);
-  const [newDocumentFiles, setNewDocumentFiles] = useState<File[]>([]);
+  const [newDocumentUploads, setNewDocumentUploads] = useState<
+    DocumentUpload[]
+  >([]);
+  const [documentTypeSelection, setDocumentTypeSelection] =
+    useState<DocumentType>("Invoice");
   const [keptAttachments, setKeptAttachments] = usePersistentState<
     AttachmentFile[]
   >("materialReceipt.keptAttachments", []);
@@ -504,7 +503,7 @@ export default function MaterialReceipt() {
     setNewPhotoFiles([]);
     setNewPhotoPreviews([]);
     setKeptPhotoUrls([]);
-    setNewDocumentFiles([]);
+    setNewDocumentUploads([]);
     setKeptAttachments([]);
     setManualDrcEntry(false);
     setDrcDate(todayIso());
@@ -547,7 +546,7 @@ export default function MaterialReceipt() {
     setNewPhotoFiles([]);
     setNewPhotoPreviews([]);
     setKeptPhotoUrls(receipt.photo_urls ?? []);
-    setNewDocumentFiles([]);
+    setNewDocumentUploads([]);
     setKeptAttachments(receipt.attachment_paths ?? []);
     setFormOpen(true);
   }
@@ -561,7 +560,7 @@ export default function MaterialReceipt() {
     setForm(emptyForm);
     setNewPhotoFiles([]);
     setNewPhotoPreviews([]);
-    setNewDocumentFiles([]);
+    setNewDocumentUploads([]);
     if (editingReceipt) {
       setKeptPhotoUrls(editingReceipt.photo_urls ?? []);
       setKeptAttachments(editingReceipt.attachment_paths ?? []);
@@ -636,17 +635,21 @@ export default function MaterialReceipt() {
     setKeptPhotoUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // ---- Document attachments ----
+  // ---- Document attachments (each file tagged with the document type
+  // selected in the dropdown at the time it was chosen) ----
   function handleDocumentSelect(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
 
-    setNewDocumentFiles((prev) => [...prev, ...files]);
+    setNewDocumentUploads((prev) => [
+      ...prev,
+      ...files.map((file) => ({ file, documentType: documentTypeSelection })),
+    ]);
     e.target.value = "";
   }
 
   function removeNewDocument(index: number) {
-    setNewDocumentFiles((prev) => prev.filter((_, i) => i !== index));
+    setNewDocumentUploads((prev) => prev.filter((_, i) => i !== index));
   }
 
   function removeKeptAttachment(index: number) {
@@ -689,7 +692,7 @@ export default function MaterialReceipt() {
           form,
           newPhotoFiles,
           keptPhotoUrls,
-          newDocumentFiles,
+          newDocumentUploads,
           keptAttachments
         );
         showSnackbar(`DRC ${updated.drc_number} updated.`, "success");
@@ -697,7 +700,7 @@ export default function MaterialReceipt() {
         const created = await createReceipt(
           form,
           newPhotoFiles,
-          newDocumentFiles,
+          newDocumentUploads,
           manualDrcEntry
             ? {
                 drc_number: drcNumber.trim(),
@@ -740,87 +743,96 @@ export default function MaterialReceipt() {
   // ---------------- View DRC ----------------
   const [viewReceipt, setViewReceipt] = useState<ReceiptHeader | null>(null);
 
-  // ---------------- Mail (Inspection request / Supplier notice) ----------------
+  // ---- Documents: upload straight from the View DRC dialog, any time
+  // after DRC creation (persists immediately - no Save step). ----
+  const viewDocumentInputRef = useRef<HTMLInputElement | null>(null);
+  const [viewDocumentTypeSelection, setViewDocumentTypeSelection] =
+    useState<DocumentType>("Invoice");
+  const [uploadingViewDocument, setUploadingViewDocument] = useState(false);
+
+  function handleViewDocumentSelect(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!file || !viewReceipt) return;
+
+    setUploadingViewDocument(true);
+    addReceiptDocument(viewReceipt.id, file, viewDocumentTypeSelection)
+      .then((updated) => {
+        setViewReceipt(updated);
+        showSnackbar(`${viewDocumentTypeSelection} uploaded.`, "success");
+      })
+      .catch(() => showSnackbar("Document upload failed.", "error"))
+      .finally(() => setUploadingViewDocument(false));
+  }
+
+  function handleRemoveViewDocument(index: number) {
+    if (!viewReceipt) return;
+
+    removeReceiptDocument(viewReceipt.id, index)
+      .then((updated) => setViewReceipt(updated))
+      .catch(() => showSnackbar("Failed to remove document.", "error"));
+  }
+
+  // ---------------- Mail (AI-assisted draft - copy only, never sent from
+  // this app; the operator pastes it into whatever mail client they use) ----------------
   const [mailDialogOpen, setMailDialogOpen] = useState(false);
   const [mailDialogReceipt, setMailDialogReceipt] = useState<ReceiptHeader | null>(
     null
   );
   const [mailType, setMailType] = useState<DrcMailType>("Inspection Request");
-  const [mailRecipient, setMailRecipient] = useState("");
+  const [mailDiscrepancyRemarks, setMailDiscrepancyRemarks] = useState("");
   const [mailSubject, setMailSubject] = useState("");
   const [mailBody, setMailBody] = useState("");
-  const [mailSentBy, setMailSentBy] = useState("");
-  const [sendingMail, setSendingMail] = useState(false);
-  const [mailHistory, setMailHistory] = useState<MailLogEntry[]>([]);
+  const [generatingMail, setGeneratingMail] = useState(false);
+  const [mailAiGenerated, setMailAiGenerated] = useState(false);
 
-  function openMailDialog(receipt: ReceiptHeader, type: DrcMailType) {
-    const subject =
-      type === "Inspection Request"
-        ? `Inspection Required - DRC ${receipt.drc_number}`
-        : `Material Receipt Issue (${type}) - DRC ${receipt.drc_number}`;
-
-    const html =
-      type === "Inspection Request"
-        ? generateInspectionMail(receipt)
-        : generateSupplierIssueMail(receipt, type);
-
-    setMailDialogReceipt(receipt);
-    setMailType(type);
-    setMailSubject(subject);
-    setMailBody(html);
-    setMailRecipient("");
-    setMailSentBy("");
-    setMailDialogOpen(true);
+  async function regenerateMail(
+    receipt: ReceiptHeader,
+    type: DrcMailType,
+    discrepancyRemarks: string
+  ) {
+    setGeneratingMail(true);
+    try {
+      const draft = await generateAiMail(
+        receipt,
+        type,
+        discrepancyRemarks || undefined
+      );
+      setMailSubject(draft.subject);
+      setMailBody(draft.body);
+      setMailAiGenerated(draft.aiGenerated);
+    } finally {
+      setGeneratingMail(false);
+    }
   }
 
-  async function handleSendMail() {
-    if (!mailDialogReceipt) return;
+  async function openMailDialog(
+    receipt: ReceiptHeader,
+    type: DrcMailType,
+    discrepancyRemarks = ""
+  ) {
+    setMailDialogReceipt(receipt);
+    setMailType(type);
+    setMailDiscrepancyRemarks(discrepancyRemarks);
+    setMailSubject("");
+    setMailBody("");
+    setMailAiGenerated(false);
+    setMailDialogOpen(true);
+    await regenerateMail(receipt, type, discrepancyRemarks);
+  }
 
-    const recipients = parseRecipientList(mailRecipient);
-
-    if (recipients.length === 0 || recipients.some((r) => !isValidEmail(r))) {
-      showSnackbar("Please enter a valid recipient email address.", "warning");
-      return;
-    }
-    if (!mailSubject.trim()) {
-      showSnackbar("Please enter a subject.", "warning");
-      return;
-    }
-
-    setSendingMail(true);
-
+  async function handleCopyMail() {
     try {
-      const result = await sendDrcMail(
-        mailDialogReceipt.id,
-        mailType,
-        recipients,
-        mailSubject.trim(),
-        mailBody,
-        mailSentBy
-      );
-
-      if (result.success) {
-        showSnackbar("Mail sent successfully.", "success");
-        setMailDialogOpen(false);
-      } else {
-        showSnackbar(
-          `Mail could not be sent: ${result.error ?? "Unknown error."}`,
-          "error"
-        );
-      }
-
-      if (viewReceipt && viewReceipt.id === mailDialogReceipt.id) {
-        const history = await getDrcMailHistory(mailDialogReceipt.id);
-        setMailHistory(history);
-      }
-    } finally {
-      setSendingMail(false);
+      await navigator.clipboard.writeText(`Subject: ${mailSubject}\n\n${mailBody}`);
+      showSnackbar("Mail content copied to clipboard.", "success");
+    } catch {
+      showSnackbar("Could not copy to clipboard.", "error");
     }
   }
 
   // ---------------- Sprint 2: Inspection ----------------
   const [inspectionStatusInput, setInspectionStatusInput] =
-    useState<InspectionStatus>("Accepted");
+    useState<InspectionStatus>("Inspection Cleared");
   const [inspectionRemarksInput, setInspectionRemarksInput] = useState("");
   const [inspectionByInput, setInspectionByInput] = useState("");
   const [submittingInspection, setSubmittingInspection] = useState(false);
@@ -828,7 +840,7 @@ export default function MaterialReceipt() {
     InspectionHistoryEntry[]
   >([]);
 
-  // ---------------- Sprint 2: GRN Upload ----------------
+  // ---------------- Sprint 2: GRN Upload (+ counting check) ----------------
   const [grnNumber, setGrnNumber] = useState("");
   const [grnDate, setGrnDate] = useState("");
   const [uploadedBy, setUploadedBy] = useState("");
@@ -846,6 +858,9 @@ export default function MaterialReceipt() {
   const [grnKnownRows, setGrnKnownRows] = useState<GrnImportRow[]>([]);
   const [grnImporting, setGrnImporting] = useState(false);
   const [grnHistory, setGrnHistory] = useState<GrnHistoryEntry[]>([]);
+  const [countingChecked, setCountingChecked] = useState(false);
+  const [discrepancyFound, setDiscrepancyFound] = useState(false);
+  const [discrepancyRemarksInput, setDiscrepancyRemarksInput] = useState("");
 
   function resetGrnForm() {
     setGrnNumber("");
@@ -857,18 +872,20 @@ export default function MaterialReceipt() {
     setGrnFormatInvalidRows([]);
     setGrnUnknownMaterials([]);
     setGrnKnownRows([]);
+    setCountingChecked(false);
+    setDiscrepancyFound(false);
+    setDiscrepancyRemarksInput("");
   }
 
-  // Load Inspection + GRN + Mail history whenever a DRC is opened for viewing.
+  // Load Inspection + GRN history whenever a DRC is opened for viewing.
   useEffect(() => {
     if (!viewReceipt) {
       setInspectionHistory([]);
       setGrnHistory([]);
-      setMailHistory([]);
       return;
     }
 
-    setInspectionStatusInput("Accepted");
+    setInspectionStatusInput("Inspection Cleared");
     setInspectionRemarksInput("");
     setInspectionByInput("");
     resetGrnForm();
@@ -878,12 +895,10 @@ export default function MaterialReceipt() {
     Promise.all([
       getInspectionHistory(viewReceipt.id),
       getGrnHistory(viewReceipt.id),
-      getDrcMailHistory(viewReceipt.id),
-    ]).then(([inspections, grns, mails]) => {
+    ]).then(([inspections, grns]) => {
       if (cancelled) return;
       setInspectionHistory(inspections);
       setGrnHistory(grns);
-      setMailHistory(mails);
     });
 
     return () => {
@@ -895,14 +910,11 @@ export default function MaterialReceipt() {
     if (!viewReceipt) return;
 
     if (
-      (inspectionStatusInput === "Rejected" ||
-        inspectionStatusInput === "Accepted with Remarks" ||
-        inspectionStatusInput === "Shortage" ||
-        inspectionStatusInput === "Discrepancy") &&
+      inspectionStatusInput === "Inspection On Hold" &&
       !inspectionRemarksInput.trim()
     ) {
       showSnackbar(
-        "Please enter Inspection Remarks for this outcome.",
+        "Please enter remarks explaining why inspection is on hold.",
         "warning"
       );
       return;
@@ -937,13 +949,10 @@ export default function MaterialReceipt() {
 
       await refreshAll();
 
-      // Shortage / Discrepancy outcomes need the supplier notified so the
-      // material can be topped up / corrected before GRN.
-      if (
-        inspectionStatusInput === "Shortage" ||
-        inspectionStatusInput === "Discrepancy"
-      ) {
-        openMailDialog(updated, inspectionStatusInput);
+      // An on-hold outcome needs the relevant team notified with the hold
+      // reason so the DRC can be moved forward once it's resolved.
+      if (inspectionStatusInput === "Inspection On Hold") {
+        openMailDialog(updated, "Inspection On Hold");
       }
     } catch {
       showSnackbar("Something went wrong while saving the inspection.", "error");
@@ -1038,6 +1047,22 @@ export default function MaterialReceipt() {
       return;
     }
 
+    if (!countingChecked) {
+      showSnackbar(
+        "Please confirm the material counting check before submitting the GRN.",
+        "warning"
+      );
+      return;
+    }
+
+    if (discrepancyFound && !discrepancyRemarksInput.trim()) {
+      showSnackbar(
+        "Please enter the counting discrepancy remarks.",
+        "warning"
+      );
+      return;
+    }
+
     setGrnImporting(true);
 
     try {
@@ -1046,7 +1071,10 @@ export default function MaterialReceipt() {
         grnNumber.trim(),
         grnDate,
         uploadedBy,
-        grnKnownRows
+        grnKnownRows,
+        countingChecked,
+        discrepancyFound,
+        discrepancyRemarksInput
       );
 
       if (summary.receipt) {
@@ -1999,34 +2027,56 @@ export default function MaterialReceipt() {
 
             <Divider />
 
-            {/* Attachments */}
+            {/* Documents */}
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                Attachments
+                Documents
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
-                Invoice, Challan, E-Way Bill, Inspection Certificate, OEM/Vendor documents, etc. (PDF, DOC, DOCX, XLS, XLSX, JPG, PNG)
+                Select the document type, then upload the file(s) for it - Invoice, Challan, LR Copy, Packing List, Test Certificates, etc. (PDF, DOC, DOCX, XLS, XLSX, JPG, PNG)
               </Typography>
 
-              <input
-                ref={documentInputRef}
-                type="file"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                multiple
-                hidden
-                onChange={handleDocumentSelect}
-              />
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
+                <TextField
+                  select
+                  label="Document Type"
+                  size="small"
+                  value={documentTypeSelection}
+                  onChange={(e) =>
+                    setDocumentTypeSelection(e.target.value as DocumentType)
+                  }
+                  sx={{
+                    minWidth: { sm: 190 },
+                    "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                  }}
+                >
+                  {DOCUMENT_TYPES.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {type}
+                    </MenuItem>
+                  ))}
+                </TextField>
 
-              <Button
-                variant="outlined"
-                startIcon={<AttachFileIcon fontSize="small" />}
-                onClick={() => documentInputRef.current?.click()}
-                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
-              >
-                Add Document
-              </Button>
+                <input
+                  ref={documentInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  multiple
+                  hidden
+                  onChange={handleDocumentSelect}
+                />
 
-              {(keptAttachments.length > 0 || newDocumentFiles.length > 0) && (
+                <Button
+                  variant="outlined"
+                  startIcon={<AttachFileIcon fontSize="small" />}
+                  onClick={() => documentInputRef.current?.click()}
+                  sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                >
+                  Upload {documentTypeSelection}
+                </Button>
+              </Box>
+
+              {(keptAttachments.length > 0 || newDocumentUploads.length > 0) && (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 1 }}>
                   {keptAttachments.map((doc, index) => (
                     <Box
@@ -2041,6 +2091,11 @@ export default function MaterialReceipt() {
                       }}
                     >
                       <DescriptionIcon fontSize="small" color="action" />
+                      <Chip
+                        size="small"
+                        label={doc.document_type ?? "Other"}
+                        sx={{ fontWeight: 600, flexShrink: 0 }}
+                      />
                       <Typography
                         variant="body2"
                         sx={{ flex: 1, minWidth: 0 }}
@@ -2062,7 +2117,7 @@ export default function MaterialReceipt() {
                     </Box>
                   ))}
 
-                  {newDocumentFiles.map((file, index) => (
+                  {newDocumentUploads.map((upload, index) => (
                     <Box
                       key={`new-doc-${index}`}
                       sx={{
@@ -2075,8 +2130,13 @@ export default function MaterialReceipt() {
                       }}
                     >
                       <DescriptionIcon fontSize="small" color="action" />
+                      <Chip
+                        size="small"
+                        label={upload.documentType}
+                        sx={{ fontWeight: 600, flexShrink: 0 }}
+                      />
                       <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
-                        {file.name}
+                        {upload.file.name}
                       </Typography>
                       <IconButton
                         size="small"
@@ -2259,41 +2319,102 @@ export default function MaterialReceipt() {
                 </>
               )}
 
-              {viewReceipt.attachment_paths && viewReceipt.attachment_paths.length > 0 && (
-                <>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                    Attachments
-                  </Typography>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                    {viewReceipt.attachment_paths.map((doc, index) => (
-                      <Box
-                        key={index}
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1,
-                          p: 0.75,
-                          borderRadius: 2,
-                          bgcolor: "grey.50",
-                        }}
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                Documents
+              </Typography>
+
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, mb: 1 }}>
+                <TextField
+                  select
+                  label="Document Type"
+                  size="small"
+                  value={viewDocumentTypeSelection}
+                  onChange={(e) =>
+                    setViewDocumentTypeSelection(e.target.value as DocumentType)
+                  }
+                  sx={{
+                    minWidth: { sm: 170 },
+                    "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                  }}
+                >
+                  {DOCUMENT_TYPES.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {type}
+                    </MenuItem>
+                  ))}
+                </TextField>
+
+                <input
+                  ref={viewDocumentInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  hidden
+                  onChange={handleViewDocumentSelect}
+                />
+
+                <Button
+                  variant="outlined"
+                  startIcon={
+                    uploadingViewDocument ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <AttachFileIcon fontSize="small" />
+                    )
+                  }
+                  disabled={uploadingViewDocument}
+                  onClick={() => viewDocumentInputRef.current?.click()}
+                  sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                >
+                  Upload {viewDocumentTypeSelection}
+                </Button>
+              </Box>
+
+              {viewReceipt.attachment_paths && viewReceipt.attachment_paths.length > 0 ? (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {viewReceipt.attachment_paths.map((doc, index) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 0.75,
+                        borderRadius: 2,
+                        bgcolor: "grey.50",
+                      }}
+                    >
+                      <DescriptionIcon fontSize="small" color="action" />
+                      <Chip
+                        size="small"
+                        label={doc.document_type ?? "Other"}
+                        sx={{ fontWeight: 600, flexShrink: 0 }}
+                      />
+                      <Typography
+                        variant="body2"
+                        component="a"
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ flex: 1, minWidth: 0 }}
+                        noWrap
                       >
-                        <DescriptionIcon fontSize="small" color="action" />
-                        <Typography
-                          variant="body2"
-                          component="a"
-                          href={doc.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          sx={{ flex: 1, minWidth: 0 }}
-                          noWrap
-                        >
-                          {doc.name}
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                </>
+                        {doc.name}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRemoveViewDocument(index)}
+                        aria-label="Remove document"
+                      >
+                        <DeleteIcon sx={{ fontSize: 16 }} color="error" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No documents uploaded yet.
+                </Typography>
               )}
 
               {/* ---- Sprint 2: Inspection ---- */}
@@ -2305,68 +2426,77 @@ export default function MaterialReceipt() {
                 </Typography>
               </Box>
 
-              {viewReceipt.status === "Pending Inspection" ||
-              viewReceipt.inspection_status === "Rejected" ||
-              viewReceipt.inspection_status === "Shortage" ||
-              viewReceipt.inspection_status === "Discrepancy" ? (
+              {viewReceipt.status === "Pending Inspection" ? (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   <Button
                     variant="outlined"
                     fullWidth
-                    startIcon={<EmailIcon fontSize="small" />}
+                    startIcon={<AutoAwesomeIcon fontSize="small" />}
                     onClick={() =>
                       openMailDialog(viewReceipt, "Inspection Request")
                     }
                     sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
                   >
-                    Send Inspection Mail to Department
+                    Generate Inspection Mail
                   </Button>
 
-                  {(viewReceipt.inspection_status === "Shortage" ||
-                    viewReceipt.inspection_status === "Discrepancy") && (
+                  {viewReceipt.inspection_status === "Inspection On Hold" && (
                     <Button
                       variant="outlined"
                       color="warning"
                       fullWidth
-                      startIcon={<EmailIcon fontSize="small" />}
+                      startIcon={<AutoAwesomeIcon fontSize="small" />}
                       onClick={() =>
-                        openMailDialog(
-                          viewReceipt,
-                          viewReceipt.inspection_status as DrcMailType
-                        )
+                        openMailDialog(viewReceipt, "Inspection On Hold")
                       }
                       sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
                     >
-                      Resend Supplier Mail ({viewReceipt.inspection_status})
+                      Regenerate On Hold Mail
                     </Button>
                   )}
 
-                  <TextField
-                    select
-                    label="Inspection Status"
-                    size="small"
-                    fullWidth
-                    value={inspectionStatusInput}
-                    onChange={(e) =>
-                      setInspectionStatusInput(e.target.value as InspectionStatus)
-                    }
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                  >
-                    {INSPECTION_STATUSES.filter(
-                      (s) => s !== "Pending Inspection"
-                    ).map((s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <Button
+                      variant={
+                        inspectionStatusInput === "Inspection Cleared"
+                          ? "contained"
+                          : "outlined"
+                      }
+                      color="success"
+                      fullWidth
+                      startIcon={<TaskAltOutlinedIcon fontSize="small" />}
+                      onClick={() => setInspectionStatusInput("Inspection Cleared")}
+                      sx={{ minHeight: 44, borderRadius: 2, fontWeight: 700 }}
+                    >
+                      Inspection Cleared
+                    </Button>
+                    <Button
+                      variant={
+                        inspectionStatusInput === "Inspection On Hold"
+                          ? "contained"
+                          : "outlined"
+                      }
+                      color="warning"
+                      fullWidth
+                      startIcon={<ReportProblemIcon fontSize="small" />}
+                      onClick={() => setInspectionStatusInput("Inspection On Hold")}
+                      sx={{ minHeight: 44, borderRadius: 2, fontWeight: 700 }}
+                    >
+                      Inspection On Hold
+                    </Button>
+                  </Box>
 
                   <TextField
-                    label="Inspection Remarks"
+                    label={
+                      inspectionStatusInput === "Inspection On Hold"
+                        ? "Remarks - reason for hold"
+                        : "Remarks (optional)"
+                    }
                     size="small"
                     fullWidth
                     multiline
                     minRows={2}
+                    required={inspectionStatusInput === "Inspection On Hold"}
                     value={inspectionRemarksInput}
                     onChange={(e) => setInspectionRemarksInput(e.target.value)}
                     sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
@@ -2593,6 +2723,68 @@ export default function MaterialReceipt() {
                       </TableContainer>
                     )}
 
+                    <Divider sx={{ my: 0.5 }} />
+
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                      <TaskAltOutlinedIcon fontSize="small" color="action" />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        Counting Check
+                      </Typography>
+                    </Box>
+
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={countingChecked}
+                          onChange={(e) => setCountingChecked(e.target.checked)}
+                        />
+                      }
+                      label="Material counting verified against the DRC"
+                    />
+
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={discrepancyFound}
+                          onChange={(e) => setDiscrepancyFound(e.target.checked)}
+                        />
+                      }
+                      label="Discrepancy found while counting"
+                    />
+
+                    {discrepancyFound && (
+                      <>
+                        <TextField
+                          label="Discrepancy Remarks"
+                          size="small"
+                          fullWidth
+                          required
+                          multiline
+                          minRows={2}
+                          value={discrepancyRemarksInput}
+                          onChange={(e) => setDiscrepancyRemarksInput(e.target.value)}
+                          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                        />
+
+                        <Button
+                          variant="outlined"
+                          color="warning"
+                          fullWidth
+                          startIcon={<AutoAwesomeIcon fontSize="small" />}
+                          onClick={() =>
+                            openMailDialog(
+                              viewReceipt,
+                              "Counting Discrepancy",
+                              discrepancyRemarksInput
+                            )
+                          }
+                          sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+                        >
+                          Generate Mail to Supplier
+                        </Button>
+                      </>
+                    )}
+
                     <Button
                       variant="contained"
                       color="primary"
@@ -2605,7 +2797,12 @@ export default function MaterialReceipt() {
                         )
                       }
                       onClick={handleGrnImport}
-                      disabled={grnKnownRows.length === 0 || grnImporting}
+                      disabled={
+                        grnKnownRows.length === 0 ||
+                        grnImporting ||
+                        !countingChecked ||
+                        (discrepancyFound && !discrepancyRemarksInput.trim())
+                      }
                       sx={{ minHeight: 44, borderRadius: 2, fontWeight: 700 }}
                     >
                       Import GRN &amp; Close DRC
@@ -2704,53 +2901,29 @@ export default function MaterialReceipt() {
                       <Typography variant="caption" sx={{ fontWeight: 600 }}>
                         {g.material_count} material(s) imported - total quantity {g.total_quantity}
                       </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5, mt: 1.5 }}>
-                Mail History
-              </Typography>
-              {mailHistory.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No mail sent yet.
-                </Typography>
-              ) : (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                  {mailHistory.map((m) => (
-                    <Box
-                      key={m.id}
-                      sx={{
-                        p: 1,
-                        borderRadius: 2,
-                        bgcolor: "grey.50",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 0.25,
-                      }}
-                    >
-                      <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
-                        <Chip size="small" label={m.mail_type} sx={{ fontWeight: 600 }} />
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.25 }}>
                         <Chip
                           size="small"
-                          label={m.status}
-                          color={m.status === "Sent" ? "success" : "error"}
+                          icon={<TaskAltOutlinedIcon sx={{ fontSize: 14 }} />}
+                          label={g.counting_checked ? "Counting Verified" : "Counting Not Recorded"}
+                          color={g.counting_checked ? "success" : "default"}
+                          sx={{ fontWeight: 600 }}
                         />
+                        {g.discrepancy_found && (
+                          <Chip
+                            size="small"
+                            icon={<ReportProblemIcon sx={{ fontSize: 14 }} />}
+                            label="Counting Discrepancy"
+                            color="warning"
+                            sx={{ fontWeight: 600 }}
+                          />
+                        )}
                       </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ wordBreak: "break-word" }}>
-                        To: {m.recipient_email}
-                      </Typography>
-                      <Typography variant="body2">{m.subject}</Typography>
-                      {m.error_message && (
-                        <Typography variant="caption" color="error">
-                          {m.error_message}
+                      {g.discrepancy_remarks && (
+                        <Typography variant="caption" color="text.secondary">
+                          Discrepancy: {g.discrepancy_remarks}
                         </Typography>
                       )}
-                      <Typography variant="caption" color="text.secondary">
-                        {formatDateTime(m.sent_at)}
-                        {m.sent_by ? ` - by ${m.sent_by}` : ""}
-                      </Typography>
                     </Box>
                   ))}
                 </Box>
@@ -2791,80 +2964,82 @@ export default function MaterialReceipt() {
         fullScreen={mobile}
       >
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: 700 }}>
-          <EmailIcon fontSize="small" />
+          <AutoAwesomeIcon fontSize="small" />
           {mailType === "Inspection Request"
-            ? "Send Inspection Mail"
-            : `Notify Supplier - ${mailType}`}
+            ? "Inspection Mail"
+            : mailType === "Inspection On Hold"
+            ? "Inspection On Hold - Mail"
+            : "Counting Discrepancy - Supplier Mail"}
         </DialogTitle>
         <DialogContent dividers sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <TextField
-            label={
-              mailType === "Inspection Request"
-                ? "Department Email"
-                : "Supplier Email"
-            }
-            placeholder="name@example.com, name2@example.com"
-            size="small"
-            fullWidth
-            required
-            value={mailRecipient}
-            onChange={(e) => setMailRecipient(e.target.value)}
-            helperText="Separate multiple recipients with a comma."
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-          />
+          <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
+            This app never sends mail. Copy the content below and paste it into your
+            own mail app to send it.
+          </Alert>
 
-          <TextField
-            label="Subject"
-            size="small"
-            fullWidth
-            value={mailSubject}
-            onChange={(e) => setMailSubject(e.target.value)}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-          />
+          {generatingMail ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <>
+              <Chip
+                size="small"
+                icon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
+                label={mailAiGenerated ? "AI Generated" : "Template (AI unavailable)"}
+                color={mailAiGenerated ? "primary" : "default"}
+                sx={{ alignSelf: "flex-start", fontWeight: 600 }}
+              />
 
-          <TextField
-            label="Sent By"
-            size="small"
-            fullWidth
-            value={mailSentBy}
-            onChange={(e) => setMailSentBy(e.target.value)}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-          />
+              <TextField
+                label="Subject"
+                size="small"
+                fullWidth
+                value={mailSubject}
+                onChange={(e) => setMailSubject(e.target.value)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
 
-          <Typography variant="caption" color="text.secondary">
-            Preview
-          </Typography>
-          <Box
-            sx={{
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 2,
-              p: 1.5,
-              bgcolor: "grey.50",
-              maxHeight: 260,
-              overflowY: "auto",
-            }}
-            dangerouslySetInnerHTML={{ __html: mailBody }}
-          />
+              <TextField
+                label="Body"
+                size="small"
+                fullWidth
+                multiline
+                minRows={10}
+                value={mailBody}
+                onChange={(e) => setMailBody(e.target.value)}
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 2,
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem",
+                  },
+                }}
+              />
+            </>
+          )}
         </DialogContent>
-        <DialogActions sx={{ p: 1.5 }}>
-          <Button onClick={() => setMailDialogOpen(false)} disabled={sendingMail}>
-            Cancel
+        <DialogActions sx={{ p: 1.5, flexWrap: "wrap", gap: 1 }}>
+          <Button onClick={() => setMailDialogOpen(false)}>Close</Button>
+          <Button
+            startIcon={<AutoAwesomeIcon fontSize="small" />}
+            disabled={generatingMail || !mailDialogReceipt}
+            onClick={() =>
+              mailDialogReceipt &&
+              regenerateMail(mailDialogReceipt, mailType, mailDiscrepancyRemarks)
+            }
+            sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+          >
+            Regenerate with AI
           </Button>
           <Button
             variant="contained"
-            startIcon={
-              sendingMail ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <SendIcon fontSize="small" />
-              )
-            }
-            onClick={handleSendMail}
-            disabled={sendingMail}
+            startIcon={<ContentCopyIcon fontSize="small" />}
+            disabled={generatingMail}
+            onClick={handleCopyMail}
             sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
           >
-            Send Mail
+            Copy Mail
           </Button>
         </DialogActions>
       </Dialog>

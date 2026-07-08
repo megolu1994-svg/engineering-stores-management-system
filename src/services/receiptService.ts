@@ -5,7 +5,6 @@ import {
   type BulkImportRowStatus,
 } from "../utils/bulkImportReport";
 import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
-import { sendMail } from "./mailService";
 
 /* =========================================================================
  * Material Receipt - DRC Management (Sprint 1)
@@ -39,13 +38,17 @@ export const PACKAGE_TYPES: PackageType[] = [
 
 export type ReceiptStatus = "Pending Inspection" | "Pending GRN" | "Closed";
 
+/**
+ * Inspection outcomes. "Pending Inspection" is the initial state set at DRC
+ * creation; the inspecting user then records exactly one of the two
+ * outcomes below - "Inspection Cleared" moves the DRC forward to GRN,
+ * "Inspection On Hold" keeps it open for re-inspection once the (mandatory)
+ * remarks describing the hold reason are addressed.
+ */
 export type InspectionStatus =
   | "Pending Inspection"
-  | "Accepted"
-  | "Rejected"
-  | "Accepted with Remarks"
-  | "Shortage"
-  | "Discrepancy";
+  | "Inspection Cleared"
+  | "Inspection On Hold";
 
 export interface PackageDetailRow {
   /** Free text - usually numeric, but may be a note like "Uncountable". */
@@ -54,10 +57,29 @@ export interface PackageDetailRow {
   description: string;
 }
 
+export type DocumentType =
+  | "Invoice"
+  | "Challan"
+  | "LR Copy"
+  | "Packing List"
+  | "Test Certificate"
+  | "Other";
+
+export const DOCUMENT_TYPES: DocumentType[] = [
+  "Invoice",
+  "Challan",
+  "LR Copy",
+  "Packing List",
+  "Test Certificate",
+  "Other",
+];
+
 export interface AttachmentFile {
   name: string;
   url: string;
   uploaded_at: string;
+  /** Absent on documents uploaded before document typing was added. */
+  document_type?: DocumentType;
 }
 
 export interface ReceiptHeader {
@@ -278,18 +300,27 @@ export async function uploadReceiptPhotos(files: File[]): Promise<string[]> {
   return urls;
 }
 
+/** A file staged for upload together with the document type the operator
+ * selected for it (Invoice, Challan, LR Copy, Packing List, Test
+ * Certificate, Other). */
+export interface DocumentUpload {
+  file: File;
+  documentType: DocumentType;
+}
+
 /**
- * Uploads supporting documents (invoice, challan, e-way bill, inspection
- * certificate, OEM/vendor documents, etc.) to the `receipt-files`
- * Supabase Storage bucket. Only allow-listed file types are uploaded;
- * anything else is skipped (logged) rather than blocking the rest.
+ * Uploads supporting documents (invoice, challan, LR copy, packing list,
+ * test certificates, etc.) to the `receipt-files` Supabase Storage bucket,
+ * tagging each with its selected document type. Only allow-listed file
+ * types are uploaded; anything else is skipped (logged) rather than
+ * blocking the rest.
  */
 export async function uploadReceiptDocuments(
-  files: File[]
+  uploads: DocumentUpload[]
 ): Promise<AttachmentFile[]> {
   const attachments: AttachmentFile[] = [];
 
-  for (const file of files) {
+  for (const { file, documentType } of uploads) {
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
 
     if (!ALLOWED_DOCUMENT_EXTENSIONS.includes(extension)) {
@@ -322,11 +353,80 @@ export async function uploadReceiptDocuments(
         name: file.name,
         url: data.publicUrl,
         uploaded_at: new Date().toISOString(),
+        document_type: documentType,
       });
     }
   }
 
   return attachments;
+}
+
+/**
+ * Uploads one document and appends it to an existing DRC's attachment
+ * list immediately - used for adding documents (Invoice, Challan, LR
+ * Copy, Packing List, Test Certificates, etc.) any time after DRC
+ * creation, not just from the Create/Edit form.
+ */
+export async function addReceiptDocument(
+  receiptId: number,
+  file: File,
+  documentType: DocumentType
+): Promise<ReceiptHeader> {
+  const [attachment] = await uploadReceiptDocuments([{ file, documentType }]);
+  if (!attachment) {
+    throw new Error("Document upload failed.");
+  }
+
+  const { data: current, error: fetchError } = await supabase
+    .from("receipt_header")
+    .select("attachment_paths")
+    .eq("id", receiptId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const existing =
+    ((current as { attachment_paths: AttachmentFile[] } | null)
+      ?.attachment_paths) ?? [];
+
+  const { data, error } = await supabase
+    .from("receipt_header")
+    .update({ attachment_paths: [...existing, attachment] })
+    .eq("id", receiptId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as ReceiptHeader;
+}
+
+/** Removes one document (by index in attachment_paths) from a DRC. */
+export async function removeReceiptDocument(
+  receiptId: number,
+  index: number
+): Promise<ReceiptHeader> {
+  const { data: current, error: fetchError } = await supabase
+    .from("receipt_header")
+    .select("attachment_paths")
+    .eq("id", receiptId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const existing =
+    ((current as { attachment_paths: AttachmentFile[] } | null)
+      ?.attachment_paths) ?? [];
+  const updated = existing.filter((_, i) => i !== index);
+
+  const { data, error } = await supabase
+    .from("receipt_header")
+    .update({ attachment_paths: updated })
+    .eq("id", receiptId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as ReceiptHeader;
 }
 
 /**
@@ -392,7 +492,7 @@ export async function getNextDrcNumberSuggestion(): Promise<string> {
 export async function createReceipt(
   input: ReceiptFormInput,
   photoFiles: File[],
-  documentFiles: File[] = [],
+  documentUploads: DocumentUpload[] = [],
   manualOverrides?: DrcManualOverrides
 ): Promise<ReceiptHeader> {
   const photoUrls =
@@ -405,8 +505,8 @@ export async function createReceipt(
   }));
 
   const attachmentPaths =
-    documentFiles.length > 0
-      ? await uploadReceiptDocuments(documentFiles)
+    documentUploads.length > 0
+      ? await uploadReceiptDocuments(documentUploads)
       : [];
 
   const payload = {
@@ -470,7 +570,7 @@ export async function updateReceipt(
   input: ReceiptFormInput,
   newPhotoFiles: File[],
   keptPhotoUrls: string[],
-  newDocumentFiles: File[] = [],
+  newDocumentUploads: DocumentUpload[] = [],
   keptAttachments: AttachmentFile[] = []
 ): Promise<ReceiptHeader> {
   const uploadedUrls =
@@ -483,8 +583,8 @@ export async function updateReceipt(
   }));
 
   const newAttachments =
-    newDocumentFiles.length > 0
-      ? await uploadReceiptDocuments(newDocumentFiles)
+    newDocumentUploads.length > 0
+      ? await uploadReceiptDocuments(newDocumentUploads)
       : [];
 
   const photoUrls = [...keptPhotoUrls, ...uploadedUrls];
@@ -635,10 +735,10 @@ export interface InspectionHistoryEntry {
 /**
  * Records an inspection action for a DRC: appends an entry to
  * `receipt_inspection_history` and updates the DRC's current inspection
- * fields. If the outcome is Accepted or Accepted with Remarks, the DRC's
- * overall status automatically moves to "Pending GRN" - otherwise the
- * DRC's overall status is left as-is (e.g. a Rejected inspection allows
- * the DRC to be re-inspected later without changing its status).
+ * fields. If the outcome is "Inspection Cleared", the DRC's overall status
+ * automatically moves to "Pending GRN" - if it's "Inspection On Hold" the
+ * DRC's overall status is left as-is, so it can be re-inspected later once
+ * the hold reason (recorded in remarks) is resolved.
  */
 export async function submitInspection(
   receiptId: number,
@@ -671,10 +771,7 @@ export async function submitInspection(
     inspection_date: nowIso,
   };
 
-  if (
-    inspectionStatus === "Accepted" ||
-    inspectionStatus === "Accepted with Remarks"
-  ) {
+  if (inspectionStatus === "Inspection Cleared") {
     headerUpdate.status = "Pending GRN";
   }
 
@@ -973,7 +1070,10 @@ export async function importGrn(
   grnNumber: string,
   grnDate: string,
   uploadedBy: string,
-  rows: GrnImportRow[]
+  rows: GrnImportRow[],
+  countingChecked: boolean,
+  discrepancyFound: boolean,
+  discrepancyRemarks: string
 ): Promise<GrnImportSummary> {
   const summary: GrnImportSummary = {
     receiptId,
@@ -1081,6 +1181,11 @@ export async function importGrn(
         uploaded_by: uploadedBy.trim() || null,
         material_count: summary.imported,
         total_quantity: summary.totalQuantity,
+        counting_checked: countingChecked,
+        discrepancy_found: discrepancyFound,
+        discrepancy_remarks: discrepancyFound
+          ? discrepancyRemarks.trim() || null
+          : null,
       },
     ])
     .select()
@@ -1248,6 +1353,9 @@ export interface GrnHistoryEntry {
   upload_date: string;
   material_count: number;
   total_quantity: number;
+  counting_checked: boolean;
+  discrepancy_found: boolean;
+  discrepancy_remarks: string | null;
 }
 
 export async function getGrnHistory(
@@ -1305,8 +1413,25 @@ export function buildGrnTemplateRows(): { headers: string[]; rows: (string | num
 }
 
 /* =========================================================================
- * Sprint 3: Email Templates (HTML generation only - no SMTP, no sending)
+ * AI-Assisted Mail Drafting
+ *
+ * The app never sends mail itself - it only drafts ready-to-copy email
+ * content for the operator to paste into whatever mail client they
+ * already use. Drafting is AI-assisted (via the `generate-drc-mail`
+ * Supabase Edge Function, which reads uploaded documents such as the
+ * Invoice to pull in material details) with a plain-text template as a
+ * safe fallback if the AI call fails or isn't configured.
  * ========================================================================= */
+
+export type DrcMailType =
+  | "Inspection Request"
+  | "Inspection On Hold"
+  | "Counting Discrepancy";
+
+export interface DraftMail {
+  subject: string;
+  body: string;
+}
 
 function formatMailDate(value: string | null): string {
   if (!value) return "-";
@@ -1319,144 +1444,140 @@ function formatMailDate(value: string | null): string {
   });
 }
 
-/**
- * Escapes text before it's interpolated into an email/preview HTML
- * string. Several fields here (vendor_name, inspection_remarks) are
- * free-text entered by staff, and the resulting HTML is later rendered
- * with dangerouslySetInnerHTML in the Send Mail preview - so this isn't
- * optional.
- */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+/** Plain-text fallback for the "inspection required" mail, used only if
+ * AI drafting is unavailable. */
+function generateInspectionMailFallback(receipt: ReceiptHeader): DraftMail {
+  const subject = `Inspection Required - DRC ${receipt.drc_number}`;
+  const body = [
+    "Dear Team,",
+    "",
+    "A new material delivery has been received and requires inspection. Details are below:",
+    "",
+    `DRC Number: ${receipt.drc_number}`,
+    `Supplier Name: ${receipt.vendor_name}`,
+    `Receipt Date: ${formatMailDate(receipt.receipt_datetime)}`,
+    `SAP PO Number: ${receipt.sap_po_number ?? "-"}`,
+    `GeM Order Number: ${receipt.gem_order_number ?? "-"}`,
+    `Invoice Number: ${receipt.invoice_number ?? "-"}`,
+    "",
+    "Please complete inspection and counting of the received material at the earliest and record the outcome in the system.",
+    "",
+    "Regards,",
+    "Stores Department",
+  ].join("\n");
+  return { subject, body };
 }
 
-/**
- * Builds the HTML body for an "inspection required" email addressed to
- * the user department responsible for inspecting a DRC. Returns an HTML
- * string only - this function never sends anything.
- */
-export function generateInspectionMail(receipt: ReceiptHeader): string {
-  return `
-    <div style="font-family: Arial, sans-serif; color: #1a1a1a; line-height: 1.6;">
-      <h2 style="margin-bottom: 4px;">Inspection Required</h2>
-      <table style="border-collapse: collapse; margin: 12px 0;">
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.drc_number)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${escapeHtml(receipt.vendor_name)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Receipt Date</td><td style="padding: 4px 0;">${formatMailDate(receipt.receipt_datetime)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">SAP PO Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.sap_po_number ?? "-")}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">GeM Order Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.gem_order_number ?? "-")}</td></tr>
-      </table>
-      <p>Please complete inspection and counting of the received material, and record the outcome in the DRC.</p>
-    </div>
-  `.trim();
+/** Plain-text fallback for the "inspection on hold" mail. */
+function generateOnHoldMailFallback(receipt: ReceiptHeader): DraftMail {
+  const subject = `Inspection On Hold - DRC ${receipt.drc_number}`;
+  const body = [
+    "Dear Team,",
+    "",
+    `Inspection of the material received against DRC ${receipt.drc_number} (Supplier: ${receipt.vendor_name}) has been put on hold.`,
+    "",
+    `Reason: ${receipt.inspection_remarks ?? "-"}`,
+    "",
+    "Please review and advise on the next steps so the DRC can be moved forward.",
+    "",
+    "Regards,",
+    "Stores Department",
+  ].join("\n");
+  return { subject, body };
 }
 
-/**
- * Builds the HTML body for a "resolve this issue" email addressed to a
- * supplier, based on an inspection outcome. Returns an HTML string only -
- * this function never sends anything.
- */
-export function generateSupplierIssueMail(
+/** Plain-text fallback for the "counting discrepancy" mail to the supplier. */
+function generateCountingDiscrepancyMailFallback(
   receipt: ReceiptHeader,
-  issueType: string
-): string {
-  const instruction =
-    issueType === "Shortage"
-      ? "Please arrange to supply the short-received material mentioned above at the earliest. The DRC will be moved forward for GRN only after the short quantity is received."
-      : issueType === "Discrepancy"
-      ? "Please resolve the discrepancy noted above - by replacing the affected item(s) and/or supplying any missing documents - at the earliest. The DRC will be moved forward for GRN only after the discrepancy is resolved."
-      : "Please resolve the above issue at the earliest.";
-
-  return `
-    <div style="font-family: Arial, sans-serif; color: #1a1a1a; line-height: 1.6;">
-      <h2 style="margin-bottom: 4px;">Material Receipt Issue</h2>
-      <table style="border-collapse: collapse; margin: 12px 0;">
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">DRC Number</td><td style="padding: 4px 0;">${escapeHtml(receipt.drc_number)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Supplier Name</td><td style="padding: 4px 0;">${escapeHtml(receipt.vendor_name)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Issue Type</td><td style="padding: 4px 0;">${escapeHtml(issueType)}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0; font-weight: 600;">Inspection Remarks</td><td style="padding: 4px 0;">${escapeHtml(receipt.inspection_remarks ?? "-")}</td></tr>
-      </table>
-      <p>${instruction}</p>
-    </div>
-  `.trim();
-}
-
-/* =========================================================================
- * Mail Sending + Log
- *
- * Actually dispatches a DRC mail (via the `send-drc-mail` Edge Function,
- * see mailService.ts) and records the outcome - sent or failed - to
- * receipt_mail_log, so every notification ever sent for a DRC stays
- * visible in its Mail History regardless of whether the send succeeded.
- * ========================================================================= */
-
-export type DrcMailType = "Inspection Request" | "Shortage" | "Discrepancy" | "Rejected";
-
-export interface MailLogEntry {
-  id: number;
-  receipt_id: number;
-  mail_type: DrcMailType;
-  recipient_email: string;
-  subject: string;
-  status: "Sent" | "Failed";
-  error_message: string | null;
-  sent_by: string | null;
-  sent_at: string;
+  discrepancyRemarks: string
+): DraftMail {
+  const subject = `Counting Discrepancy at GRN - DRC ${receipt.drc_number}`;
+  const body = [
+    "Dear Sir/Madam,",
+    "",
+    `While processing the GRN for DRC ${receipt.drc_number} against your supply, a discrepancy was found while counting the received material:`,
+    "",
+    discrepancyRemarks || "-",
+    "",
+    `DRC Number: ${receipt.drc_number}`,
+    `Invoice Number: ${receipt.invoice_number ?? "-"}`,
+    `SAP PO Number: ${receipt.sap_po_number ?? "-"}`,
+    "",
+    "Kindly arrange to resolve this discrepancy - by supplying the short quantity, replacing the affected item(s), or sending corrected documents, as applicable - at the earliest.",
+    "",
+    "Regards,",
+    "Stores Department",
+  ].join("\n");
+  return { subject, body };
 }
 
 /**
- * Sends a DRC notification mail and logs the outcome. Never throws - a
- * failed send is recorded with status "Failed" and returned to the
- * caller so the UI can show the real SMTP error, rather than losing the
- * attempt.
+ * Asks the `generate-drc-mail` Edge Function to draft the mail content
+ * using AI, passing along DRC details and any uploaded documents (the
+ * function prioritizes Invoice / Packing List to read material details
+ * from). Falls back to a plain-text template - never throws - if the AI
+ * call fails or the function isn't configured (e.g. no API key set),
+ * so the feature always produces something to copy.
  */
-export async function sendDrcMail(
-  receiptId: number,
+export async function generateAiMail(
+  receipt: ReceiptHeader,
   mailType: DrcMailType,
-  recipients: string[],
-  subject: string,
-  html: string,
-  sentBy: string
-): Promise<{ success: boolean; error?: string }> {
-  const result = await sendMail({ to: recipients, subject, html });
+  discrepancyRemarks?: string
+): Promise<DraftMail & { aiGenerated: boolean }> {
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "generate-drc-mail",
+      {
+        body: {
+          mailType,
+          receipt: {
+            drc_number: receipt.drc_number,
+            vendor_name: receipt.vendor_name,
+            receipt_datetime: receipt.receipt_datetime,
+            sap_po_number: receipt.sap_po_number,
+            gem_order_number: receipt.gem_order_number,
+            invoice_number: receipt.invoice_number,
+            invoice_date: receipt.invoice_date,
+            challan_number: receipt.challan_number,
+            package_details: receipt.package_details,
+            inspection_status: receipt.inspection_status,
+            inspection_remarks: receipt.inspection_remarks,
+            grn_number: receipt.grn_number,
+            grn_date: receipt.grn_date,
+          },
+          discrepancyRemarks: discrepancyRemarks ?? null,
+          documents: (receipt.attachment_paths ?? []).map((d) => ({
+            name: d.name,
+            url: d.url,
+            document_type: d.document_type ?? "Other",
+          })),
+        },
+      }
+    );
 
-  const { error: logError } = await supabase.from("receipt_mail_log").insert([
-    {
-      receipt_id: receiptId,
-      mail_type: mailType,
-      recipient_email: recipients.join(", "),
-      subject,
-      status: result.success ? "Sent" : "Failed",
-      error_message: result.success ? null : result.error ?? "Unknown error.",
-      sent_by: sentBy.trim() || null,
-    },
-  ]);
+    if (
+      error ||
+      !data ||
+      typeof data.subject !== "string" ||
+      typeof data.body !== "string"
+    ) {
+      throw error ?? new Error("Invalid AI mail response.");
+    }
 
-  if (logError) {
-    console.error("Failed to record mail log entry:", logError);
+    return { subject: data.subject, body: data.body, aiGenerated: true };
+  } catch (err) {
+    console.error("AI mail generation failed, using fallback template:", err);
+
+    const fallback =
+      mailType === "Inspection Request"
+        ? generateInspectionMailFallback(receipt)
+        : mailType === "Inspection On Hold"
+        ? generateOnHoldMailFallback(receipt)
+        : generateCountingDiscrepancyMailFallback(
+            receipt,
+            discrepancyRemarks ?? ""
+          );
+
+    return { ...fallback, aiGenerated: false };
   }
-
-  return result;
-}
-
-export async function getDrcMailHistory(
-  receiptId: number
-): Promise<MailLogEntry[]> {
-  const { data, error } = await supabase
-    .from("receipt_mail_log")
-    .select("*")
-    .eq("receipt_id", receiptId)
-    .order("sent_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    return [];
-  }
-
-  return (data ?? []) as MailLogEntry[];
 }
