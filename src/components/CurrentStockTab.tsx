@@ -8,6 +8,7 @@ import {
   CardActionArea,
   Chip,
   CircularProgress,
+  Collapse,
   IconButton,
   InputAdornment,
   Snackbar,
@@ -19,7 +20,8 @@ import SearchIcon from "@mui/icons-material/Search";
 import HistoryIcon from "@mui/icons-material/History";
 import PlaceIcon from "@mui/icons-material/Place";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import CloseIcon from "@mui/icons-material/Close";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 
 import {
   getRecentActivity,
@@ -72,6 +74,19 @@ function formatDateTime(value: string): string {
   });
 }
 
+/** Compact variant used inline on reconciliation cards, where the sentence
+ * form previously wrapped across lines and dominated the card's height. */
+function formatDateTimeShort(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 interface PendingRow extends PendingStockUpdate {
   unallocatedQty: number;
 }
@@ -97,12 +112,14 @@ function ReconcileActions({
   const isIncrease = row.difference > 0;
   const shortfall = Math.abs(row.difference);
   const canAutoDecrease = !isIncrease && shortfall <= row.unallocatedQty;
+  const diffColor = isIncrease ? "success.main" : "error.main";
 
   return (
     <Box
       sx={{
         mt: 0.75,
-        p: 1,
+        p: 0.75,
+        px: 1,
         borderRadius: 1.5,
         bgcolor: "warning.50",
         border: "1px solid",
@@ -110,17 +127,40 @@ function ReconcileActions({
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 0.5 }}>
-        <WarningAmberIcon sx={{ fontSize: 16 }} color="warning" />
-        <Typography variant="caption" sx={{ fontWeight: 700 }}>
-          Bulk upload on {formatDateTime(row.uploaded_at)} found{" "}
-          {row.uploaded_qty} (system: {row.system_qty_at_upload},{" "}
-          {isIncrease ? "+" : ""}
-          {row.difference})
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+        }}
+      >
+        <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap>
+          Found {row.uploaded_qty} · System {row.system_qty_at_upload}
         </Typography>
+        <Chip
+          size="small"
+          label={`${isIncrease ? "+" : ""}${row.difference}`}
+          sx={{
+            height: 20,
+            fontWeight: 700,
+            bgcolor: "transparent",
+            color: diffColor,
+            border: "1px solid",
+            borderColor: diffColor,
+          }}
+        />
       </Box>
 
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.5 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block", mt: 0.25 }}
+      >
+        Bulk upload · {formatDateTimeShort(row.uploaded_at)}
+      </Typography>
+
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.75 }}>
         {isIncrease && (
           <Button
             size="small"
@@ -189,6 +229,7 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
 
   const [pendingRows, setPendingRows] = useState<PendingRow[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
+  const [pendingCollapsed, setPendingCollapsed] = useState(false);
   const [busyMaterial, setBusyMaterial] = useState<string | null>(null);
   const [reconcileTarget, setReconcileTarget] = useState<PendingRow | null>(
     null
@@ -339,50 +380,61 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
 
       {!loadingPending && pendingRows.length > 0 && (
         <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
-            <WarningAmberIcon fontSize="small" color="warning" />
-            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
-              Stock Reconciliation Needed ({pendingRows.length})
-            </Typography>
+          <Box
+            onClick={() => setPendingCollapsed((prev) => !prev)}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 0.75,
+              mb: pendingCollapsed ? 0 : 1,
+              cursor: "pointer",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <WarningAmberIcon fontSize="small" color="warning" />
+              <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
+                Stock Reconciliation Needed ({pendingRows.length})
+              </Typography>
+            </Box>
+            <IconButton size="small">
+              {pendingCollapsed ? (
+                <ExpandMoreIcon fontSize="small" />
+              ) : (
+                <ExpandLessIcon fontSize="small" />
+              )}
+            </IconButton>
           </Box>
 
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {pendingRows.map((row) => (
-              <Card key={row.material_code} variant="outlined" sx={{ borderRadius: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "flex-start" }}>
+          <Collapse in={!pendingCollapsed} timeout="auto" unmountOnExit>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+              {pendingRows.map((row) => (
+                <Card key={row.material_code} variant="outlined" sx={{ borderRadius: 2 }}>
                   <CardActionArea
                     onClick={() => onSelectMaterial(row.material_code)}
-                    sx={{ p: 1.25, flex: 1, minWidth: 0 }}
+                    sx={{ p: 1, pb: 0.5 }}
                   >
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                    <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }} noWrap>
                       {row.material_code}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap>
+                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
                       {row.short_description}
                     </Typography>
                   </CardActionArea>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDismiss(row)}
-                    disabled={busyMaterial === row.material_code}
-                    sx={{ mt: 1, mr: 1 }}
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Box>
 
-                <Box sx={{ px: 1.25, pb: 1.25 }}>
-                  <ReconcileActions
-                    row={row}
-                    busy={busyMaterial === row.material_code}
-                    onApply={handleApply}
-                    onDismiss={handleDismiss}
-                    onAdjust={setReconcileTarget}
-                  />
-                </Box>
-              </Card>
-            ))}
-          </Box>
+                  <Box sx={{ px: 1, pb: 1 }}>
+                    <ReconcileActions
+                      row={row}
+                      busy={busyMaterial === row.material_code}
+                      onApply={handleApply}
+                      onDismiss={handleDismiss}
+                      onAdjust={setReconcileTarget}
+                    />
+                  </Box>
+                </Card>
+              ))}
+            </Box>
+          </Collapse>
         </Box>
       )}
 
