@@ -241,10 +241,12 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
             color="text.secondary"
             sx={{ display: "block", mb: 1 }}
           >
-            Columns: Material Code, Quantity (required). Short Description,
-            UoM, HSN Code, Material Group are only needed for materials that
-            don't already exist in Material Master. A material may appear on
-            multiple rows - quantities are summed.
+            Columns: Material Code, Quantity (required). Short Description
+            and UoM are required only for materials that don't already exist
+            in Material Master. HSN Code and Material Group are always
+            optional (Material Group is auto-derived from the Material Code
+            if left blank). A material may appear on multiple rows -
+            quantities are summed.
           </Typography>
 
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
