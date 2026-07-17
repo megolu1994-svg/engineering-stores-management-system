@@ -24,6 +24,7 @@ import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
 import TuneIcon from "@mui/icons-material/Tune";
+import SyncIcon from "@mui/icons-material/Sync";
 
 import MaterialSearch from "../components/MaterialSearch";
 import MaterialPhotoUploadButton from "../components/MaterialPhotoUploadButton";
@@ -34,6 +35,7 @@ import BulkAllocateCard from "../components/BulkAllocateCard";
 import CurrentStockTab from "../components/CurrentStockTab";
 import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
+import StockUpdateTab from "../components/StockUpdateTab";
 import LocationTransfer from "./LocationTransfer";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import { usePersistentState } from "../hooks/usePersistentState";
@@ -76,6 +78,7 @@ const TAB_ALLOCATION = 1;
 const TAB_TRANSFER = 2;
 const TAB_OPENING_STOCK = 3;
 const TAB_ADJUSTMENT = 4;
+const TAB_STOCK_UPDATE = 5;
 
 export default function MaterialAllocation() {
   const theme = useTheme();
@@ -87,7 +90,7 @@ export default function MaterialAllocation() {
     TAB_ALLOCATION
   );
 
-  const { direction } = useSwipeTabs(activeTab, setActiveTab, 5);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 6);
 
   const [material, setMaterial] = usePersistentState<Material | null>(
     "materialAllocation.material",
@@ -466,6 +469,11 @@ export default function MaterialAllocation() {
           iconPosition={desktop ? "start" : "top"}
           label="Adjust"
         />
+        <Tab
+          icon={<SyncIcon sx={{ fontSize: 18 }} />}
+          iconPosition={desktop ? "start" : "top"}
+          label="Stock Update"
+        />
       </Tabs>
 
       <SwipeableTabPanel activeTab={activeTab} direction={direction}>
@@ -656,6 +664,8 @@ export default function MaterialAllocation() {
       {activeTab === TAB_OPENING_STOCK && <OpeningStockTab />}
 
       {activeTab === TAB_ADJUSTMENT && <AdjustmentTab />}
+
+      {activeTab === TAB_STOCK_UPDATE && <StockUpdateTab />}
 
       </SwipeableTabPanel>
     </Box>

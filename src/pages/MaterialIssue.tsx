@@ -62,6 +62,12 @@ interface MaterialRowState {
   loadingStock: boolean;
 }
 
+// Material Issue is on hold while stock reconciliation (Bulk Stock Update)
+// takes over as the primary way stock quantities are corrected. Flip this
+// back to false to resume normal issuing - no other code path depends on
+// it being true.
+const MATERIAL_ISSUE_ON_HOLD = true;
+
 function makeKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -272,6 +278,10 @@ export default function MaterialIssue() {
   const summary = summarizeIssue(materialInputs);
 
   async function handleSave() {
+    if (MATERIAL_ISSUE_ON_HOLD) {
+      showSnackbar("Material Issue is temporarily on hold.", "warning");
+      return;
+    }
     if (!header.department.trim()) {
       showSnackbar("Please enter a Department.", "warning");
       return;
@@ -319,13 +329,25 @@ export default function MaterialIssue() {
         Material Issue
       </Typography>
 
+      {MATERIAL_ISSUE_ON_HOLD && (
+        <Alert severity="warning" sx={{ borderRadius: 2, mb: 1.5 }}>
+          Material Issue is temporarily on hold. Stock is being reconciled via
+          Bulk Stock Update instead - this form is view-only for now.
+        </Alert>
+      )}
+
       <Box
         sx={{
           display: "flex",
           flexDirection: "column",
           gap: 1.5,
           pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
+          ...(MATERIAL_ISSUE_ON_HOLD && {
+            opacity: 0.55,
+            pointerEvents: "none",
+          }),
         }}
+        aria-disabled={MATERIAL_ISSUE_ON_HOLD}
       >
         {/* ---- Issue Header ---- */}
         <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}>
@@ -688,7 +710,7 @@ export default function MaterialIssue() {
             <Button
               variant="contained"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || MATERIAL_ISSUE_ON_HOLD}
               fullWidth
               startIcon={
                 saving ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />
