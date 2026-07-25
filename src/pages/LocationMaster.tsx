@@ -15,6 +15,7 @@ import {
   DialogContentText,
   DialogTitle,
   IconButton,
+  InputAdornment,
   LinearProgress,
   Snackbar,
   Table,
@@ -30,6 +31,8 @@ import {
 
 import { useTheme } from "@mui/material/styles";
 
+import SearchIcon from "@mui/icons-material/Search";
+import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -425,9 +428,10 @@ export default function LocationMaster() {
       <Typography
         variant="h5"
         sx={{
-          mb: 3,
-          fontWeight: "bold",
-          fontSize: { xs: "1.25rem", sm: "1.5rem", md: "2rem" },
+          mb: 2,
+          fontWeight: 800,
+          letterSpacing: -0.5,
+          fontSize: { xs: "1.4rem", sm: "1.75rem", md: "2.1rem" },
         }}
       >
         Location Master
@@ -435,12 +439,12 @@ export default function LocationMaster() {
 
       <Box
         sx={{
-          display: "flex",
-          flexDirection: { xs: "column", sm: "row" },
-          justifyContent: { sm: "space-between" },
-          alignItems: { xs: "stretch", sm: "center" },
-          gap: 2,
-          mb: 3,
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          bgcolor: "background.default",
+          pt: 0.5,
+          pb: 2,
         }}
       >
         <TextField
@@ -449,41 +453,83 @@ export default function LocationMaster() {
           value={search}
           onChange={(e) => handleSearchChange(e.target.value)}
           fullWidth
-          sx={{ width: "100%", flex: { sm: 1 }, maxWidth: { sm: 350 } }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              borderRadius: 3,
+              bgcolor: "background.paper",
+              minHeight: 56,
+              boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)",
+            },
+          }}
         />
+      </Box>
 
+      <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 }, mb: 3 }}>
         <Button
           variant="contained"
-          size="large"
-          fullWidth
+          startIcon={<AddIcon fontSize="small" />}
           onClick={handleAdd}
           sx={{
-            minHeight: 48,
-            width: { xs: "100%", sm: "auto" },
+            flex: { xs: 1, sm: "0 0 auto" },
+            minWidth: 0,
+            minHeight: { xs: 44, sm: 56 },
+            px: { xs: 0.5, sm: 3 },
+            fontWeight: 700,
+            fontSize: { xs: "0.68rem", sm: "1rem" },
+            borderRadius: 3,
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
           }}
         >
           Add Location
         </Button>
-      </Box>
 
-      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, mb: 2 }}>
         <Button
           variant="outlined"
           color="inherit"
-          fullWidth
-          startIcon={<DownloadIcon />}
+          startIcon={<DownloadIcon fontSize="small" />}
           onClick={handleDownloadTemplate}
-          sx={{ minHeight: 48, fontWeight: 600, borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+          sx={{
+            flex: { xs: 1, sm: "0 0 auto" },
+            minWidth: 0,
+            minHeight: { xs: 44, sm: 48 },
+            px: { xs: 0.5, sm: 2.5 },
+            fontWeight: 600,
+            fontSize: { xs: "0.68rem", sm: "0.95rem" },
+            borderRadius: 2.5,
+            borderColor: "divider",
+            color: "text.primary",
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
+          }}
         >
           Download Template
         </Button>
 
         <Button
           variant="outlined"
-          fullWidth
-          startIcon={<CloudUploadIcon />}
+          startIcon={<CloudUploadIcon fontSize="small" />}
           onClick={openImport}
-          sx={{ minHeight: 48, fontWeight: 600, borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+          sx={{
+            flex: { xs: 1, sm: "0 0 auto" },
+            minWidth: 0,
+            minHeight: { xs: 44, sm: 48 },
+            px: { xs: 0.5, sm: 2.5 },
+            fontWeight: 600,
+            fontSize: { xs: "0.68rem", sm: "0.95rem" },
+            borderRadius: 2.5,
+            whiteSpace: "nowrap",
+            "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
+          }}
         >
           Import Excel
         </Button>
@@ -716,13 +762,14 @@ export default function LocationMaster() {
         maxWidth="xs"
         fullScreen={mobile}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>
           Delete Location
         </DialogTitle>
 
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete this location?
+            Are you sure you want to delete this location? This action
+            cannot be undone.
           </DialogContentText>
         </DialogContent>
 
@@ -730,7 +777,7 @@ export default function LocationMaster() {
           <Button
             onClick={() => setDeleteLocationData(null)}
             fullWidth={mobile}
-            sx={{ minHeight: 48 }}
+            sx={{ minHeight: 48, borderRadius: 2 }}
           >
             Cancel
           </Button>
@@ -740,7 +787,7 @@ export default function LocationMaster() {
             variant="contained"
             onClick={confirmDelete}
             fullWidth={mobile}
-            sx={{ minHeight: 48 }}
+            sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
           >
             Delete
           </Button>

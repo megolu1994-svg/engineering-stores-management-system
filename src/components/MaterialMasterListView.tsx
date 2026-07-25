@@ -15,6 +15,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 
@@ -289,8 +290,8 @@ export default function MaterialMasterListView({
             <Typography variant="body2">No materials found.</Typography>
           </Box>
         ) : (
-          <TableContainer>
-            <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+          <TableContainer sx={{ maxHeight: 640 }}>
+            <Table stickyHeader sx={{ "& td, & th": { borderColor: "divider" } }}>
               <TableHead>
                 <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
                   <TableCell>Material Code</TableCell>
@@ -305,7 +306,7 @@ export default function MaterialMasterListView({
                     key={material.material_code}
                     hover
                     onClick={() => onRowClick(material)}
-                    sx={{ cursor: "pointer", height: 60 }}
+                    sx={{ cursor: "pointer", height: 60, "&:hover": { bgcolor: "#FAF5FF" } }}
                   >
                     <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>
                       {material.material_code}
@@ -330,46 +331,54 @@ export default function MaterialMasterListView({
                     </TableCell>
                     <TableCell align="right">
                       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0.5 }}>
-                        <IconButton
-                          color="primary"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(material);
-                          }}
-                          aria-label="Edit material"
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Edit material">
+                          <IconButton
+                            color="primary"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit(material);
+                            }}
+                            aria-label="Edit material"
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
 
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onUploadPhoto(material, e.currentTarget);
-                          }}
-                          disabled={uploadingPhotoCode === material.material_code}
-                          aria-label="Add material photo"
-                          sx={{ color: "text.secondary" }}
-                        >
-                          {uploadingPhotoCode === material.material_code ? (
-                            <CircularProgress size={18} />
-                          ) : (
-                            <PhotoCameraIcon fontSize="small" />
-                          )}
-                        </IconButton>
+                        <Tooltip title="Add material photo">
+                          <span>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onUploadPhoto(material, e.currentTarget);
+                              }}
+                              disabled={uploadingPhotoCode === material.material_code}
+                              aria-label="Add material photo"
+                              sx={{ color: "text.secondary" }}
+                            >
+                              {uploadingPhotoCode === material.material_code ? (
+                                <CircularProgress size={18} />
+                              ) : (
+                                <PhotoCameraIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
 
-                        <IconButton
-                          color="error"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(material);
-                          }}
-                          aria-label="Delete material"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Delete material">
+                          <IconButton
+                            color="error"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(material);
+                            }}
+                            aria-label="Delete material"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </TableCell>
                   </TableRow>
