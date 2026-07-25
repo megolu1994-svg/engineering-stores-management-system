@@ -1,12 +1,14 @@
 import { createTheme } from "@mui/material/styles";
 
-export const BRAND_PURPLE = "#5B21B6";
+export const BRAND_PURPLE = "#6C2BD9";
 export const BRAND_PURPLE_SOFT = "#F3E8FF";
+export const BRAND_PURPLE_DARK = "#5B21B6";
 
 const theme = createTheme({
   palette: {
     primary: {
       main: BRAND_PURPLE,
+      dark: BRAND_PURPLE_DARK,
     },
     background: {
       default: "#FFFFFF",
@@ -16,6 +18,7 @@ const theme = createTheme({
       primary: "#111827",
       secondary: "#6B7280",
     },
+    divider: "#E5E7EB",
   },
   // Base unit multiplied by every unitless `borderRadius` value passed to
   // MUI's `sx` prop (e.g. `sx={{ borderRadius: 2 }}` -> 2 * shape.borderRadius).
@@ -29,6 +32,15 @@ const theme = createTheme({
     borderRadius: 8,
   },
   typography: {
+    fontFamily: [
+      "Inter",
+      "-apple-system",
+      "BlinkMacSystemFont",
+      '"Segoe UI"',
+      "Roboto",
+      "Arial",
+      "sans-serif",
+    ].join(","),
     h5: { fontWeight: 800 },
     h6: { fontWeight: 700 },
     subtitle1: { fontWeight: 700 },
@@ -54,14 +66,31 @@ const theme = createTheme({
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 10,
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          fontWeight: 700,
         },
       },
     },
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 10,
+        },
+      },
+    },
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          backgroundColor: "#111827",
+          fontSize: "0.72rem",
+          fontWeight: 600,
+          borderRadius: 6,
         },
       },
     },

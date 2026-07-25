@@ -18,6 +18,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 
@@ -129,9 +130,15 @@ export default function LocationTable({
       <TableContainer
         component={Card}
         elevation={0}
-        sx={{ display: { xs: "none", md: "block" }, borderRadius: 2, overflow: "hidden" }}
+        sx={{
+          display: { xs: "none", md: "block" },
+          borderRadius: 3,
+          overflow: "hidden",
+          boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)",
+          maxHeight: 640,
+        }}
       >
-        <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+        <Table stickyHeader sx={{ "& td, & th": { borderColor: "divider" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
               <TableCell>Location Code</TableCell>
@@ -142,8 +149,14 @@ export default function LocationTable({
           </TableHead>
           <TableBody>
             {locations.map((location) => (
-              <TableRow key={location.location_code} hover sx={{ height: 60 }}>
-                <TableCell sx={{ fontWeight: 700 }}>{location.location_code}</TableCell>
+              <TableRow
+                key={location.location_code}
+                hover
+                sx={{ height: 60, "&:hover": { bgcolor: "#FAF5FF" } }}
+              >
+                <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>
+                  {location.location_code}
+                </TableCell>
                 <TableCell sx={{ maxWidth: 480 }}>
                   <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
                     {location.location_description}
@@ -159,30 +172,36 @@ export default function LocationTable({
                 </TableCell>
                 <TableCell align="right">
                   <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                    <IconButton
-                      color="default"
-                      size="small"
-                      onClick={() => setViewLocation(location)}
-                      aria-label="View location"
-                    >
-                      <VisibilityIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      color="primary"
-                      size="small"
-                      onClick={() => onEdit(location)}
-                      aria-label="Edit location"
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      color="error"
-                      size="small"
-                      onClick={() => onDelete(location)}
-                      aria-label="Delete location"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    <Tooltip title="View location">
+                      <IconButton
+                        color="default"
+                        size="small"
+                        onClick={() => setViewLocation(location)}
+                        aria-label="View location"
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit location">
+                      <IconButton
+                        color="primary"
+                        size="small"
+                        onClick={() => onEdit(location)}
+                        aria-label="Edit location"
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete location">
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={() => onDelete(location)}
+                        aria-label="Delete location"
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
                 </TableCell>
               </TableRow>
