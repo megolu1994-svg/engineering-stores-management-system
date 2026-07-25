@@ -22,7 +22,6 @@ import {
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
-import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
 import TuneIcon from "@mui/icons-material/Tune";
 import SyncIcon from "@mui/icons-material/Sync";
 
@@ -33,7 +32,6 @@ import AllocationTable from "../components/AllocationTable";
 import AllocationForm from "../components/AllocationForm";
 import BulkAllocateCard from "../components/BulkAllocateCard";
 import CurrentStockTab from "../components/CurrentStockTab";
-import OpeningStockTab from "../components/OpeningStockTab";
 import AdjustmentTab from "../components/AdjustmentTab";
 import StockUpdateTab from "../components/StockUpdateTab";
 import LocationTransfer from "./LocationTransfer";
@@ -76,9 +74,8 @@ interface DeleteDialogState {
 const TAB_CURRENT_STOCK = 0;
 const TAB_ALLOCATION = 1;
 const TAB_TRANSFER = 2;
-const TAB_OPENING_STOCK = 3;
-const TAB_ADJUSTMENT = 4;
-const TAB_STOCK_UPDATE = 5;
+const TAB_ADJUSTMENT = 3;
+const TAB_STOCK_UPDATE = 4;
 
 export default function MaterialAllocation() {
   const theme = useTheme();
@@ -90,7 +87,7 @@ export default function MaterialAllocation() {
     TAB_ALLOCATION
   );
 
-  const { direction } = useSwipeTabs(activeTab, setActiveTab, 6);
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 5);
 
   const [material, setMaterial] = usePersistentState<Material | null>(
     "materialAllocation.material",
@@ -460,11 +457,6 @@ export default function MaterialAllocation() {
           label="Transfer"
         />
         <Tab
-          icon={<PlaylistAddIcon sx={{ fontSize: 18 }} />}
-          iconPosition={desktop ? "start" : "top"}
-          label="Opening"
-        />
-        <Tab
           icon={<TuneIcon sx={{ fontSize: 18 }} />}
           iconPosition={desktop ? "start" : "top"}
           label="Adjust"
@@ -660,8 +652,6 @@ export default function MaterialAllocation() {
       )}
 
       {activeTab === TAB_TRANSFER && <LocationTransfer />}
-
-      {activeTab === TAB_OPENING_STOCK && <OpeningStockTab />}
 
       {activeTab === TAB_ADJUSTMENT && <AdjustmentTab />}
 

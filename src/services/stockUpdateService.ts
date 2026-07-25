@@ -20,19 +20,23 @@ import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 
 /* =========================================================================
- * Periodic "Stock Update (Bulk)" import
+ * "Stock Update" - the single entry point for putting stock quantities
+ * into the system, superseding the old separate "Opening Stock" feature.
+ * An optional Location Code lets a row target a specific location instead
+ * of Unallocated (exactly like Opening Stock used to); this reconciles a
+ * full physical-stock snapshot against the system's current stock without
+ * ever silently overwriting material_allocation:
  *
- * Unlike Opening Stock (which adds to existing balances) and Bulk Allocate
- * (which moves stock between locations), this feature reconciles a full
- * physical-stock snapshot against the system's current stock without ever
- * silently overwriting material_allocation:
- *
- *   - Material not in Material Master  -> auto-created, quantity applied
- *     straight to UNALLOCATED (same as today's "new material" behavior).
- *   - Material exists, uploaded qty == system qty -> no action.
- *   - Material exists, quantities differ -> flagged in
- *     `pending_stock_updates` for manual review/resolution; the live
- *     stock ledger is left untouched here.
+ *   - Material not in Material Master -> auto-created, quantity applied to
+ *     the given Location Code (or UNALLOCATED if none given).
+ *   - Material exists, system stock (summed across all locations) is 0 ->
+ *     nothing to reconcile against, so the quantity is simply posted to
+ *     the given Location Code (or UNALLOCATED), same as Opening Stock.
+ *   - Material exists, system stock is non-zero, uploaded qty == system
+ *     qty -> no action.
+ *   - Material exists, system stock is non-zero, quantities differ ->
+ *     flagged in `pending_stock_updates` for manual review/resolution;
+ *     the live stock ledger is left untouched here.
  * ========================================================================= */
 
 export interface PendingStockUpdate {
@@ -179,6 +183,7 @@ export async function applyStockReconciliation(
 export interface StockUpdateImportRow {
   rowNumber: number;
   material_code: string;
+  location_code: string;
   short_description: string;
   uom: string;
   hsn_code: string;
@@ -235,7 +240,10 @@ function parseQuantity(raw: string): number {
  * Material Code are summed into a single quantity. Short Description/UoM/
  * HSN/Material Group are only required for materials that turn out to be
  * new (checked against the database in `bulkApplyStockUpdate`), so they
- * are carried through here but not validated as required.
+ * are carried through here but not validated as required. Location Code
+ * is optional (defaults to Unallocated) and only takes effect when the
+ * row ends up being posted directly rather than reconciled - see
+ * `bulkApplyStockUpdate`.
  */
 export function parseStockUpdateExcelRows(
   rawRows: Record<string, unknown>[]
@@ -245,6 +253,7 @@ export function parseStockUpdateExcelRows(
     string,
     {
       rowNumber: number;
+      location_code: string;
       short_description: string;
       uom: string;
       hsn_code: string;
@@ -266,6 +275,11 @@ export function parseStockUpdateExcelRows(
       "Material Code",
       "material_code",
       "Material",
+    ]);
+    const locationCode = getFieldValue(row, [
+      "Location Code",
+      "location_code",
+      "Location",
     ]);
     const shortDescription = getFieldValue(row, [
       "Short Description",
@@ -318,6 +332,7 @@ export function parseStockUpdateExcelRows(
     if (!grouped.has(key)) {
       grouped.set(key, {
         rowNumber,
+        location_code: locationCode,
         short_description: shortDescription,
         uom,
         hsn_code: hsnCode,
@@ -329,8 +344,11 @@ export function parseStockUpdateExcelRows(
 
     const entry = grouped.get(key)!;
     entry.quantity += quantity;
-    // Fill in master-data fields from whichever row provides them first,
-    // in case only some rows for a new material carry them.
+    // Fill in master-data/location fields from whichever row provides
+    // them first, in case only some rows for a material carry them.
+    if (!entry.location_code && locationCode) {
+      entry.location_code = locationCode;
+    }
     if (!entry.short_description && shortDescription) {
       entry.short_description = shortDescription;
     }
@@ -346,6 +364,7 @@ export function parseStockUpdateExcelRows(
     return {
       rowNumber: entry.rowNumber,
       material_code: key,
+      location_code: entry.location_code,
       short_description: entry.short_description,
       uom: entry.uom,
       hsn_code: entry.hsn_code,
@@ -363,6 +382,7 @@ export function parseStockUpdateExcelRows(
 
 export type StockUpdateOutcomeStatus =
   | "new_material"
+  | "posted"
   | "matched"
   | "flagged"
   | "failed";
@@ -379,6 +399,7 @@ export interface StockUpdateOutcome {
 export interface StockUpdateImportSummary {
   totalRows: number;
   newMaterials: number;
+  posted: number;
   matched: number;
   flagged: number;
   failed: number;
@@ -434,12 +455,12 @@ async function runChunked<T>(
 /**
  * Creates a batch of brand-new materials in as few round trips as
  * possible: one bulk insert into `material_master`, one bulk insert into
- * `material_allocation` (UNALLOCATED, since these materials have no prior
- * allocation to merge with), and one best-effort bulk insert into
- * `inventory_transactions` for the audit log. If the bulk insert fails
- * (e.g. one bad row in the batch), falls back to the original one-row-at-
- * a-time path for just this batch, so a single bad row never sinks the
- * rest of the import.
+ * `material_allocation` (at each row's Location Code, or UNALLOCATED if
+ * none given, since these materials have no prior allocation to merge
+ * with), and one best-effort bulk insert into `inventory_transactions`
+ * for the audit log. If the bulk insert fails (e.g. one bad row in the
+ * batch), falls back to the original one-row-at-a-time path for just this
+ * batch, so a single bad row never sinks the rest of the import.
  */
 async function insertNewMaterialsBatch(
   batch: StockUpdateImportRow[],
@@ -462,6 +483,8 @@ async function insertNewMaterialsBatch(
     // bad row (e.g. a duplicate created elsewhere in the meantime) can't
     // block the rest of this batch.
     for (const row of batch) {
+      const locationCode = row.location_code || UNALLOCATED_LOCATION;
+
       try {
         await addMaterial({
           material_code: row.material_code,
@@ -475,7 +498,7 @@ async function insertNewMaterialsBatch(
 
         await applyStockMovement({
           materialCode: row.material_code,
-          locationCode: UNALLOCATED_LOCATION,
+          locationCode,
           prevQuantity: 0,
           newQuantity: row.quantity,
           transactionType: "OPENING_STOCK",
@@ -512,7 +535,7 @@ async function insertNewMaterialsBatch(
     .insert(
       batch.map((row) => ({
         material_code: row.material_code,
-        location_code: UNALLOCATED_LOCATION,
+        location_code: row.location_code || UNALLOCATED_LOCATION,
         quantity: row.quantity,
       }))
     );
@@ -542,7 +565,7 @@ async function insertNewMaterialsBatch(
       transaction_no: generateReferenceNumber("OB"),
       transaction_type: "OPENING_STOCK",
       material_code: row.material_code,
-      location_code: UNALLOCATED_LOCATION,
+      location_code: row.location_code || UNALLOCATED_LOCATION,
       quantity: row.quantity,
       movement: "IN",
       balance_after: row.quantity,
@@ -572,16 +595,65 @@ async function insertNewMaterialsBatch(
 }
 
 /**
+ * Posts a Stock Update row for an existing material that currently has no
+ * stock anywhere - there is nothing to reconcile against, so it's applied
+ * directly to its Location Code (or UNALLOCATED) exactly like the old
+ * Opening Stock feature, rather than being flagged for review.
+ */
+async function postStockUpdateRow(
+  row: StockUpdateImportRow,
+  fileName: string | undefined,
+  summary: StockUpdateImportSummary
+): Promise<void> {
+  try {
+    await applyOpeningStock(
+      row.material_code,
+      row.location_code || UNALLOCATED_LOCATION,
+      row.quantity,
+      fileName ? `Bulk Stock Update (from ${fileName})` : "Bulk Stock Update"
+    );
+
+    summary.posted += 1;
+    summary.outcomes.push({
+      rowNumber: row.rowNumber,
+      material_code: row.material_code,
+      uploaded_qty: row.quantity,
+      system_qty: 0,
+      status: "posted",
+    });
+  } catch (err) {
+    summary.failed += 1;
+    summary.outcomes.push({
+      rowNumber: row.rowNumber,
+      material_code: row.material_code,
+      uploaded_qty: row.quantity,
+      system_qty: 0,
+      status: "failed",
+      message: err instanceof Error ? err.message : "Unknown error.",
+    });
+  }
+}
+
+/**
  * Applies a batch of Stock Update rows against the database. For each
  * material:
  *   - not in Material Master -> create it (requires Short Description and
  *     UoM to be present on at least one of its rows) and apply the full
- *     uploaded quantity to UNALLOCATED.
- *   - in Material Master, quantities match -> no action (and any stale
- *     pending flag for it is cleared, since the count now agrees).
- *   - in Material Master, quantities differ -> upsert a row into
- *     `pending_stock_updates` for manual review; material_allocation is
- *     left untouched.
+ *     uploaded quantity to its Location Code (or UNALLOCATED if none
+ *     given).
+ *   - in Material Master, system stock is 0 -> nothing to reconcile
+ *     against, so post the quantity straight to its Location Code (or
+ *     UNALLOCATED), same as the old Opening Stock feature.
+ *   - in Material Master, system stock is non-zero, quantities match ->
+ *     no action (and any stale pending flag for it is cleared, since the
+ *     count now agrees).
+ *   - in Material Master, system stock is non-zero, quantities differ ->
+ *     upsert a row into `pending_stock_updates` for manual review;
+ *     material_allocation is left untouched.
+ *
+ * A non-blank Location Code is validated against Location Master up
+ * front; a row naming an unknown location always fails, regardless of
+ * which branch above it would otherwise take.
  *
  * Unlike the original row-by-row implementation (which issued 2-5
  * sequential network round trips per row - a 5+ hour run for an 11,000
@@ -598,6 +670,7 @@ export async function bulkApplyStockUpdate(
   const summary: StockUpdateImportSummary = {
     totalRows: rows.length,
     newMaterials: 0,
+    posted: 0,
     matched: 0,
     flagged: 0,
     failed: 0,
@@ -615,11 +688,34 @@ export async function bulkApplyStockUpdate(
     onProgress(Math.min(total, Math.max(0, Math.round(fraction * total))), total);
   }
 
+  // ---- Phase 0: which explicitly-given Location Codes actually exist? ----
+  const locationCodesToCheck = Array.from(
+    new Set(
+      rows
+        .map((row) => row.location_code)
+        .filter((code): code is string => !!code)
+    )
+  );
+  const knownLocations = new Set<string>();
+
+  await runChunked(locationCodesToCheck, 0, 0.05, reportProgress, async (codes) => {
+    const { data, error } = await supabase
+      .from("location_master")
+      .select("location_code")
+      .in("location_code", codes);
+
+    if (error) throw error;
+
+    (data ?? []).forEach((l: { location_code: string }) =>
+      knownLocations.add(l.location_code)
+    );
+  });
+
   const allCodes = rows.map((row) => row.material_code);
 
   // ---- Phase 1: which of these material codes already exist? ----
   const existingCodes = new Set<string>();
-  await runChunked(allCodes, 0, 0.15, reportProgress, async (codes) => {
+  await runChunked(allCodes, 0.05, 0.2, reportProgress, async (codes) => {
     const { data, error } = await supabase
       .from("material_master")
       .select("material_code")
@@ -637,7 +733,7 @@ export async function bulkApplyStockUpdate(
   const existingCodeList = allCodes.filter((code) => existingCodes.has(code));
   const systemQtyMap = new Map<string, number>();
 
-  await runChunked(existingCodeList, 0.15, 0.3, reportProgress, async (codes) => {
+  await runChunked(existingCodeList, 0.2, 0.35, reportProgress, async (codes) => {
     const { data, error } = await supabase
       .from("material_allocation")
       .select("material_code, quantity")
@@ -656,10 +752,24 @@ export async function bulkApplyStockUpdate(
   // ---- Phase 3: classify every row in memory - no network calls, so
   // this is effectively instantaneous even for 10,000+ rows ----
   const newMaterialRows: StockUpdateImportRow[] = [];
+  const postRows: StockUpdateImportRow[] = [];
   const matchedCodes: string[] = [];
   const flaggedRows: { row: StockUpdateImportRow; systemQty: number }[] = [];
 
   for (const row of rows) {
+    if (row.location_code && !knownLocations.has(row.location_code)) {
+      summary.failed += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        uploaded_qty: row.quantity,
+        system_qty: null,
+        status: "failed",
+        message: `Location Code "${row.location_code}" was not found in Location Master.`,
+      });
+      continue;
+    }
+
     if (!existingCodes.has(row.material_code)) {
       if (!row.short_description || !row.uom) {
         summary.failed += 1;
@@ -690,6 +800,11 @@ export async function bulkApplyStockUpdate(
         system_qty: systemQty,
         status: "matched",
       });
+    } else if (systemQty === 0) {
+      // No existing stock anywhere for this material - nothing to
+      // reconcile against, so treat it like an opening balance and post
+      // it directly instead of flagging it for review.
+      postRows.push(row);
     } else {
       flaggedRows.push({ row, systemQty });
       summary.flagged += 1;
@@ -704,12 +819,12 @@ export async function bulkApplyStockUpdate(
     }
   }
 
-  reportProgress(0.35);
+  reportProgress(0.4);
 
   // ---- Phase 4: counts agree -> clear any stale pending flag. A single
   // `DELETE ... WHERE material_code IN (...)` per batch, best-effort
   // (matches the original per-row dismiss, which also ignored errors) ----
-  await runChunked(matchedCodes, 0.35, 0.5, reportProgress, async (codes) => {
+  await runChunked(matchedCodes, 0.4, 0.5, reportProgress, async (codes) => {
     const { error } = await supabase
       .from("pending_stock_updates")
       .delete()
@@ -725,7 +840,7 @@ export async function bulkApplyStockUpdate(
   // itself fails, so one bad row can't drop every other flag in it. ----
   const uploadedAt = new Date().toISOString();
 
-  await runChunked(flaggedRows, 0.5, 0.65, reportProgress, async (batch) => {
+  await runChunked(flaggedRows, 0.5, 0.6, reportProgress, async (batch) => {
     const payload = batch.map(({ row, systemQty }) => ({
       material_code: row.material_code,
       short_description: row.short_description || null,
@@ -782,9 +897,21 @@ export async function bulkApplyStockUpdate(
   });
 
   // ---- Phase 6: genuinely new materials ----
-  await runChunked(newMaterialRows, 0.65, 1, reportProgress, (batch) =>
+  await runChunked(newMaterialRows, 0.6, 0.8, reportProgress, (batch) =>
     insertNewMaterialsBatch(batch, fileName, summary)
   );
+
+  // ---- Phase 7: existing materials with no stock anywhere yet - post
+  // straight to the given location (or UNALLOCATED), one at a time since
+  // each is a read-then-write against material_allocation. ----
+  for (let i = 0; i < postRows.length; i++) {
+    await postStockUpdateRow(postRows[i], fileName, summary);
+    reportProgress(0.8 + ((i + 1) / Math.max(postRows.length, 1)) * 0.2);
+  }
+
+  if (postRows.length === 0) {
+    reportProgress(1);
+  }
 
   return summary;
 }
@@ -797,6 +924,7 @@ const STOCK_UPDATE_REPORT_COLUMNS = [
 
 const OUTCOME_STATUS: Record<StockUpdateOutcomeStatus, BulkImportRowStatus> = {
   new_material: "Imported",
+  posted: "Applied",
   matched: "Applied",
   flagged: "Partial",
   failed: "Failed",
@@ -833,7 +961,8 @@ export async function downloadStockUpdateImportReport(
     importType: "Stock Update",
     fileName,
     totalRows: validation.totalRecords,
-    successCount: summary.newMaterials + summary.matched + summary.flagged,
+    successCount:
+      summary.newMaterials + summary.posted + summary.matched + summary.flagged,
     rejectedCount: validation.invalidRows.length,
     failedCount: summary.failed,
     fileNamePrefix: "Stock_Update_Import",
@@ -844,6 +973,7 @@ export async function downloadStockUpdateImportReport(
       { label: "Sent for Import", value: summary.totalRows },
       { label: "Rejected (validation)", value: validation.invalidRows.length },
       { label: "New Materials", value: summary.newMaterials },
+      { label: "Posted (no prior stock)", value: summary.posted },
       { label: "Matched", value: summary.matched },
       { label: "Flagged for Review", value: summary.flagged },
       { label: "Failed", value: summary.failed },
