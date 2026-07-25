@@ -546,7 +546,12 @@ export default function AppLayout() {
           bgcolor: "#FFFFFF",
           minHeight: "100vh",
 
-          p: {
+          // `px` only (not the `p` shorthand) - `pt`/`pb` are set explicitly
+          // below, and a `padding` shorthand here would implicitly reset
+          // `padding-bottom` to this value, clobbering the mobile bottom-nav
+          // clearance since MUI emits this responsive rule after the plain
+          // `pb` rule regardless of property order in this object.
+          px: {
             xs: 2,
             md: 4,
           },
