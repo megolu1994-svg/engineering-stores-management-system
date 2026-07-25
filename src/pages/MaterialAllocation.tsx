@@ -434,6 +434,7 @@ export default function MaterialAllocation() {
             px: { xs: 0.5, md: 2.5 },
             py: 0.5,
             gap: 0.25,
+            justifyContent: { xs: "flex-start", md: "center" },
           },
           "& .MuiTabs-indicator": {
             height: { xs: 3, md: 2 },
@@ -464,7 +465,7 @@ export default function MaterialAllocation() {
         <Tab
           icon={<SyncIcon sx={{ fontSize: 18 }} />}
           iconPosition={desktop ? "start" : "top"}
-          label="Stock Update"
+          label={desktop ? "Stock Update" : "Update"}
         />
       </Tabs>
 
