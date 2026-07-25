@@ -5,8 +5,11 @@ import {
   applyOpeningStock,
   applyAdjustment,
 } from "./materialAllocationService";
-import { materialExists, addMaterial } from "./materialService";
-import { applyStockMovement } from "./inventoryTransactionService";
+import { addMaterial } from "./materialService";
+import {
+  applyStockMovement,
+  generateReferenceNumber,
+} from "./inventoryTransactionService";
 
 import {
   type BulkImportReportRow,
@@ -386,53 +389,86 @@ function deriveMaterialGroup(materialCode: string, materialGroup: string): strin
   return materialGroup || materialCode.substring(0, 2);
 }
 
+/** Splits an array into chunks of at most `size` items, in order. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+// Matches IMPORT_BATCH_SIZE used elsewhere (e.g. Material Master bulk
+// import) - large enough to cut round trips drastically, small enough to
+// stay well under PostgREST/URL payload limits for `.in()` filters.
+const BATCH_SIZE = 500;
+
 /**
- * Applies a batch of Stock Update rows one at a time. For each material:
- *   - not in Material Master -> create it (requires Short Description and
- *     UoM to be present on at least one of its rows) and apply the full
- *     uploaded quantity to UNALLOCATED.
- *   - in Material Master, quantities match -> no action (and any stale
- *     pending flag for it is cleared, since the count now agrees).
- *   - in Material Master, quantities differ -> upsert a row into
- *     `pending_stock_updates` for manual review; material_allocation is
- *     left untouched.
+ * Runs `fn` once per chunk of `items` (sequentially, so writes to the same
+ * table never race each other) and reports progress by linearly mapping
+ * "chunks completed" onto the `[startFraction, endFraction]` slice of the
+ * overall progress bar.
  */
-export async function bulkApplyStockUpdate(
-  rows: StockUpdateImportRow[],
+async function runChunked<T>(
+  items: T[],
+  startFraction: number,
+  endFraction: number,
+  reportProgress: (fraction: number) => void,
+  fn: (batch: T[]) => Promise<void>
+): Promise<void> {
+  const chunks = chunk(items, BATCH_SIZE);
+
+  if (chunks.length === 0) {
+    reportProgress(endFraction);
+    return;
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    await fn(chunks[i]);
+    reportProgress(
+      startFraction + ((i + 1) / chunks.length) * (endFraction - startFraction)
+    );
+  }
+}
+
+/**
+ * Creates a batch of brand-new materials in as few round trips as
+ * possible: one bulk insert into `material_master`, one bulk insert into
+ * `material_allocation` (UNALLOCATED, since these materials have no prior
+ * allocation to merge with), and one best-effort bulk insert into
+ * `inventory_transactions` for the audit log. If the bulk insert fails
+ * (e.g. one bad row in the batch), falls back to the original one-row-at-
+ * a-time path for just this batch, so a single bad row never sinks the
+ * rest of the import.
+ */
+async function insertNewMaterialsBatch(
+  batch: StockUpdateImportRow[],
   fileName: string | undefined,
-  onProgress?: (processed: number, total: number) => void
-): Promise<StockUpdateImportSummary> {
-  const summary: StockUpdateImportSummary = {
-    totalRows: rows.length,
-    newMaterials: 0,
-    matched: 0,
-    flagged: 0,
-    failed: 0,
-    outcomes: [],
-  };
+  summary: StockUpdateImportSummary
+): Promise<void> {
+  const { error: masterError } = await supabase.from("material_master").insert(
+    batch.map((row) => ({
+      material_code: row.material_code,
+      short_description: row.short_description,
+      uom: row.uom,
+      hsn_code: row.hsn_code,
+      material_group: deriveMaterialGroup(row.material_code, row.material_group),
+      is_active: true,
+    }))
+  );
 
-  let processed = 0;
-
-  for (const row of rows) {
-    try {
-      const exists = await materialExists(row.material_code);
-
-      if (!exists) {
-        if (!row.short_description || !row.uom) {
-          throw new Error(
-            "New material - Short Description and UoM are required."
-          );
-        }
-
+  if (masterError) {
+    // Bulk insert failed - fall back to the original per-row path so one
+    // bad row (e.g. a duplicate created elsewhere in the meantime) can't
+    // block the rest of this batch.
+    for (const row of batch) {
+      try {
         await addMaterial({
           material_code: row.material_code,
           short_description: row.short_description,
           uom: row.uom,
           hsn_code: row.hsn_code,
-          material_group: deriveMaterialGroup(
-            row.material_code,
-            row.material_group
-          ),
+          material_group: deriveMaterialGroup(row.material_code, row.material_group),
           current_quantity: 0,
           is_active: true,
         });
@@ -456,57 +492,36 @@ export async function bulkApplyStockUpdate(
           system_qty: 0,
           status: "new_material",
         });
-      } else {
-        const allocations = await getAllocations(row.material_code);
-        const systemQty = allocations.reduce(
-          (sum, a) => sum + Number(a.quantity),
-          0
-        );
-
-        if (systemQty === row.quantity) {
-          // Counts agree - nothing to do. Clear any earlier flag for this
-          // material since it's no longer in question.
-          await dismissPendingStockUpdate(row.material_code).catch(() => {});
-
-          summary.matched += 1;
-          summary.outcomes.push({
-            rowNumber: row.rowNumber,
-            material_code: row.material_code,
-            uploaded_qty: row.quantity,
-            system_qty: systemQty,
-            status: "matched",
-          });
-        } else {
-          const { error } = await supabase
-            .from("pending_stock_updates")
-            .upsert(
-              {
-                material_code: row.material_code,
-                short_description: row.short_description || null,
-                uom: row.uom || null,
-                uploaded_qty: row.quantity,
-                system_qty_at_upload: systemQty,
-                difference: row.quantity - systemQty,
-                batch_file_name: fileName ?? null,
-                uploaded_at: new Date().toISOString(),
-              },
-              { onConflict: "material_code" }
-            );
-
-          if (error) throw error;
-
-          summary.flagged += 1;
-          summary.outcomes.push({
-            rowNumber: row.rowNumber,
-            material_code: row.material_code,
-            uploaded_qty: row.quantity,
-            system_qty: systemQty,
-            status: "flagged",
-            message: `Difference of ${row.quantity - systemQty} flagged for review.`,
-          });
-        }
+      } catch (err) {
+        summary.failed += 1;
+        summary.outcomes.push({
+          rowNumber: row.rowNumber,
+          material_code: row.material_code,
+          uploaded_qty: row.quantity,
+          system_qty: null,
+          status: "failed",
+          message: err instanceof Error ? err.message : "Unknown error.",
+        });
       }
-    } catch (err) {
+    }
+    return;
+  }
+
+  const { error: allocationError } = await supabase
+    .from("material_allocation")
+    .insert(
+      batch.map((row) => ({
+        material_code: row.material_code,
+        location_code: UNALLOCATED_LOCATION,
+        quantity: row.quantity,
+      }))
+    );
+
+  if (allocationError) {
+    // The Material Master rows are in, but stock couldn't be applied -
+    // report every row in this batch as failed rather than silently
+    // leaving them at a zero balance.
+    for (const row of batch) {
       summary.failed += 1;
       summary.outcomes.push({
         rowNumber: row.rowNumber,
@@ -514,13 +529,262 @@ export async function bulkApplyStockUpdate(
         uploaded_qty: row.quantity,
         system_qty: null,
         status: "failed",
-        message: err instanceof Error ? err.message : "Unknown error.",
+        message: allocationError.message,
       });
     }
-
-    processed += 1;
-    if (onProgress) onProgress(processed, rows.length);
+    return;
   }
+
+  // Best-effort audit log, same guarantee as recordInventoryTransaction:
+  // never blocks or fails the import if it errors out.
+  const { error: txError } = await supabase.from("inventory_transactions").insert(
+    batch.map((row) => ({
+      transaction_no: generateReferenceNumber("OB"),
+      transaction_type: "OPENING_STOCK",
+      material_code: row.material_code,
+      location_code: UNALLOCATED_LOCATION,
+      quantity: row.quantity,
+      movement: "IN",
+      balance_after: row.quantity,
+      reference_type: "STOCK_UPDATE",
+      reason: "New Material - Bulk Stock Update",
+      remarks: fileName ? `From ${fileName}` : undefined,
+    }))
+  );
+
+  if (txError) {
+    console.warn(
+      "Inventory transaction log skipped for a batch:",
+      txError.message
+    );
+  }
+
+  for (const row of batch) {
+    summary.newMaterials += 1;
+    summary.outcomes.push({
+      rowNumber: row.rowNumber,
+      material_code: row.material_code,
+      uploaded_qty: row.quantity,
+      system_qty: 0,
+      status: "new_material",
+    });
+  }
+}
+
+/**
+ * Applies a batch of Stock Update rows against the database. For each
+ * material:
+ *   - not in Material Master -> create it (requires Short Description and
+ *     UoM to be present on at least one of its rows) and apply the full
+ *     uploaded quantity to UNALLOCATED.
+ *   - in Material Master, quantities match -> no action (and any stale
+ *     pending flag for it is cleared, since the count now agrees).
+ *   - in Material Master, quantities differ -> upsert a row into
+ *     `pending_stock_updates` for manual review; material_allocation is
+ *     left untouched.
+ *
+ * Unlike the original row-by-row implementation (which issued 2-5
+ * sequential network round trips per row - a 5+ hour run for an 11,000
+ * row file), every phase below batches its database work into `.in()`
+ * lookups and bulk insert/upsert/delete calls of up to `BATCH_SIZE` rows,
+ * so the whole import costs on the order of dozens of round trips rather
+ * than tens of thousands.
+ */
+export async function bulkApplyStockUpdate(
+  rows: StockUpdateImportRow[],
+  fileName: string | undefined,
+  onProgress?: (processed: number, total: number) => void
+): Promise<StockUpdateImportSummary> {
+  const summary: StockUpdateImportSummary = {
+    totalRows: rows.length,
+    newMaterials: 0,
+    matched: 0,
+    flagged: 0,
+    failed: 0,
+    outcomes: [],
+  };
+
+  const total = rows.length;
+
+  if (total === 0) {
+    return summary;
+  }
+
+  function reportProgress(fraction: number) {
+    if (!onProgress) return;
+    onProgress(Math.min(total, Math.max(0, Math.round(fraction * total))), total);
+  }
+
+  const allCodes = rows.map((row) => row.material_code);
+
+  // ---- Phase 1: which of these material codes already exist? ----
+  const existingCodes = new Set<string>();
+  await runChunked(allCodes, 0, 0.15, reportProgress, async (codes) => {
+    const { data, error } = await supabase
+      .from("material_master")
+      .select("material_code")
+      .in("material_code", codes);
+
+    if (error) throw error;
+
+    (data ?? []).forEach((m: { material_code: string }) =>
+      existingCodes.add(m.material_code)
+    );
+  });
+
+  // ---- Phase 2: current system quantity (summed across all locations)
+  // for every material that already exists ----
+  const existingCodeList = allCodes.filter((code) => existingCodes.has(code));
+  const systemQtyMap = new Map<string, number>();
+
+  await runChunked(existingCodeList, 0.15, 0.3, reportProgress, async (codes) => {
+    const { data, error } = await supabase
+      .from("material_allocation")
+      .select("material_code, quantity")
+      .in("material_code", codes);
+
+    if (error) throw error;
+
+    (data ?? []).forEach((a: { material_code: string; quantity: number }) => {
+      systemQtyMap.set(
+        a.material_code,
+        (systemQtyMap.get(a.material_code) ?? 0) + Number(a.quantity)
+      );
+    });
+  });
+
+  // ---- Phase 3: classify every row in memory - no network calls, so
+  // this is effectively instantaneous even for 10,000+ rows ----
+  const newMaterialRows: StockUpdateImportRow[] = [];
+  const matchedCodes: string[] = [];
+  const flaggedRows: { row: StockUpdateImportRow; systemQty: number }[] = [];
+
+  for (const row of rows) {
+    if (!existingCodes.has(row.material_code)) {
+      if (!row.short_description || !row.uom) {
+        summary.failed += 1;
+        summary.outcomes.push({
+          rowNumber: row.rowNumber,
+          material_code: row.material_code,
+          uploaded_qty: row.quantity,
+          system_qty: null,
+          status: "failed",
+          message: "New material - Short Description and UoM are required.",
+        });
+        continue;
+      }
+
+      newMaterialRows.push(row);
+      continue;
+    }
+
+    const systemQty = systemQtyMap.get(row.material_code) ?? 0;
+
+    if (systemQty === row.quantity) {
+      matchedCodes.push(row.material_code);
+      summary.matched += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        uploaded_qty: row.quantity,
+        system_qty: systemQty,
+        status: "matched",
+      });
+    } else {
+      flaggedRows.push({ row, systemQty });
+      summary.flagged += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        uploaded_qty: row.quantity,
+        system_qty: systemQty,
+        status: "flagged",
+        message: `Difference of ${row.quantity - systemQty} flagged for review.`,
+      });
+    }
+  }
+
+  reportProgress(0.35);
+
+  // ---- Phase 4: counts agree -> clear any stale pending flag. A single
+  // `DELETE ... WHERE material_code IN (...)` per batch, best-effort
+  // (matches the original per-row dismiss, which also ignored errors) ----
+  await runChunked(matchedCodes, 0.35, 0.5, reportProgress, async (codes) => {
+    const { error } = await supabase
+      .from("pending_stock_updates")
+      .delete()
+      .in("material_code", codes);
+
+    if (error) {
+      console.warn("Failed to clear pending stock updates for a batch:", error);
+    }
+  });
+
+  // ---- Phase 5: counts differ -> bulk-upsert into pending_stock_updates.
+  // Falls back to per-row upserts within a batch if the batch upsert
+  // itself fails, so one bad row can't drop every other flag in it. ----
+  const uploadedAt = new Date().toISOString();
+
+  await runChunked(flaggedRows, 0.5, 0.65, reportProgress, async (batch) => {
+    const payload = batch.map(({ row, systemQty }) => ({
+      material_code: row.material_code,
+      short_description: row.short_description || null,
+      uom: row.uom || null,
+      uploaded_qty: row.quantity,
+      system_qty_at_upload: systemQty,
+      difference: row.quantity - systemQty,
+      batch_file_name: fileName ?? null,
+      uploaded_at: uploadedAt,
+    }));
+
+    const { error } = await supabase
+      .from("pending_stock_updates")
+      .upsert(payload, { onConflict: "material_code" });
+
+    if (!error) return;
+
+    // Fall back to per-row so a single bad row in the batch doesn't
+    // silently drop every other row's flag.
+    for (const { row, systemQty } of batch) {
+      const outcome = summary.outcomes.find(
+        (o) => o.material_code === row.material_code && o.status === "flagged"
+      );
+
+      try {
+        const { error: rowError } = await supabase
+          .from("pending_stock_updates")
+          .upsert(
+            {
+              material_code: row.material_code,
+              short_description: row.short_description || null,
+              uom: row.uom || null,
+              uploaded_qty: row.quantity,
+              system_qty_at_upload: systemQty,
+              difference: row.quantity - systemQty,
+              batch_file_name: fileName ?? null,
+              uploaded_at: uploadedAt,
+            },
+            { onConflict: "material_code" }
+          );
+
+        if (rowError) throw rowError;
+      } catch (rowErr) {
+        summary.flagged -= 1;
+        summary.failed += 1;
+
+        if (outcome) {
+          outcome.status = "failed";
+          outcome.message =
+            rowErr instanceof Error ? rowErr.message : "Unknown error.";
+        }
+      }
+    }
+  });
+
+  // ---- Phase 6: genuinely new materials ----
+  await runChunked(newMaterialRows, 0.65, 1, reportProgress, (batch) =>
+    insertNewMaterialsBatch(batch, fileName, summary)
+  );
 
   return summary;
 }
