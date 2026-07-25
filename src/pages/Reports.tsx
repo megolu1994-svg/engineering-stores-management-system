@@ -45,6 +45,7 @@ import OutputIcon from "@mui/icons-material/Output";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 
 import MaterialSearch from "../components/MaterialSearch";
+import PaginationControls from "../components/PaginationControls";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
@@ -64,6 +65,7 @@ import { supabase } from "../config/supabase";
 import type { InventoryTransactionType } from "../services/inventoryTransactionService";
 import {
   listBulkImportHistory,
+  getBulkImportHistoryCount,
   downloadHistoryReport,
   type BulkImportHistoryListItem,
 } from "../services/bulkImportHistoryService";
@@ -729,30 +731,62 @@ export default function Reports() {
 
   // ---------------- Movement History ----------------
   const [movementSearch, setMovementSearch] = useState("");
+  const [debouncedMovementSearch, setDebouncedMovementSearch] = useState("");
   const [movementRows, setMovementRows] = useState<MovementRow[]>([]);
   const [loadingMovement, setLoadingMovement] = useState(false);
+  const [movementPage, setMovementPage] = useState(0);
+  const [movementPageSize, setMovementPageSize] = useState(25);
+  const [movementTotalCount, setMovementTotalCount] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedMovementSearch(movementSearch), 300);
+    return () => clearTimeout(timer);
+  }, [movementSearch]);
+
+  function handleMovementSearchChange(value: string) {
+    setMovementSearch(value);
+    setMovementPage(0);
+  }
+
+  function handleMovementPageSizeChange(newPageSize: number) {
+    setMovementPageSize(newPageSize);
+    setMovementPage(0);
+  }
 
   const loadMovementHistory = useCallback(async () => {
     setLoadingMovement(true);
     try {
+      const from = movementPage * movementPageSize;
+      const to = from + movementPageSize - 1;
+
       let query = supabase
         .from("inventory_transactions")
         .select(
           "id, created_at, transaction_type, reference_number, quantity, movement, location_code, material_code, created_by"
         )
         .order("created_at", { ascending: false })
-        .limit(100);
+        .range(from, to);
 
-      const trimmed = movementSearch.trim();
+      let countQuery = supabase
+        .from("inventory_transactions")
+        .select("id", { count: "exact", head: true });
+
+      const trimmed = debouncedMovementSearch.trim();
       if (trimmed) {
         const safe = trimmed.replace(/[%_]/g, (m) => `\\${m}`);
-        query = query.or(
-          `material_code.ilike.%${safe}%,reference_number.ilike.%${safe}%,location_code.ilike.%${safe}%`
-        );
+        const orFilter = `material_code.ilike.%${safe}%,reference_number.ilike.%${safe}%,location_code.ilike.%${safe}%`;
+        query = query.or(orFilter);
+        countQuery = countQuery.or(orFilter);
       }
 
-      const { data, error } = await query;
+      const [{ data, error }, { count, error: countError }] = await Promise.all([
+        query,
+        countQuery,
+      ]);
       if (error) throw error;
+      if (countError) throw countError;
+
+      setMovementTotalCount(count ?? 0);
 
       const rows = (data ?? []) as Omit<MovementRow, "material_description">[];
 
@@ -780,15 +814,15 @@ export default function Reports() {
     } catch (err) {
       console.error(err);
       setMovementRows([]);
+      setMovementTotalCount(0);
     } finally {
       setLoadingMovement(false);
     }
-  }, [movementSearch]);
+  }, [debouncedMovementSearch, movementPage, movementPageSize]);
 
   useEffect(() => {
     if (activeTab !== TAB_MOVEMENT_HISTORY) return;
-    const timer = setTimeout(() => loadMovementHistory(), 300);
-    return () => clearTimeout(timer);
+    loadMovementHistory();
   }, [activeTab, loadMovementHistory]);
 
   function movementFromTo(row: MovementRow): { from: string; to: string } {
@@ -904,6 +938,14 @@ export default function Reports() {
   // ---------------- Receipt History ----------------
   const [receiptRows, setReceiptRows] = useState<ReceiptHistoryRow[]>([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
+  const [receiptPage, setReceiptPage] = useState(0);
+  const [receiptPageSize, setReceiptPageSize] = useState(25);
+  const [receiptTotalCount, setReceiptTotalCount] = useState(0);
+
+  function handleReceiptPageSizeChange(newPageSize: number) {
+    setReceiptPageSize(newPageSize);
+    setReceiptPage(0);
+  }
 
   useEffect(() => {
     if (activeTab !== TAB_RECEIPT_HISTORY) return;
@@ -913,15 +955,22 @@ export default function Reports() {
 
     async function load() {
       try {
-        const { data, error } = await supabase
-          .from("receipt_header")
-          .select(
-            "id, drc_number, sap_po_number, gem_order_number, vendor_name, package_details, receipt_datetime"
-          )
-          .order("receipt_datetime", { ascending: false })
-          .limit(100);
+        const from = receiptPage * receiptPageSize;
+        const to = from + receiptPageSize - 1;
+
+        const [{ data, error }, { count, error: countError }] = await Promise.all([
+          supabase
+            .from("receipt_header")
+            .select(
+              "id, drc_number, sap_po_number, gem_order_number, vendor_name, package_details, receipt_datetime"
+            )
+            .order("receipt_datetime", { ascending: false })
+            .range(from, to),
+          supabase.from("receipt_header").select("id", { count: "exact", head: true }),
+        ]);
 
         if (error) throw error;
+        if (countError) throw countError;
 
         const rows = (
           (data ?? []) as {
@@ -945,10 +994,16 @@ export default function Reports() {
           receipt_datetime: r.receipt_datetime,
         }));
 
-        if (!cancelled) setReceiptRows(rows);
+        if (!cancelled) {
+          setReceiptRows(rows);
+          setReceiptTotalCount(count ?? 0);
+        }
       } catch (err) {
         console.error(err);
-        if (!cancelled) setReceiptRows([]);
+        if (!cancelled) {
+          setReceiptRows([]);
+          setReceiptTotalCount(0);
+        }
       } finally {
         if (!cancelled) setLoadingReceipts(false);
       }
@@ -959,7 +1014,7 @@ export default function Reports() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, receiptPage, receiptPageSize]);
 
   function handleExportReceipts() {
     downloadWorkbook(
@@ -979,6 +1034,14 @@ export default function Reports() {
   // ---------------- Issue History ----------------
   const [issueRows, setIssueRows] = useState<IssueHistoryRow[]>([]);
   const [loadingIssues, setLoadingIssues] = useState(false);
+  const [issuePage, setIssuePage] = useState(0);
+  const [issuePageSize, setIssuePageSize] = useState(25);
+  const [issueTotalCount, setIssueTotalCount] = useState(0);
+
+  function handleIssuePageSizeChange(newPageSize: number) {
+    setIssuePageSize(newPageSize);
+    setIssuePage(0);
+  }
 
   useEffect(() => {
     if (activeTab !== TAB_ISSUE_HISTORY) return;
@@ -988,18 +1051,31 @@ export default function Reports() {
 
     async function load() {
       try {
-        const { data, error } = await supabase
-          .from("issue_header")
-          .select("id, issue_number, department, total_quantity, issue_datetime")
-          .order("issue_datetime", { ascending: false })
-          .limit(100);
+        const from = issuePage * issuePageSize;
+        const to = from + issuePageSize - 1;
+
+        const [{ data, error }, { count, error: countError }] = await Promise.all([
+          supabase
+            .from("issue_header")
+            .select("id, issue_number, department, total_quantity, issue_datetime")
+            .order("issue_datetime", { ascending: false })
+            .range(from, to),
+          supabase.from("issue_header").select("id", { count: "exact", head: true }),
+        ]);
 
         if (error) throw error;
+        if (countError) throw countError;
 
-        if (!cancelled) setIssueRows((data ?? []) as IssueHistoryRow[]);
+        if (!cancelled) {
+          setIssueRows((data ?? []) as IssueHistoryRow[]);
+          setIssueTotalCount(count ?? 0);
+        }
       } catch (err) {
         console.error(err);
-        if (!cancelled) setIssueRows([]);
+        if (!cancelled) {
+          setIssueRows([]);
+          setIssueTotalCount(0);
+        }
       } finally {
         if (!cancelled) setLoadingIssues(false);
       }
@@ -1010,7 +1086,7 @@ export default function Reports() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, issuePage, issuePageSize]);
 
   function handleExportIssues() {
     downloadWorkbook(
@@ -1032,6 +1108,14 @@ export default function Reports() {
   const [downloadingImportReportId, setDownloadingImportReportId] = useState<
     number | null
   >(null);
+  const [importHistoryPage, setImportHistoryPage] = useState(0);
+  const [importHistoryPageSize, setImportHistoryPageSize] = useState(25);
+  const [importHistoryTotalCount, setImportHistoryTotalCount] = useState(0);
+
+  function handleImportHistoryPageSizeChange(newPageSize: number) {
+    setImportHistoryPageSize(newPageSize);
+    setImportHistoryPage(0);
+  }
 
   useEffect(() => {
     if (activeTab !== TAB_IMPORT_REPORTS) return;
@@ -1041,11 +1125,20 @@ export default function Reports() {
 
     async function load() {
       try {
-        const rows = await listBulkImportHistory();
-        if (!cancelled) setImportHistory(rows);
+        const [rows, count] = await Promise.all([
+          listBulkImportHistory(importHistoryPage, importHistoryPageSize),
+          getBulkImportHistoryCount(),
+        ]);
+        if (!cancelled) {
+          setImportHistory(rows);
+          setImportHistoryTotalCount(count);
+        }
       } catch (err) {
         console.error(err);
-        if (!cancelled) setImportHistory([]);
+        if (!cancelled) {
+          setImportHistory([]);
+          setImportHistoryTotalCount(0);
+        }
       } finally {
         if (!cancelled) setLoadingImportHistory(false);
       }
@@ -1056,7 +1149,7 @@ export default function Reports() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, importHistoryPage, importHistoryPageSize]);
 
   async function handleDownloadImportHistoryReport(id: number) {
     setDownloadingImportReportId(id);
@@ -1322,7 +1415,7 @@ export default function Reports() {
             size="small"
             placeholder="Search Material Code, Reference or Location"
             value={movementSearch}
-            onChange={(e) => setMovementSearch(e.target.value)}
+            onChange={(e) => handleMovementSearchChange(e.target.value)}
             fullWidth
             slotProps={{
               input: {
@@ -1452,6 +1545,15 @@ export default function Reports() {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              <PaginationControls
+                page={movementPage}
+                pageSize={movementPageSize}
+                totalCount={movementTotalCount}
+                onPageChange={setMovementPage}
+                onPageSizeChange={handleMovementPageSizeChange}
+                itemLabel="transactions"
+              />
             </>
           )}
         </>
@@ -1538,6 +1640,15 @@ export default function Reports() {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              <PaginationControls
+                page={receiptPage}
+                pageSize={receiptPageSize}
+                totalCount={receiptTotalCount}
+                onPageChange={setReceiptPage}
+                onPageSizeChange={handleReceiptPageSizeChange}
+                itemLabel="receipts"
+              />
             </>
           )}
         </>
@@ -1611,6 +1722,15 @@ export default function Reports() {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              <PaginationControls
+                page={issuePage}
+                pageSize={issuePageSize}
+                totalCount={issueTotalCount}
+                onPageChange={setIssuePage}
+                onPageSizeChange={handleIssuePageSizeChange}
+                itemLabel="issues"
+              />
             </>
           )}
         </>
@@ -1743,6 +1863,15 @@ export default function Reports() {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              <PaginationControls
+                page={importHistoryPage}
+                pageSize={importHistoryPageSize}
+                totalCount={importHistoryTotalCount}
+                onPageChange={setImportHistoryPage}
+                onPageSizeChange={handleImportHistoryPageSizeChange}
+                itemLabel="import runs"
+              />
             </>
           )}
         </>

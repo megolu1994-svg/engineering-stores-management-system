@@ -21,24 +21,44 @@ const HISTORY_LIST_COLUMNS =
   "id, created_at, import_type, file_name, total_rows, success_count, rejected_count, failed_count";
 
 /**
- * Lists the most recent bulk import runs across every import feature, for
- * the Reports > Import Reports tab. Only summary counts are fetched here -
- * the full row-level report is loaded on demand when the user asks to
- * re-download a specific run - so this stays fast regardless of how large
- * any individual report was.
+ * Lists one page of the most recent bulk import runs across every import
+ * feature, for the Reports > Import Reports tab. Only summary counts are
+ * fetched here - the full row-level report is loaded on demand when the
+ * user asks to re-download a specific run - so this stays fast regardless
+ * of how large any individual report was, and `.range()` pagination means
+ * every past run stays reachable instead of being cut off after the first
+ * page.
  */
 export async function listBulkImportHistory(
-  limit = 100
+  page: number = 0,
+  pageSize: number = 25
 ): Promise<BulkImportHistoryListItem[]> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
   const { data, error } = await supabase
     .from("bulk_import_history")
     .select(HISTORY_LIST_COLUMNS)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .range(from, to);
 
   if (error) throw error;
 
   return (data ?? []) as BulkImportHistoryListItem[];
+}
+
+/**
+ * Total count of bulk import runs, for driving pagination controls on the
+ * Reports > Import Reports tab without loading every row.
+ */
+export async function getBulkImportHistoryCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from("bulk_import_history")
+    .select("id", { count: "exact", head: true });
+
+  if (error) throw error;
+
+  return count ?? 0;
 }
 
 /**

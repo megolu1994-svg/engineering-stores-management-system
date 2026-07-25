@@ -352,9 +352,9 @@ export default function Dashboard() {
     let cancelled = false;
     setLoadingRecent(true);
 
-    getRecentActivity()
-      .then((data) => {
-        if (!cancelled) setRecentActivity(data.slice(0, 8));
+    getRecentActivity(8)
+      .then((page) => {
+        if (!cancelled) setRecentActivity(page.rows);
       })
       .finally(() => {
         if (!cancelled) setLoadingRecent(false);

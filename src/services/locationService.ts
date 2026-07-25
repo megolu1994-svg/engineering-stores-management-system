@@ -69,6 +69,32 @@ export async function searchLocations(
   return (data ?? []) as Location[];
 }
 
+/**
+ * Total count of active locations matching the same filter `searchLocations`
+ * applies, for driving pagination controls without loading every row.
+ */
+export async function getLocationsCount(query: string): Promise<number> {
+  let request = supabase
+    .from("location_master")
+    .select("location_code", { count: "exact", head: true })
+    .eq("is_active", true);
+
+  const trimmed = query.trim();
+
+  if (trimmed) {
+    const safe = escapeIlikeValue(trimmed);
+    request = request.or(
+      `location_code.ilike.%${safe}%,location_description.ilike.%${safe}%`
+    );
+  }
+
+  const { count, error } = await request;
+
+  if (error) throw error;
+
+  return count ?? 0;
+}
+
 export async function locationExists(
   locationCode: string
 ): Promise<boolean> {
