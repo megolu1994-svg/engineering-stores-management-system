@@ -1202,6 +1202,7 @@ export default function Reports() {
             px: { xs: 0.5, md: 2.5 },
             py: 0.5,
             gap: 0.25,
+            justifyContent: { xs: "flex-start", md: "center" },
           },
           "& .MuiTabs-indicator": {
             height: { xs: 3, md: 2 },
@@ -1213,7 +1214,7 @@ export default function Reports() {
         <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Movement" />
         <Tab icon={<LocalShippingIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Receipts" />
         <Tab icon={<OutputIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Issues" />
-        <Tab icon={<UploadFileIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label="Import Reports" />
+        <Tab icon={<UploadFileIcon sx={{ fontSize: 18 }} />} iconPosition={desktop ? "start" : "top"} label={desktop ? "Import Reports" : "Import"} />
       </Tabs>
 
       <SwipeableTabPanel activeTab={activeTab} direction={direction}>
