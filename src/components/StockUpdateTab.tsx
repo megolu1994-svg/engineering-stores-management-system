@@ -9,6 +9,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Collapse,
   LinearProgress,
   Snackbar,
   Table,
@@ -17,14 +18,26 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from "@mui/material";
 
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DownloadIcon from "@mui/icons-material/Download";
 
+import MaterialSearch from "./MaterialSearch";
+import LocationSearch from "./LocationSearch";
+
+import { usePersistentState } from "../hooks/usePersistentState";
+
+import type { Material } from "../types/material";
+import type { Location } from "../types/location";
+
+import { applyOpeningStock } from "../services/materialAllocationService";
 import {
   bulkApplyStockUpdate,
   downloadStockUpdateImportReport,
@@ -36,6 +49,7 @@ import {
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
 const IMPORT_PREVIEW_LIMIT = 30;
+const UNALLOCATED_LOCATION = "UNALLOCATED";
 
 async function readExcelFile(file: File): Promise<Record<string, unknown>[]> {
   const buffer = await file.arrayBuffer();
@@ -75,6 +89,66 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
     setSnackbar({ open: true, message, severity });
   }
 
+  // ---------------- Manual entry ----------------
+  const [manualMaterial, setManualMaterial] = usePersistentState<
+    Material | null
+  >("stockUpdate.manualMaterial", null);
+  const [manualLocation, setManualLocation] = usePersistentState<
+    Location | null
+  >("stockUpdate.manualLocation", null);
+  const [manualQuantity, setManualQuantity] = usePersistentState(
+    "stockUpdate.manualQuantity",
+    ""
+  );
+  const [savingManual, setSavingManual] = useState(false);
+
+  async function handleManualSubmit() {
+    if (!manualMaterial) {
+      showSnackbar("Please select a material.", "warning");
+      return;
+    }
+
+    const quantity = Number(manualQuantity);
+
+    if (!manualQuantity || Number.isNaN(quantity) || quantity <= 0) {
+      showSnackbar("Please enter a valid quantity.", "warning");
+      return;
+    }
+
+    const locationCode = manualLocation?.location_code ?? UNALLOCATED_LOCATION;
+
+    setSavingManual(true);
+
+    try {
+      await applyOpeningStock(
+        manualMaterial.material_code,
+        locationCode,
+        quantity,
+        "Manual entry"
+      );
+
+      showSnackbar(
+        manualLocation
+          ? `${quantity} added for ${manualMaterial.material_code} at ${manualLocation.location_code}.`
+          : `${quantity} added for ${manualMaterial.material_code} (Unallocated).`,
+        "success"
+      );
+
+      setManualMaterial(null);
+      setManualLocation(null);
+      setManualQuantity("");
+
+      onImportComplete?.();
+    } catch {
+      showSnackbar("Something went wrong while saving the stock entry.", "error");
+    } finally {
+      setSavingManual(false);
+    }
+  }
+
+  // ---------------- Bulk Excel import ----------------
+  const [bulkOpen, setBulkOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -91,6 +165,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
     downloadWorkbook(
       [
         "Material Code",
+        "Location Code",
         "Short Description",
         "UoM",
         "HSN Code",
@@ -98,8 +173,8 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
         "Quantity",
       ],
       [
-        ["9000000001", "Ball Bearing 6205", "NOS", "84821010", "BE", 40],
-        ["9000000002", "", "", "", "", 25],
+        ["9000000001", "", "Ball Bearing 6205", "NOS", "84821010", "BE", 40],
+        ["9000000002", "CS/HD35 BIN B", "", "", "", "", 25],
       ],
       "ESMS_Stock_Update_Template.xlsx"
     );
@@ -172,7 +247,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
       await downloadStockUpdateImportReport(validation, result, file?.name);
 
       showSnackbar(
-        `Import complete. New: ${result.newMaterials}, Matched: ${result.matched}, Flagged for review: ${result.flagged}, Failed: ${result.failed}.`,
+        `Import complete. New: ${result.newMaterials}, Posted: ${result.posted}, Matched: ${result.matched}, Flagged for review: ${result.flagged}, Failed: ${result.failed}.`,
         result.failed > 0 ? "warning" : "success"
       );
 
@@ -201,6 +276,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
           rowNumber: row.rowNumber,
           status: "Valid" as const,
           material_code: row.material_code,
+          location_code: row.location_code,
           quantity: String(row.quantity),
           errors: [] as string[],
         })),
@@ -208,6 +284,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
           rowNumber: row.rowNumber,
           status: "Invalid" as const,
           material_code: row.material_code,
+          location_code: "",
           quantity: row.quantityRaw,
           errors: row.errors,
         })),
@@ -219,228 +296,303 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
   return (
     <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
       <Alert severity="info" sx={{ borderRadius: 2, py: 0.5 }}>
-        Upload your current physical stock count for all materials. Existing
-        stock and allocations are never overwritten automatically - materials
-        whose count differs from the system are flagged for review under
-        Stock &gt; the search screen, where you can resolve them. New
-        materials are created automatically and their quantity goes to
-        Unallocated.
+        Add stock here - for brand-new materials, materials with no stock
+        recorded yet, or a plain physical count. A Location Code is
+        optional; leave it blank to add to Unallocated, or set it to post
+        straight to that location. If a material already has stock
+        recorded and the count you enter differs from it, it's flagged for
+        review under Stock &gt; the search screen instead of being applied
+        automatically.
       </Alert>
 
+      {/* ---- Manual entry ---- */}
+      <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)" }}>
+        <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>
+            Manual Stock Entry
+          </Typography>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <MaterialSearch value={manualMaterial} onChange={setManualMaterial} />
+
+            <LocationSearch
+              value={manualLocation}
+              onChange={setManualLocation}
+              label="Search Location (optional - leave blank for Unallocated)"
+            />
+
+            <TextField
+              label="Quantity"
+              type="number"
+              size="small"
+              fullWidth
+              value={manualQuantity}
+              onChange={(e) => setManualQuantity(e.target.value)}
+              slotProps={{ htmlInput: { inputMode: "numeric" } }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
+
+            <Button
+              variant="contained"
+              fullWidth
+              startIcon={
+                savingManual ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <PlaylistAddIcon fontSize="small" />
+                )
+              }
+              onClick={handleManualSubmit}
+              disabled={savingManual}
+              sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
+            >
+              Save
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* ---- Bulk Excel import (collapsible, collapsed by default) ---- */}
       <Card
         elevation={0}
         sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)" }}
       >
-        <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>
+        <Box
+          onClick={() => setBulkOpen((prev) => !prev)}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            px: 1.5,
+            py: 1,
+            cursor: "pointer",
+          }}
+        >
+          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
             Bulk Stock Update
           </Typography>
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: "block", mb: 1 }}
-          >
-            Columns: Material Code, Quantity (required). Short Description,
-            UoM, HSN Code, Material Group are only needed for materials that
-            don't already exist in Material Master. A material may appear on
-            multiple rows - quantities are summed.
-          </Typography>
+          <ExpandMoreIcon
+            fontSize="small"
+            sx={{
+              transition: "transform 0.2s",
+              transform: bulkOpen ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
+        </Box>
 
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <Button
-              variant="outlined"
-              color="inherit"
-              fullWidth
-              startIcon={<DownloadIcon fontSize="small" />}
-              onClick={handleDownloadTemplate}
-              sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600, borderColor: "divider" }}
-            >
-              Download Stock Update Template
-            </Button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              hidden
-              onChange={handleFileChange}
-            />
-
-            <Button
-              variant="outlined"
-              fullWidth
-              startIcon={<UploadFileIcon fontSize="small" />}
-              onClick={() => fileInputRef.current?.click()}
-              sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
-            >
-              Choose Excel File
-            </Button>
-
+        <Collapse in={bulkOpen} timeout="auto" unmountOnExit>
+          <CardContent sx={{ p: 1.5, pt: 0, "&:last-child": { pb: 1.5 } }}>
             <Typography
               variant="caption"
               color="text.secondary"
-              noWrap
-              title={file ? file.name : undefined}
-              sx={{ minWidth: 0 }}
+              sx={{ display: "block", mb: 1 }}
             >
-              {file ? file.name : "No file selected"}
+              Columns: Material Code, Quantity (required). Location Code is
+              optional (defaults to Unallocated). Short Description, UoM,
+              HSN Code, Material Group are only needed for materials that
+              don't already exist in Material Master. A material may appear
+              on multiple rows - quantities are summed.
             </Typography>
 
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={
-                previewLoading ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <VisibilityIcon fontSize="small" />
-                )
-              }
-              onClick={handlePreview}
-              disabled={!file || previewLoading}
-              sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
-            >
-              Preview
-            </Button>
-
-            {validation && (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                <Chip size="small" label={`Total: ${validation.totalRecords}`} />
-                <Chip
-                  size="small"
-                  label={`Valid: ${validation.validRows.length}`}
-                  color="success"
-                />
-                <Chip
-                  size="small"
-                  label={`Invalid: ${validation.invalidRows.length}`}
-                  color="error"
-                />
-              </Box>
-            )}
-
-            {validation && previewRows.length > 0 && (
-              <TableContainer sx={{ maxHeight: 260, overflowX: "auto", borderRadius: 2 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Row</TableCell>
-                      <TableCell>Material</TableCell>
-                      <TableCell>Qty</TableCell>
-                      <TableCell>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {previewRows.map((row) => (
-                      <TableRow key={row.rowNumber}>
-                        <TableCell>{row.rowNumber}</TableCell>
-                        <TableCell>{row.material_code}</TableCell>
-                        <TableCell>{row.quantity}</TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={row.status}
-                            color={row.status === "Valid" ? "success" : "error"}
-                            title={row.errors.join(", ")}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-
-            <Button
-              variant="contained"
-              color="primary"
-              fullWidth
-              startIcon={
-                importing ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <CloudUploadIcon fontSize="small" />
-                )
-              }
-              onClick={handleImport}
-              disabled={
-                !validation || validation.validRows.length === 0 || importing
-              }
-              sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
-            >
-              Import
-            </Button>
-
-            {importing && (
-              <Box>
-                <LinearProgress
-                  variant="determinate"
-                  value={
-                    importTotal > 0
-                      ? Math.round((processed / importTotal) * 100)
-                      : 0
-                  }
-                  sx={{ height: 6, borderRadius: 3 }}
-                />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 0.25, display: "block" }}
-                >
-                  Processing {processed} / {importTotal}
-                </Typography>
-              </Box>
-            )}
-
-            {summary && (
-              <Alert
-                severity={summary.failed > 0 ? "warning" : "success"}
-                sx={{ borderRadius: 2, py: 0.25 }}
-              >
-                New Materials: {summary.newMaterials}, Matched: {summary.matched}
-                , Flagged for Review: {summary.flagged}, Failed: {summary.failed}
-              </Alert>
-            )}
-
-            {summary && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Button
-                size="small"
                 variant="outlined"
+                color="inherit"
+                fullWidth
                 startIcon={<DownloadIcon fontSize="small" />}
-                onClick={handleDownloadReport}
-                sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                onClick={handleDownloadTemplate}
+                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600, borderColor: "divider" }}
               >
-                Download Import Report
+                Download Stock Update Template
               </Button>
-            )}
 
-            {summary && summary.outcomes.some((o) => o.status === "failed") && (
-              <TableContainer sx={{ maxHeight: 220, overflowX: "auto", borderRadius: 2 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Material</TableCell>
-                      <TableCell>Row</TableCell>
-                      <TableCell>Reason</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {summary.outcomes
-                      .filter((o) => o.status === "failed")
-                      .map((outcome, index) => (
-                        <TableRow key={`${outcome.material_code}-${index}`}>
-                          <TableCell>{outcome.material_code}</TableCell>
-                          <TableCell>{outcome.rowNumber}</TableCell>
-                          <TableCell>{outcome.message}</TableCell>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                hidden
+                onChange={handleFileChange}
+              />
+
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<UploadFileIcon fontSize="small" />}
+                onClick={() => fileInputRef.current?.click()}
+                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}
+              >
+                Choose Excel File
+              </Button>
+
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                title={file ? file.name : undefined}
+                sx={{ minWidth: 0 }}
+              >
+                {file ? file.name : "No file selected"}
+              </Typography>
+
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={
+                  previewLoading ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <VisibilityIcon fontSize="small" />
+                  )
+                }
+                onClick={handlePreview}
+                disabled={!file || previewLoading}
+                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
+              >
+                Preview
+              </Button>
+
+              {validation && (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                  <Chip size="small" label={`Total: ${validation.totalRecords}`} />
+                  <Chip
+                    size="small"
+                    label={`Valid: ${validation.validRows.length}`}
+                    color="success"
+                  />
+                  <Chip
+                    size="small"
+                    label={`Invalid: ${validation.invalidRows.length}`}
+                    color="error"
+                  />
+                </Box>
+              )}
+
+              {validation && previewRows.length > 0 && (
+                <TableContainer sx={{ maxHeight: 260, overflowX: "auto", borderRadius: 2 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Row</TableCell>
+                        <TableCell>Material</TableCell>
+                        <TableCell>Location</TableCell>
+                        <TableCell>Qty</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {previewRows.map((row) => (
+                        <TableRow key={row.rowNumber}>
+                          <TableCell>{row.rowNumber}</TableCell>
+                          <TableCell>{row.material_code}</TableCell>
+                          <TableCell>{row.location_code || "Unallocated"}</TableCell>
+                          <TableCell>{row.quantity}</TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={row.status}
+                              color={row.status === "Valid" ? "success" : "error"}
+                              title={row.errors.join(", ")}
+                            />
+                          </TableCell>
                         </TableRow>
                       ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Box>
-        </CardContent>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                startIcon={
+                  importing ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <CloudUploadIcon fontSize="small" />
+                  )
+                }
+                onClick={handleImport}
+                disabled={
+                  !validation || validation.validRows.length === 0 || importing
+                }
+                sx={{ minHeight: 42, borderRadius: 2, fontWeight: 700 }}
+              >
+                Import
+              </Button>
+
+              {importing && (
+                <Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={
+                      importTotal > 0
+                        ? Math.round((processed / importTotal) * 100)
+                        : 0
+                    }
+                    sx={{ height: 6, borderRadius: 3 }}
+                  />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 0.25, display: "block" }}
+                  >
+                    Processing {processed} / {importTotal}
+                  </Typography>
+                </Box>
+              )}
+
+              {summary && (
+                <Alert
+                  severity={summary.failed > 0 ? "warning" : "success"}
+                  sx={{ borderRadius: 2, py: 0.25 }}
+                >
+                  New Materials: {summary.newMaterials}, Posted: {summary.posted}
+                  , Matched: {summary.matched}, Flagged for Review:{" "}
+                  {summary.flagged}, Failed: {summary.failed}
+                </Alert>
+              )}
+
+              {summary && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<DownloadIcon fontSize="small" />}
+                  onClick={handleDownloadReport}
+                  sx={{ borderRadius: 2, fontWeight: 600, alignSelf: "flex-start" }}
+                >
+                  Download Import Report
+                </Button>
+              )}
+
+              {summary && summary.outcomes.some((o) => o.status === "failed") && (
+                <TableContainer sx={{ maxHeight: 220, overflowX: "auto", borderRadius: 2 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Material</TableCell>
+                        <TableCell>Row</TableCell>
+                        <TableCell>Reason</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {summary.outcomes
+                        .filter((o) => o.status === "failed")
+                        .map((outcome, index) => (
+                          <TableRow key={`${outcome.material_code}-${index}`}>
+                            <TableCell>{outcome.material_code}</TableCell>
+                            <TableCell>{outcome.rowNumber}</TableCell>
+                            <TableCell>{outcome.message}</TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Box>
+          </CardContent>
+        </Collapse>
       </Card>
 
       <Snackbar
