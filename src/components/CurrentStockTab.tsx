@@ -11,6 +11,7 @@ import {
   Collapse,
   IconButton,
   InputAdornment,
+  MenuItem,
   Snackbar,
   TextField,
   Typography,
@@ -29,6 +30,7 @@ import {
   type InventoryOverviewRow,
   type InventorySearchResult,
 } from "../services/inventoryOverviewService";
+import { DEFAULT_PAGE_SIZE_OPTIONS } from "../constants/pagination";
 import type { InventoryTransactionType } from "../services/inventoryTransactionService";
 import { getAllocations } from "../services/materialAllocationService";
 import {
@@ -226,6 +228,10 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
     []
   );
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [loadingMoreRecent, setLoadingMoreRecent] = useState(false);
+  const [recentCursor, setRecentCursor] = useState<string | null>(null);
+  const [recentHasMore, setRecentHasMore] = useState(false);
+  const [recentPageSize, setRecentPageSize] = useState(25);
 
   const [pendingRows, setPendingRows] = useState<PendingRow[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
@@ -267,25 +273,50 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
     }
   }, []);
 
+  // Reloads from the most recent activity whenever the batch size changes,
+  // resetting the cursor/accumulated list rather than appending to it.
   useEffect(() => {
     let cancelled = false;
     setLoadingRecent(true);
 
-    getRecentActivity()
-      .then((data) => {
-        if (!cancelled) setRecentActivity(data);
+    getRecentActivity(recentPageSize, null, [])
+      .then((page) => {
+        if (!cancelled) {
+          setRecentActivity(page.rows);
+          setRecentCursor(page.nextCursor);
+          setRecentHasMore(page.hasMore);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingRecent(false);
       });
 
-    loadPending();
-
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [recentPageSize]);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
+
+  async function handleLoadMoreRecent() {
+    setLoadingMoreRecent(true);
+
+    try {
+      const page = await getRecentActivity(
+        recentPageSize,
+        recentCursor,
+        recentActivity.map((row) => row.material_code)
+      );
+
+      setRecentActivity((prev) => [...prev, ...page.rows]);
+      setRecentCursor(page.nextCursor);
+      setRecentHasMore(page.hasMore);
+    } finally {
+      setLoadingMoreRecent(false);
+    }
+  }
 
   useEffect(() => {
     const trimmed = search.trim();
@@ -502,11 +533,36 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
         )
       ) : (
         <>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
-            <HistoryIcon fontSize="small" color="action" />
-            <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
-              Recent Activity
-            </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 0.75,
+              mb: 1,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <HistoryIcon fontSize="small" color="action" />
+              <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
+                Recent Activity
+              </Typography>
+            </Box>
+
+            <TextField
+              select
+              size="small"
+              value={recentPageSize}
+              onChange={(e) => setRecentPageSize(Number(e.target.value))}
+              label="Per page"
+              sx={{ width: 100, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            >
+              {DEFAULT_PAGE_SIZE_OPTIONS.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
           </Box>
 
           {loadingRecent ? (
@@ -606,6 +662,21 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
                   </Card>
                 );
               })}
+            </Box>
+          )}
+
+          {!loadingRecent && recentActivity.length > 0 && recentHasMore && (
+            <Box sx={{ display: "flex", justifyContent: "center", mt: 1.5 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleLoadMoreRecent}
+                disabled={loadingMoreRecent}
+                startIcon={loadingMoreRecent ? <CircularProgress size={16} /> : undefined}
+                sx={{ borderRadius: 2, fontWeight: 600 }}
+              >
+                Load More
+              </Button>
             </Box>
           )}
         </>

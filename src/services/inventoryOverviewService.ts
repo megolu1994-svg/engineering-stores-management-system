@@ -91,46 +91,99 @@ async function getMaterialInfoMap(
   return map;
 }
 
+export interface RecentActivityPage {
+  rows: InventoryOverviewRow[];
+  /** Pass back in as `cursor` to fetch the next page. Null once there is
+   * nothing older left to scan. */
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+type TransactionRow = {
+  material_code: string;
+  transaction_type: InventoryTransactionType;
+  location_code: string;
+  movement: "IN" | "OUT";
+  reference_number: string | null;
+  created_at: string;
+};
+
 /**
- * The latest 20-50 materials that have had an inventory transaction
+ * One page of the materials that have had an inventory transaction
  * (Opening Stock, Material Receipt, Allocation, Transfer, Adjustment,
- * Material Issue), most recent first. Reads directly from
+ * Material Issue), most recently active first. Reads directly from
  * inventory_transactions - never loads material_master or
  * material_allocation in bulk.
+ *
+ * Because a material's "latest activity" only exists once it's been
+ * de-duplicated from the raw transaction ledger, this can't be paged with
+ * a plain `.range()` offset (a fixed-size window can't guarantee it lands
+ * on `limit` distinct materials). Instead it walks the ledger backwards in
+ * time from `cursor`, skipping any material already listed on an earlier
+ * page (`excludeMaterialCodes`), until it collects `limit` new materials or
+ * runs out of history - returning a `nextCursor` the caller can pass back
+ * in for a "Load more" page instead of the list quietly stopping.
  */
-export async function getRecentActivity(): Promise<InventoryOverviewRow[]> {
-  const { data, error } = await supabase
-    .from("inventory_transactions")
-    .select(
-      "material_code, transaction_type, location_code, movement, reference_number, created_at"
-    )
-    .order("created_at", { ascending: false })
-    .limit(RECENT_TRANSACTIONS_FETCH);
+export async function getRecentActivity(
+  limit: number = RECENT_ACTIVITY_LIMIT,
+  cursor: string | null = null,
+  excludeMaterialCodes: string[] = []
+): Promise<RecentActivityPage> {
+  const excluded = new Set(excludeMaterialCodes);
+  const latestByMaterial = new Map<string, TransactionRow>();
 
-  if (error) {
-    console.error(error);
-    return [];
-  }
+  let nextCursor = cursor;
+  let hasMore = true;
+  let iterations = 0;
 
-  const rows = (data ?? []) as {
-    material_code: string;
-    transaction_type: InventoryTransactionType;
-    location_code: string;
-    movement: "IN" | "OUT";
-    reference_number: string | null;
-    created_at: string;
-  }[];
+  // Safety cap: each iteration scans RECENT_TRANSACTIONS_FETCH more rows of
+  // history, so this bounds worst-case work for a page that happens to hit
+  // a long run of already-seen materials.
+  while (latestByMaterial.size < limit && hasMore && iterations < 20) {
+    iterations += 1;
 
-  const latestByMaterial = new Map<string, (typeof rows)[number]>();
+    let query = supabase
+      .from("inventory_transactions")
+      .select(
+        "material_code, transaction_type, location_code, movement, reference_number, created_at"
+      )
+      .order("created_at", { ascending: false })
+      .limit(RECENT_TRANSACTIONS_FETCH);
 
-  for (const row of rows) {
-    if (!latestByMaterial.has(row.material_code)) {
-      latestByMaterial.set(row.material_code, row);
+    if (nextCursor) {
+      query = query.lt("created_at", nextCursor);
     }
 
-    if (latestByMaterial.size >= RECENT_ACTIVITY_LIMIT) {
+    const { data, error } = await query;
+
+    if (error) {
+      console.error(error);
+      hasMore = false;
       break;
     }
+
+    const rows = (data ?? []) as TransactionRow[];
+
+    if (rows.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    for (const row of rows) {
+      nextCursor = row.created_at;
+
+      if (excluded.has(row.material_code) || latestByMaterial.has(row.material_code)) {
+        continue;
+      }
+
+      latestByMaterial.set(row.material_code, row);
+
+      if (latestByMaterial.size >= limit) {
+        break;
+      }
+    }
+
+    hasMore = rows.length === RECENT_TRANSACTIONS_FETCH;
   }
 
   const materialCodes = Array.from(latestByMaterial.keys());
@@ -180,7 +233,7 @@ export async function getRecentActivity(): Promise<InventoryOverviewRow[]> {
     getCurrentStockForMaterials(materialCodes),
   ]);
 
-  return materialCodes.map((code) => {
+  const rows = materialCodes.map((code) => {
     const last = latestByMaterial.get(code)!;
     const info = infoMap.get(code);
 
@@ -210,6 +263,8 @@ export async function getRecentActivity(): Promise<InventoryOverviewRow[]> {
       locationDisplay,
     };
   });
+
+  return { rows, nextCursor, hasMore };
 }
 
 export interface InventorySearchResult {

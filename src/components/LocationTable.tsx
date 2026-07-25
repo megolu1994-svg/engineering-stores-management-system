@@ -25,16 +25,27 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
+import PaginationControls from "./PaginationControls";
 import type { Location } from "../types/location";
 
 interface Props {
   locations: Location[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   onEdit: (location: Location) => void;
   onDelete: (location: Location) => void;
 }
 
 export default function LocationTable({
   locations,
+  totalCount,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
   onEdit,
   onDelete,
 }: Props) {
@@ -241,6 +252,15 @@ export default function LocationTable({
           </Card>
         ))}
       </Stack>
+
+      <PaginationControls
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        itemLabel="locations"
+      />
 
       {viewDialog}
     </>

@@ -43,6 +43,7 @@ import {
   addLocation,
   deleteLocation,
   searchLocations,
+  getLocationsCount,
   updateLocation,
   parseLocationExcelRows,
   bulkImportLocations,
@@ -56,8 +57,7 @@ import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 import { usePersistentState, clearPersistedDraft } from "../hooks/usePersistentState";
 
 const SEARCH_DEBOUNCE_MS = 300;
-const BROWSE_PAGE_SIZE = 50;
-const SEARCH_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 25;
 const MIN_SEARCH_LENGTH = 2;
 const IMPORT_BATCH_SIZE = 500;
 const PREVIEW_ROW_LIMIT = 20;
@@ -96,6 +96,9 @@ export default function LocationMaster() {
   const mobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [locations, setLocations] = useState<Location[]>([]);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [totalCount, setTotalCount] = useState(0);
 
   const [search, setSearch] = useState("");
 
@@ -236,7 +239,7 @@ export default function LocationMaster() {
       );
       setSnackbarOpen(true);
 
-      await loadCurrentView(search);
+      await loadCurrentView(search, page, pageSize);
     } catch {
       setSnackbarSeverity("error");
       setSnackbarMessage("Import failed unexpectedly.");
@@ -291,43 +294,57 @@ export default function LocationMaster() {
     return "error";
   }
 
-  // Loads whatever is currently "in view": either the first browse page
-  // (no search text) or the current search results (>= 2 characters).
-  // This never loads the entire location_master table into memory.
-  const loadCurrentView = useCallback(async (query: string) => {
-    const trimmed = query.trim();
+  // Loads whatever is currently "in view": either the current browse page
+  // (no search text) or the current search results page (>= 2 characters),
+  // paginated via `.range()` so it never loads the entire location_master
+  // table into memory, while still letting the user page through every row.
+  const loadCurrentView = useCallback(
+    async (query: string, page: number, pageSize: number) => {
+      const trimmed = query.trim();
 
-    // Below the minimum search length, keep whatever is currently shown
-    // rather than firing an unnecessary request (avoids a query per
-    // keystroke for 0-1 character input).
-    if (trimmed.length > 0 && trimmed.length < MIN_SEARCH_LENGTH) {
-      return;
-    }
+      // Below the minimum search length, keep whatever is currently shown
+      // rather than firing an unnecessary request (avoids a query per
+      // keystroke for 0-1 character input).
+      if (trimmed.length > 0 && trimmed.length < MIN_SEARCH_LENGTH) {
+        return;
+      }
 
-    const currentRequestId = ++requestId.current;
+      const currentRequestId = ++requestId.current;
 
-    const pageSize = trimmed ? SEARCH_PAGE_SIZE : BROWSE_PAGE_SIZE;
+      const [data, count] = await Promise.all([
+        searchLocations(query, page, pageSize),
+        getLocationsCount(query),
+      ]);
 
-    const data = await searchLocations(query, 0, pageSize);
+      if (currentRequestId === requestId.current) {
+        setLocations(data);
+        setTotalCount(count);
+      }
+    },
+    []
+  );
 
-    if (currentRequestId === requestId.current) {
-      setLocations(data);
-    }
-  }, []);
+  // Debounce only the search text - page/page-size changes should feel instant.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Initial browse page on mount.
   useEffect(() => {
-    loadCurrentView("");
-  }, [loadCurrentView]);
-
-  // Debounced server-side search as the user types.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadCurrentView(search);
-    }, SEARCH_DEBOUNCE_MS);
-
+    const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [search, loadCurrentView]);
+  }, [search]);
+
+  useEffect(() => {
+    loadCurrentView(debouncedSearch, page, pageSize);
+  }, [debouncedSearch, page, pageSize, loadCurrentView]);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    setPage(0);
+  }
+
+  function handlePageSizeChange(newPageSize: number) {
+    setPageSize(newPageSize);
+    setPage(0);
+  }
 
   const handleSave = useCallback(
     async (location: Location): Promise<boolean> => {
@@ -346,7 +363,7 @@ export default function LocationMaster() {
 
         // Refresh only the current (small) view instead of reloading the
         // entire location_master table.
-        await loadCurrentView(search);
+        await loadCurrentView(search, page, pageSize);
 
         setShowForm(false);
         setSelectedLocation(null);
@@ -361,7 +378,7 @@ export default function LocationMaster() {
         return false;
       }
     },
-    [selectedLocation, search, loadCurrentView]
+    [selectedLocation, search, page, pageSize, loadCurrentView]
   );
 
   function handleAdd() {
@@ -389,7 +406,7 @@ export default function LocationMaster() {
 
       // Refresh only the current (small) view instead of reloading the
       // entire location_master table.
-      await loadCurrentView(search);
+      await loadCurrentView(search, page, pageSize);
 
       setSnackbarSeverity("success");
       setSnackbarMessage("Location deleted successfully.");
@@ -400,7 +417,7 @@ export default function LocationMaster() {
 
     setDeleteLocationData(null);
     setSnackbarOpen(true);
-  }, [deleteLocationData, search, loadCurrentView]);
+  }, [deleteLocationData, search, page, pageSize, loadCurrentView]);
 
   return (
     <Box>
@@ -430,7 +447,7 @@ export default function LocationMaster() {
           label="Search Location"
           placeholder="Search by Code or Description"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           fullWidth
           sx={{ width: "100%", flex: { sm: 1 }, maxWidth: { sm: 350 } }}
         />
@@ -681,6 +698,11 @@ export default function LocationMaster() {
 
       <LocationTable
         locations={locations}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
         onEdit={handleEdit}
         onDelete={(location) =>
           setDeleteLocationData(location)
