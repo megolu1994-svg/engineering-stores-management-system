@@ -213,10 +213,15 @@ export default function Dashboard() {
   const headerSlotEl = useHeaderSlot();
 
   const [activeTab, setActiveTab] = useState(0);
-  const { direction } = useSwipeTabs(activeTab, setActiveTab, 2);
   const [searchTerm, setSearchTerm] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<DashboardSearchResult[]>([]);
+
+  // The tab strip (and the "swipe right past the first tab opens the
+  // drawer" handoff) is only shown/meaningful outside search mode - see
+  // `isSearchMode` below, which replaces it with a plain results list.
+  const isSearchMode = searchTerm.trim().length >= MIN_SEARCH_LENGTH;
+  const { direction } = useSwipeTabs(activeTab, setActiveTab, 2, !isSearchMode);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -504,8 +509,6 @@ export default function Dashboard() {
       clearTimeout(timer);
     };
   }, [searchTerm]);
-
-  const isSearchMode = searchTerm.trim().length >= MIN_SEARCH_LENGTH;
 
   // Opens the Material Details view for a search result, reusing the same
   // AllocationSummary / AllocationTable components and services as the
