@@ -22,7 +22,11 @@
 --    depend on it happen together - running only part of it will leave
 --    tables either without RLS or with rows RLS can't match to anyone.
 -- 5. Back up your database first (Database > Backups) since this changes
---    primary keys on material_master and location_master.
+--    primary keys on material_master and location_master, and drops (via
+--    CASCADE) any foreign key that still points at those primary keys -
+--    including from tables the current app code no longer queries. Check
+--    the "Messages"/output panel for "Dropping constraint ..." notices
+--    after running, so you know exactly what was removed.
 -- ============================================================================
 
 begin;
@@ -59,7 +63,13 @@ begin
         join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
       ) = _sorted_cols
   loop
-    execute format('alter table %s drop constraint %I', _table, _con.conname);
+    -- CASCADE: some tables that predate this app's current codebase may
+    -- still hold a foreign key pointing at this constraint (e.g. a legacy
+    -- table no longer queried anywhere in the app). Dropping the FK along
+    -- with it does not delete any data - it only removes that referential
+    -- integrity link, which the app was not relying on anyway.
+    raise notice 'Dropping constraint % on % (and anything that depends on it)', _con.conname, _table;
+    execute format('alter table %s drop constraint %I cascade', _table, _con.conname);
     _found := true;
   end loop;
 
