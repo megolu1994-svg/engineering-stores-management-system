@@ -340,6 +340,15 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
   const isSearchMode = search.trim().length >= 2;
   const pendingByMaterial = new Map(pendingRows.map((p) => [p.material_code, p]));
 
+  // Removes just the resolved row from the in-memory list rather than
+  // re-running loadPending(), which would flip loadingPending back to true
+  // and briefly unmount the whole reconciliation panel (the section is
+  // gated on `!loadingPending`) - that unmount was what made applying a
+  // single item look like the entire screen had refreshed.
+  function removePendingRow(materialCode: string) {
+    setPendingRows((prev) => prev.filter((r) => r.material_code !== materialCode));
+  }
+
   async function handleApply(row: PendingRow) {
     setBusyMaterial(row.material_code);
 
@@ -351,7 +360,7 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
       }
 
       showSnackbar(`Stock reconciled for ${row.material_code}.`, "success");
-      await loadPending();
+      removePendingRow(row.material_code);
     } catch (err) {
       showSnackbar(
         err instanceof Error ? err.message : "Something went wrong.",
@@ -368,7 +377,7 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
     try {
       await dismissPendingStockUpdate(row.material_code);
       showSnackbar(`Dismissed for ${row.material_code}.`, "info");
-      await loadPending();
+      removePendingRow(row.material_code);
     } catch {
       showSnackbar("Failed to dismiss.", "error");
     } finally {
@@ -376,11 +385,11 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
     }
   }
 
-  async function handleReconciled() {
+  function handleReconciled() {
     if (!reconcileTarget) return;
     showSnackbar(`Stock reconciled for ${reconcileTarget.material_code}.`, "success");
+    removePendingRow(reconcileTarget.material_code);
     setReconcileTarget(null);
-    await loadPending();
   }
 
   return (
