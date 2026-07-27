@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   Alert,
@@ -32,6 +32,7 @@ import { useNavigate } from "react-router-dom";
 
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 import { useAuth } from "../contexts/AuthContext";
+import { useBranding } from "../contexts/BrandingContext";
 
 const APP_VERSION = "1.0.0";
 const DEVELOPER_NAME = "ESMS Engineering Team";
@@ -64,19 +65,18 @@ function SectionCard({
   );
 }
 
-/**
- * Settings is UI-only for now: nothing here is persisted to the
- * database. Values reset on refresh - a future pass can wire this up to
- * a settings table once one exists.
- */
 export default function Settings() {
   useSwipeOpenDrawer();
 
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const branding = useBranding();
 
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarSeverity, setSnackbarSeverity] = useState<"info" | "success" | "error">("info");
   const [signingOut, setSigningOut] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -84,10 +84,20 @@ export default function Settings() {
     navigate("/login", { replace: true });
   }
 
-  // Application
+  // Application - header branding, persisted per account (see
+  // BrandingContext). Local state mirrors the context so the fields are
+  // editable, and is re-synced whenever the account's saved values load.
   const [companyName, setCompanyName] = useState("");
   const [warehouseName, setWarehouseName] = useState("");
+  const [logoLetter, setLogoLetter] = useState("");
   const [theme, setTheme] = useState("light");
+
+  useEffect(() => {
+    if (branding.loading) return;
+    setCompanyName(branding.companyName);
+    setWarehouseName(branding.warehouseName);
+    setLogoLetter(branding.logoLetter);
+  }, [branding.loading, branding.companyName, branding.warehouseName, branding.logoLetter]);
 
   // Inventory
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
@@ -98,8 +108,20 @@ export default function Settings() {
   const [autoDrcNumber, setAutoDrcNumber] = useState(true);
   const [autoIssueNumber, setAutoIssueNumber] = useState(true);
 
-  function handleSave() {
-    setSnackbarOpen(true);
+  async function handleSave() {
+    setSaving(true);
+
+    try {
+      await branding.updateBranding({ companyName, warehouseName, logoLetter });
+      setSnackbarSeverity("success");
+      setSnackbarMessage("Header branding saved.");
+    } catch {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Could not save header branding. Please try again.");
+    } finally {
+      setSaving(false);
+      setSnackbarOpen(true);
+    }
   }
 
   return (
@@ -117,8 +139,9 @@ export default function Settings() {
       </Typography>
 
       <Alert severity="info" sx={{ mb: 2.5, borderRadius: 2 }}>
-        These settings are for reference only in this release - they are not
-        yet saved to the database.
+        Company Name, Warehouse Name and Logo Letter are saved to your
+        account and shown in the header. Other settings below are for
+        reference only in this release and are not yet saved.
       </Alert>
 
       {/* ---- Account ---- */}
@@ -173,6 +196,17 @@ export default function Settings() {
               size="small"
               value={warehouseName}
               onChange={(e) => setWarehouseName(e.target.value)}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              label="Logo Letter"
+              fullWidth
+              size="small"
+              value={logoLetter}
+              onChange={(e) => setLogoLetter(e.target.value.slice(0, 2))}
+              helperText="Shown in the circular logo next to Warehouse Name (up to 2 characters)."
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             />
           </Grid>
@@ -337,9 +371,10 @@ export default function Settings() {
         variant="contained"
         size="large"
         onClick={handleSave}
+        disabled={saving}
         sx={{ minHeight: 52, borderRadius: 2.5, fontWeight: 700, width: { xs: "100%", sm: "auto" } }}
       >
-        Save Settings
+        {saving ? "Saving..." : "Save Settings"}
       </Button>
 
       <Snackbar
@@ -348,8 +383,8 @@ export default function Settings() {
         onClose={() => setSnackbarOpen(false)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert severity="info" variant="filled" onClose={() => setSnackbarOpen(false)}>
-          Settings are UI-only in this release and are not saved yet.
+        <Alert severity={snackbarSeverity} variant="filled" onClose={() => setSnackbarOpen(false)}>
+          {snackbarMessage}
         </Alert>
       </Snackbar>
     </Box>

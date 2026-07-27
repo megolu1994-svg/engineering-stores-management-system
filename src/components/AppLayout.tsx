@@ -44,6 +44,7 @@ import {
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 import { useInventoryNotifications } from "../hooks/useInventoryNotifications";
+import { useBranding } from "../contexts/BrandingContext";
 
 // Desktop permanent sidebar width only - the mobile temporary drawer is
 // untouched and keeps its own (wider) width below, since the mobile UI
@@ -112,6 +113,12 @@ const TOOLBAR_HEIGHT = { xs: 48, sm: 52, md: 76 };
 // one straight seam instead of two independently-sized purple regions.
 const DESKTOP_HEADER_HEIGHT = TOOLBAR_HEIGHT.md;
 
+// Extra strip reserved above the main toolbar row for the account's Company
+// Name (see BrandingContext). Zero when the account hasn't set one, so a
+// brand-new signup gets exactly today's header height with a clean purple
+// bar and no reserved blank space.
+const COMPANY_BAR_HEIGHT = 22;
+
 // Lets a page (currently just Dashboard) render its search field into the
 // desktop header's toolbar, next to the brand logo, instead of in its own
 // page content - purely a portal target, so the page keeps full ownership
@@ -130,7 +137,7 @@ export function useHeaderSlot() {
 export const BOTTOM_NAV_HEIGHT = 56;
 export const BOTTOM_NAV_OFFSET = `calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom))`;
 
-function BrandLogo({ size = 32 }: { size?: number }) {
+function BrandLogo({ letter, size = 32 }: { letter: string; size?: number }) {
   return (
     <Avatar
       sx={{
@@ -139,10 +146,10 @@ function BrandLogo({ size = 32 }: { size?: number }) {
         bgcolor: "#FFFFFF",
         color: BRAND_PURPLE,
         fontWeight: 900,
-        fontSize: size * 0.55,
+        fontSize: size * 0.5,
       }}
     >
-      D
+      {letter.toUpperCase()}
     </Avatar>
   );
 }
@@ -155,6 +162,20 @@ export default function AppLayout() {
   const theme = useTheme();
 
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
+
+  const { companyName, warehouseName, logoLetter } = useBranding();
+
+  // Reserved only when the account has set a Company Name, so accounts that
+  // haven't configured branding yet see exactly the original header height.
+  const companyBarHeight = companyName ? COMPANY_BAR_HEIGHT : 0;
+
+  const desktopHeaderHeight = DESKTOP_HEADER_HEIGHT + companyBarHeight;
+
+  const contentSpacerHeight = {
+    xs: TOOLBAR_HEIGHT.xs + companyBarHeight,
+    sm: TOOLBAR_HEIGHT.sm + companyBarHeight,
+    md: TOOLBAR_HEIGHT.md + companyBarHeight,
+  };
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -267,18 +288,31 @@ export default function AppLayout() {
           minHeight: 120,
           bgcolor: BRAND_PURPLE,
           display: "flex",
-          alignItems: "center",
-          gap: { xs: 1.25, md: 1 },
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: 0.75,
           px: { xs: 3, md: 2 },
         }}
       >
-        <BrandLogo size={40} />
-        <Typography
-          noWrap
-          sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: { xs: "1rem", md: "0.9rem" } }}
-        >
-          DUMAD STORE
-        </Typography>
+        {companyName && (
+          <Typography
+            noWrap
+            sx={{ color: "#FFFFFF", fontWeight: 700, fontSize: "0.7rem", letterSpacing: 0.6, textTransform: "uppercase" }}
+          >
+            {companyName}
+          </Typography>
+        )}
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.25, md: 1 } }}>
+          {logoLetter && <BrandLogo letter={logoLetter} size={40} />}
+          {warehouseName && (
+            <Typography
+              noWrap
+              sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: { xs: "1rem", md: "0.9rem" } }}
+            >
+              {warehouseName}
+            </Typography>
+          )}
+        </Box>
       </Box>
 
       {menuList}
@@ -316,6 +350,36 @@ export default function AppLayout() {
           }}
         >
 
+          {/* Reserved company-name strip above the main toolbar row - collapses
+              to zero height when the account hasn't set a Company Name (see
+              `companyBarHeight`), so an unconfigured account's header is
+              indistinguishable from before this feature existed. */}
+          <Box
+            sx={{
+              height: companyBarHeight,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {companyName && (
+              <Typography
+                noWrap
+                sx={{
+                  color: "#FFFFFF",
+                  fontWeight: 700,
+                  fontSize: { xs: "0.65rem", md: "0.75rem" },
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  px: 2,
+                }}
+              >
+                {companyName}
+              </Typography>
+            )}
+          </Box>
+
           <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT, position: "relative", px: { md: 3 } }}>
 
             {mobile && (
@@ -334,7 +398,9 @@ export default function AppLayout() {
             )}
 
             {/* Mobile only: centered brand, unchanged - desktop shows its
-                own left-aligned brand block instead (see below). */}
+                own left-aligned brand block instead (see below). Company
+                name is not repeated here - it already has its own strip
+                above the toolbar. */}
             {mobile && (
               <Box
                 sx={{
@@ -348,13 +414,15 @@ export default function AppLayout() {
                   pointerEvents: "none",
                 }}
               >
-                <BrandLogo size={26} />
-                <Typography
-                  sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
-                  noWrap
-                >
-                  DUMAD STORE
-                </Typography>
+                {logoLetter && <BrandLogo letter={logoLetter} size={26} />}
+                {warehouseName && (
+                  <Typography
+                    sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5 }}
+                    noWrap
+                  >
+                    {warehouseName}
+                  </Typography>
+                )}
               </Box>
             )}
 
@@ -371,13 +439,15 @@ export default function AppLayout() {
                   flexShrink: 0,
                 }}
               >
-                <BrandLogo size={32} />
-                <Typography
-                  noWrap
-                  sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: "0.9rem" }}
-                >
-                  DUMAD STORE
-                </Typography>
+                {logoLetter && <BrandLogo letter={logoLetter} size={32} />}
+                {warehouseName && (
+                  <Typography
+                    noWrap
+                    sx={{ color: "#FFFFFF", fontWeight: 800, letterSpacing: 0.5, fontSize: "0.9rem" }}
+                  >
+                    {warehouseName}
+                  </Typography>
+                )}
               </Box>
             )}
 
@@ -520,8 +590,8 @@ export default function AppLayout() {
               width: drawerWidth,
               boxSizing: "border-box",
               border: "none",
-              top: DESKTOP_HEADER_HEIGHT,
-              height: `calc(100% - ${DESKTOP_HEADER_HEIGHT}px)`,
+              top: desktopHeaderHeight,
+              height: `calc(100% - ${desktopHeaderHeight}px)`,
             },
           }}
         >
@@ -578,7 +648,7 @@ export default function AppLayout() {
         }}
       >
 
-        <Toolbar variant="dense" sx={{ minHeight: TOOLBAR_HEIGHT }} />
+        <Toolbar variant="dense" sx={{ minHeight: contentSpacerHeight }} />
 
         <Outlet />
 
