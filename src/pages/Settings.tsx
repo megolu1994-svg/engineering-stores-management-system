@@ -25,8 +25,13 @@ import InfoIcon from "@mui/icons-material/Info";
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import LogoutIcon from "@mui/icons-material/Logout";
+
+import { useNavigate } from "react-router-dom";
 
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
+import { useAuth } from "../contexts/AuthContext";
 
 const APP_VERSION = "1.0.0";
 const DEVELOPER_NAME = "ESMS Engineering Team";
@@ -67,7 +72,17 @@ function SectionCard({
 export default function Settings() {
   useSwipeOpenDrawer();
 
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut();
+    navigate("/login", { replace: true });
+  }
 
   // Application
   const [companyName, setCompanyName] = useState("");
@@ -105,6 +120,38 @@ export default function Settings() {
         These settings are for reference only in this release - they are not
         yet saved to the database.
       </Alert>
+
+      {/* ---- Account ---- */}
+      <SectionCard icon={<AccountCircleIcon color="primary" />} title="Account">
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            alignItems: { sm: "center" },
+            justifyContent: "space-between",
+            gap: 1.5,
+          }}
+        >
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              Signed in as
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+              {user?.email}
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<LogoutIcon />}
+            onClick={handleSignOut}
+            disabled={signingOut}
+            sx={{ borderRadius: 2.5, fontWeight: 600 }}
+          >
+            Sign Out
+          </Button>
+        </Box>
+      </SectionCard>
 
       {/* ---- Application ---- */}
       <SectionCard icon={<BusinessIcon color="primary" />} title="Application">

@@ -854,7 +854,7 @@ export async function bulkApplyStockUpdate(
 
     const { error } = await supabase
       .from("pending_stock_updates")
-      .upsert(payload, { onConflict: "material_code" });
+      .upsert(payload, { onConflict: "user_id,material_code" });
 
     if (!error) return;
 
@@ -879,7 +879,7 @@ export async function bulkApplyStockUpdate(
               batch_file_name: fileName ?? null,
               uploaded_at: uploadedAt,
             },
-            { onConflict: "material_code" }
+            { onConflict: "user_id,material_code" }
           );
 
         if (rowError) throw rowError;
