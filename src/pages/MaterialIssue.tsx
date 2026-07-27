@@ -62,12 +62,6 @@ interface MaterialRowState {
   loadingStock: boolean;
 }
 
-// Material Issue is on hold while stock reconciliation (Bulk Stock Update)
-// takes over as the primary way stock quantities are corrected. Flip this
-// back to false to resume normal issuing - no other code path depends on
-// it being true.
-const MATERIAL_ISSUE_ON_HOLD = true;
-
 function makeKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -278,20 +272,8 @@ export default function MaterialIssue() {
   const summary = summarizeIssue(materialInputs);
 
   async function handleSave() {
-    if (MATERIAL_ISSUE_ON_HOLD) {
-      showSnackbar("Material Issue is temporarily on hold.", "warning");
-      return;
-    }
     if (!header.department.trim()) {
       showSnackbar("Please enter a Department.", "warning");
-      return;
-    }
-    if (!header.issued_by.trim()) {
-      showSnackbar("Please enter Issued By.", "warning");
-      return;
-    }
-    if (!header.received_by.trim()) {
-      showSnackbar("Please enter Received By.", "warning");
       return;
     }
 
@@ -329,25 +311,13 @@ export default function MaterialIssue() {
         Material Issue
       </Typography>
 
-      {MATERIAL_ISSUE_ON_HOLD && (
-        <Alert severity="warning" sx={{ borderRadius: 2, mb: 1.5 }}>
-          Material Issue is temporarily on hold. Stock is being reconciled via
-          Bulk Stock Update instead - this form is view-only for now.
-        </Alert>
-      )}
-
       <Box
         sx={{
           display: "flex",
           flexDirection: "column",
           gap: 1.5,
           pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
-          ...(MATERIAL_ISSUE_ON_HOLD && {
-            opacity: 0.55,
-            pointerEvents: "none",
-          }),
         }}
-        aria-disabled={MATERIAL_ISSUE_ON_HOLD}
       >
         {/* ---- Issue Header ---- */}
         <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}>
@@ -373,25 +343,15 @@ export default function MaterialIssue() {
                 ))}
               </TextField>
 
-              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                <TextField
-                  label="Department"
-                  size="small"
-                  fullWidth
-                  required
-                  value={header.department}
-                  onChange={(e) => updateHeader("department", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-                <TextField
-                  label="User / Section"
-                  size="small"
-                  fullWidth
-                  value={header.user_section}
-                  onChange={(e) => updateHeader("user_section", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-              </Box>
+              <TextField
+                label="Department"
+                size="small"
+                fullWidth
+                required
+                value={header.department}
+                onChange={(e) => updateHeader("department", e.target.value)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
 
               <TextField
                 label="SAP Reservation Number"
@@ -401,46 +361,6 @@ export default function MaterialIssue() {
                 onChange={(e) => updateHeader("sap_reservation_number", e.target.value)}
                 sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               />
-
-              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                <TextField
-                  label="Work Order / Notification"
-                  size="small"
-                  fullWidth
-                  value={header.work_order_number}
-                  onChange={(e) => updateHeader("work_order_number", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-                <TextField
-                  label="Cost Center"
-                  size="small"
-                  fullWidth
-                  value={header.cost_center}
-                  onChange={(e) => updateHeader("cost_center", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-              </Box>
-
-              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
-                <TextField
-                  label="Issued By"
-                  size="small"
-                  fullWidth
-                  required
-                  value={header.issued_by}
-                  onChange={(e) => updateHeader("issued_by", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-                <TextField
-                  label="Received By"
-                  size="small"
-                  fullWidth
-                  required
-                  value={header.received_by}
-                  onChange={(e) => updateHeader("received_by", e.target.value)}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                />
-              </Box>
 
               <TextField
                 label="Remarks"
@@ -710,7 +630,7 @@ export default function MaterialIssue() {
             <Button
               variant="contained"
               onClick={handleSave}
-              disabled={saving || MATERIAL_ISSUE_ON_HOLD}
+              disabled={saving}
               fullWidth
               startIcon={
                 saving ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />
