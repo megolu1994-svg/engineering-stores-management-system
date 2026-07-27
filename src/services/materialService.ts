@@ -619,7 +619,7 @@ export async function bulkImportMaterials(
               material_group: row.material_group,
               is_active: true,
             },
-            { onConflict: "material_code" }
+            { onConflict: "user_id,material_code" }
           );
 
         if (upsertError) throw upsertError;

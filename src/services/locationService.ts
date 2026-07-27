@@ -417,7 +417,7 @@ export async function bulkImportLocations(
               location_description: row.location_description,
               is_active: true,
             },
-            { onConflict: "location_code" }
+            { onConflict: "user_id,location_code" }
           );
 
         if (upsertError) throw upsertError;

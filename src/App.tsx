@@ -1,7 +1,9 @@
 import { Routes, Route } from "react-router-dom";
 
 import AppLayout from "./components/AppLayout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MaterialMaster from "./pages/MaterialMaster";
 import LocationMaster from "./pages/LocationMaster";
@@ -14,22 +16,26 @@ import Settings from "./pages/Settings";
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<AppLayout />}>
-        <Route index element={<Dashboard />} />
+      <Route path="/login" element={<Login />} />
 
-        <Route path="materials" element={<MaterialMaster />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/" element={<AppLayout />}>
+          <Route index element={<Dashboard />} />
 
-        <Route path="locations" element={<LocationMaster />} />
+          <Route path="materials" element={<MaterialMaster />} />
 
-        <Route path="allocation" element={<MaterialAllocation />} />
+          <Route path="locations" element={<LocationMaster />} />
 
-        <Route path="material-receipt" element={<MaterialReceipt />} />
+          <Route path="allocation" element={<MaterialAllocation />} />
 
-        <Route path="material-issue" element={<MaterialIssue />} />
+          <Route path="material-receipt" element={<MaterialReceipt />} />
 
-        <Route path="reports" element={<Reports />} />
+          <Route path="material-issue" element={<MaterialIssue />} />
 
-        <Route path="settings" element={<Settings />} />
+          <Route path="reports" element={<Reports />} />
+
+          <Route path="settings" element={<Settings />} />
+        </Route>
       </Route>
     </Routes>
   );
