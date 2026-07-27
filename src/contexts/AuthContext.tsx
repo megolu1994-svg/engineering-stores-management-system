@@ -16,6 +16,7 @@ interface AuthContextValue {
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  resendConfirmation: (email: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -58,6 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut({ scope: "local" });
   }
 
+  async function resendConfirmation(email: string) {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+    });
+    return { error: error?.message ?? null };
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -67,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUp,
         signIn,
         signOut,
+        resendConfirmation,
       }}
     >
       {children}

@@ -21,7 +21,7 @@ import { BRAND_PURPLE } from "../theme";
 type Mode = "signin" | "signup";
 
 export default function Login() {
-  const { session, loading, signIn, signUp } = useAuth();
+  const { session, loading, signIn, signUp, resendConfirmation } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -29,6 +29,27 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signupNotice, setSignupNotice] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+
+  const isUnconfirmedEmailError =
+    !!error && /email.*not.*confirm/i.test(error);
+
+  async function handleResendConfirmation() {
+    setResending(true);
+    setError(null);
+    try {
+      const { error: resendError } = await resendConfirmation(email);
+      if (resendError) {
+        setError(resendError);
+      } else {
+        setSignupNotice(
+          `Confirmation email resent to ${email}. Please check your inbox (and spam folder).`
+        );
+      }
+    } finally {
+      setResending(false);
+    }
+  }
 
   if (!loading && session) {
     return <Navigate to="/" replace />;
@@ -105,8 +126,29 @@ export default function Login() {
           </Tabs>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+            <Alert
+              severity="error"
+              sx={{ mb: 2, borderRadius: 2 }}
+              action={
+                isUnconfirmedEmailError && email ? (
+                  <Button
+                    color="inherit"
+                    size="small"
+                    disabled={resending}
+                    onClick={handleResendConfirmation}
+                  >
+                    {resending ? "Sending..." : "Resend"}
+                  </Button>
+                ) : undefined
+              }
+            >
               {error}
+              {isUnconfirmedEmailError && (
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  Check your inbox for the confirmation link, or resend it
+                  below.
+                </Typography>
+              )}
             </Alert>
           )}
 
