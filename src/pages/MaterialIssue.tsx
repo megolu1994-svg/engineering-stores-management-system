@@ -42,6 +42,7 @@ import { BOTTOM_NAV_OFFSET, CONTENT_MAX_WIDTH, DRAWER_WIDTH } from "../component
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -90,6 +91,8 @@ const emptyHeader = {
 };
 
 export default function MaterialIssue() {
+  useSwipeOpenDrawer();
+
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
 
