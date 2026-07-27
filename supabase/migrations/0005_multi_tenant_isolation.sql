@@ -54,7 +54,7 @@ begin
     where c.conrelid = _table::regclass
       and c.contype in ('p', 'u')
       and (
-        select array_agg(a.attname order by a.attname)
+        select array_agg(a.attname::text order by a.attname::text)
         from unnest(c.conkey) as k(attnum)
         join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
       ) = _sorted_cols
