@@ -31,7 +31,8 @@ export const SWIPE_OPEN_DRAWER_EVENT = "esms:swipe-open-drawer";
 export function useSwipeTabs(
   value: number,
   onChange: (next: number) => void,
-  count: number
+  count: number,
+  enabled = true
 ) {
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
@@ -48,6 +49,14 @@ export function useSwipeTabs(
   });
 
   useEffect(() => {
+    // Callers can turn the gesture off entirely - e.g. Dashboard's search
+    // results view replaces the tab strip with a plain results list, so
+    // there's no tab (or "run out of tabs into the drawer") affordance for
+    // a swipe to correspond to, and scrolling that list would otherwise
+    // misfire the drawer-open handoff below on any swipe with a rightward
+    // component.
+    if (!enabled) return;
+
     function reset() {
       startX.current = null;
       startY.current = null;
@@ -112,7 +121,7 @@ export function useSwipeTabs(
       document.removeEventListener("touchend", reset, { capture: true });
       document.removeEventListener("touchcancel", reset, { capture: true });
     };
-  }, []);
+  }, [enabled]);
 
   // Tracks which way the active tab last moved, from any cause (swipe or
   // tapping the tab strip), purely by comparing to the previous value -
