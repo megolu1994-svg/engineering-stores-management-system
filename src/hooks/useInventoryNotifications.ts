@@ -166,7 +166,15 @@ export function useInventoryNotifications(enabled: boolean) {
           );
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(
+            "Notification realtime subscription is not connected:",
+            status,
+            err
+          );
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
