@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -58,6 +59,7 @@ import AllocationTable from "../components/AllocationTable";
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
+import { useHeaderSlot } from "../components/AppLayout";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
@@ -208,6 +210,7 @@ export default function Dashboard() {
 
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
+  const headerSlotEl = useHeaderSlot();
 
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -641,8 +644,10 @@ export default function Dashboard() {
         </Box>
       )}
 
-      {/* ---- Desktop only: global search now lives in AppLayout's header on every page;
-          tabs sit on plain white background directly below it. ---- */}
+      {/* ---- Desktop only: search portals into the header next to the
+          logo (see useHeaderSlot); tabs sit on plain white background
+          directly below it, underline-styled instead of white-on-purple. ---- */}
+      {!mobile && headerSlotEl && createPortal(searchField, headerSlotEl)}
 
       {!mobile && !isSearchMode && (
         <Tabs
