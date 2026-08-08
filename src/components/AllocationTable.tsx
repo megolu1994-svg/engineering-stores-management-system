@@ -88,7 +88,7 @@ export default function AllocationTable({
         >
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="body2" sx={{ fontWeight: "bold" }} noWrap>
-              {allocation.storage_location_code} / {allocation.location_code}
+              {allocation.location_code}
             </Typography>
 
             {locationMap[allocation.location_code] && (

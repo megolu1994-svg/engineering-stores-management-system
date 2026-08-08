@@ -31,13 +31,11 @@ import DownloadIcon from "@mui/icons-material/Download";
 
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
-import StorageLocationSelect from "./StorageLocationSelect";
 
 import { usePersistentState } from "../hooks/usePersistentState";
 
 import type { Material } from "../types/material";
 import type { Location } from "../types/location";
-import { DEFAULT_STORAGE_LOCATION } from "../services/storageLocationService";
 
 import { applyOpeningStock } from "../services/materialAllocationService";
 import {
@@ -95,10 +93,6 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
   const [manualMaterial, setManualMaterial] = usePersistentState<
     Material | null
   >("stockUpdate.manualMaterial", null);
-  const [manualStorageLocation, setManualStorageLocation] = usePersistentState(
-    "stockUpdate.manualStorageLocation",
-    DEFAULT_STORAGE_LOCATION
-  );
   const [manualLocation, setManualLocation] = usePersistentState<
     Location | null
   >("stockUpdate.manualLocation", null);
@@ -130,14 +124,13 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
         manualMaterial.material_code,
         locationCode,
         quantity,
-        "Manual entry",
-        manualStorageLocation
+        "Manual entry"
       );
 
       showSnackbar(
         manualLocation
-          ? `${quantity} added for ${manualMaterial.material_code} in ${manualStorageLocation} at bin ${manualLocation.location_code}.`
-          : `${quantity} added for ${manualMaterial.material_code} in ${manualStorageLocation} (Unallocated).`,
+          ? `${quantity} added for ${manualMaterial.material_code} at ${manualLocation.location_code}.`
+          : `${quantity} added for ${manualMaterial.material_code} (Unallocated).`,
         "success"
       );
 
@@ -172,8 +165,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
     downloadWorkbook(
       [
         "Material Code",
-        "Storage Location",
-        "Bin Location",
+        "Location Code",
         "Short Description",
         "UoM",
         "HSN Code",
@@ -181,8 +173,8 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
         "Quantity",
       ],
       [
-        ["9000000001", "AFCN", "", "Ball Bearing 6205", "NOS", "84821010", "BE", 40],
-        ["9000000002", "REVN", "CS/HD35 BIN B", "", "", "", "", 25],
+        ["9000000001", "", "Ball Bearing 6205", "NOS", "84821010", "BE", 40],
+        ["9000000002", "CS/HD35 BIN B", "", "", "", "", 25],
       ],
       "ESMS_Stock_Update_Template.xlsx"
     );
@@ -284,7 +276,6 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
           rowNumber: row.rowNumber,
           status: "Valid" as const,
           material_code: row.material_code,
-          storage_location_code: row.storage_location_code,
           location_code: row.location_code,
           quantity: String(row.quantity),
           errors: [] as string[],
@@ -293,7 +284,6 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
           rowNumber: row.rowNumber,
           status: "Invalid" as const,
           material_code: row.material_code,
-          storage_location_code: "",
           location_code: "",
           quantity: row.quantityRaw,
           errors: row.errors,
@@ -307,7 +297,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
     <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
       <Alert severity="info" sx={{ borderRadius: 2, py: 0.5 }}>
         Add stock here - for brand-new materials, materials with no stock
-        recorded yet, or a plain physical count. A Storage Location is required. Bin Location is
+        recorded yet, or a plain physical count. A Location Code is
         optional; leave it blank to add to Unallocated, or set it to post
         straight to that location. If a material already has stock
         recorded and the count you enter differs from it, it's flagged for
@@ -325,15 +315,10 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <MaterialSearch value={manualMaterial} onChange={setManualMaterial} />
 
-            <StorageLocationSelect
-              value={manualStorageLocation}
-              onChange={setManualStorageLocation}
-            />
-
             <LocationSearch
               value={manualLocation}
               onChange={setManualLocation}
-              label="Search Bin Location (optional - leave blank for Unallocated)"
+              label="Search Location (optional - leave blank for Unallocated)"
             />
 
             <TextField
@@ -403,7 +388,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
               color="text.secondary"
               sx={{ display: "block", mb: 1 }}
             >
-              Columns: Material Code, Quantity (required). Storage Location is required. Bin Location is
+              Columns: Material Code, Quantity (required). Location Code is
               optional (defaults to Unallocated). Short Description, UoM,
               HSN Code, Material Group are only needed for materials that
               don't already exist in Material Master. A material may appear
@@ -490,8 +475,7 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
                       <TableRow>
                         <TableCell>Row</TableCell>
                         <TableCell>Material</TableCell>
-                        <TableCell>Storage Location</TableCell>
-                        <TableCell>Bin Location</TableCell>
+                        <TableCell>Location</TableCell>
                         <TableCell>Qty</TableCell>
                         <TableCell>Status</TableCell>
                       </TableRow>
@@ -501,7 +485,6 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
                         <TableRow key={row.rowNumber}>
                           <TableCell>{row.rowNumber}</TableCell>
                           <TableCell>{row.material_code}</TableCell>
-                          <TableCell>{row.storage_location_code || DEFAULT_STORAGE_LOCATION}</TableCell>
                           <TableCell>{row.location_code || "Unallocated"}</TableCell>
                           <TableCell>{row.quantity}</TableCell>
                           <TableCell>

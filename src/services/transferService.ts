@@ -39,7 +39,6 @@ export interface TransferHeader {
  * omitted when the material doesn't exist there yet (a new allocation
  * row is created). */
 export interface TransferLocationInput {
-  storage_location_code: string;
   from_location_code: string;
   fromAvailableQty: number;
   fromAllocationId: number;
@@ -251,7 +250,6 @@ export async function createTransfer(
       // Inventory Engine: decrease FROM (OUT) - one movement.
       await applyStockMovement({
         materialCode: material.material_code,
-        storageLocationCode: loc.storage_location_code,
         locationCode: loc.from_location_code,
         prevQuantity: loc.fromAvailableQty,
         newQuantity: loc.fromAvailableQty - loc.transferQty,
@@ -266,7 +264,6 @@ export async function createTransfer(
       // Inventory Engine: increase TO (IN) - one movement.
       await applyStockMovement({
         materialCode: material.material_code,
-        storageLocationCode: loc.storage_location_code,
         locationCode: loc.to_location_code,
         prevQuantity: loc.toAvailableQty,
         newQuantity: loc.toAvailableQty + loc.transferQty,
@@ -283,7 +280,6 @@ export async function createTransfer(
         .insert([
           {
             transfer_item_id: transferItemId,
-            storage_location_code: loc.storage_location_code,
             from_location_code: loc.from_location_code,
             to_location_code: loc.to_location_code,
             transfer_qty: loc.transferQty,

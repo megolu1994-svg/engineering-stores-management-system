@@ -74,12 +74,12 @@ export default function LocationForm({
   async function handleSave() {
 
     if (!formData.location_code.trim()) {
-      alert("Bin Location Code is required.");
+      alert("Location Code is required.");
       return;
     }
 
     if (!formData.location_description.trim()) {
-      alert("Bin Location Description is required.");
+      alert("Location Description is required.");
       return;
     }
 
@@ -101,7 +101,7 @@ export default function LocationForm({
         gutterBottom
         sx={{ fontSize: { xs: "1.15rem", sm: "1.5rem" } }}
       >
-        {location ? "Edit Bin Location" : "Add Bin Location"}
+        {location ? "Edit Location" : "Add Location"}
       </Typography>
 
       <Grid container spacing={2}>
@@ -109,7 +109,7 @@ export default function LocationForm({
         <Grid size={{ xs: 12, md: 6 }}>
           <TextField
             fullWidth
-            label="Bin Location Code"
+            label="Location Code"
             value={formData.location_code}
             helperText={
               location
@@ -128,7 +128,7 @@ export default function LocationForm({
         <Grid size={{ xs: 12, md: 6 }}>
           <TextField
             fullWidth
-            label="Bin Location Description"
+            label="Location Description"
             value={formData.location_description}
             onChange={(e) =>
               updateField(
