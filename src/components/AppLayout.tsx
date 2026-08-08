@@ -1,25 +1,20 @@
-import { useEffect, useState, type ChangeEvent, type MouseEvent } from "react";
+import { createContext, useContext, useEffect, useState, type MouseEvent } from "react";
 
 import {
   AppBar,
-  Alert,
   Avatar,
   Badge,
   BottomNavigation,
   BottomNavigationAction,
   Box,
-  CardActionArea,
-  CircularProgress,
   Divider,
   Drawer,
   IconButton,
-  InputAdornment,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
   Popover,
-  TextField,
   Toolbar,
   Typography,
   useMediaQuery,
@@ -27,8 +22,6 @@ import {
 import { keyframes } from "@emotion/react";
 
 import MenuIcon from "@mui/icons-material/Menu";
-import SearchIcon from "@mui/icons-material/Search";
-import ClearIcon from "@mui/icons-material/Clear";
 import HomeIcon from "@mui/icons-material/Home";
 import CategoryIcon from "@mui/icons-material/Category";
 import PlaceIcon from "@mui/icons-material/Place";
@@ -51,10 +44,6 @@ import {
 import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 import { useInventoryNotifications } from "../hooks/useInventoryNotifications";
-import { searchInventory, type InventorySearchResult } from "../services/inventoryOverviewService";
-import { searchMaterials } from "../services/materialService";
-import MaterialInfoDialog from "./MaterialInfoDialog";
-import type { Material } from "../types/material";
 import { useBranding } from "../contexts/BrandingContext";
 
 // Desktop permanent sidebar width only - the mobile temporary drawer is
@@ -130,6 +119,17 @@ const DESKTOP_HEADER_HEIGHT = TOOLBAR_HEIGHT.md;
 // bar and no reserved blank space.
 const COMPANY_BAR_HEIGHT = 22;
 
+// Lets a page (currently just Dashboard) render its search field into the
+// desktop header's toolbar, next to the brand logo, instead of in its own
+// page content - purely a portal target, so the page keeps full ownership
+// of the field's state/logic. Only meaningful at "md"+: on mobile the
+// header slot node is never mounted, so this is always null there and
+// pages must fall back to their normal (unchanged) mobile layout.
+const HeaderSlotContext = createContext<HTMLDivElement | null>(null);
+export function useHeaderSlot() {
+  return useContext(HeaderSlotContext);
+}
+
 // Height of the fixed bottom navigation bar shown on mobile (below the "md"
 // breakpoint) - exported so pages with their own fixed/sticky bottom bars
 // (e.g. a "Save" action bar) can lift themselves above it instead of being
@@ -179,11 +179,7 @@ export default function AppLayout() {
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const [globalSearchTerm, setGlobalSearchTerm] = useState("");
-  const [globalSearchResults, setGlobalSearchResults] = useState<InventorySearchResult[]>([]);
-  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
-  const [globalSearchFocused, setGlobalSearchFocused] = useState(false);
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
 
   // Desktop-only: gated by `!mobile` so the realtime subscription itself
   // (not just the bell UI) has no footprint on mobile.
@@ -215,137 +211,6 @@ export default function AppLayout() {
       window.removeEventListener(SWIPE_OPEN_DRAWER_EVENT, handleSwipeOpenDrawer);
     };
   }, [mobile]);
-
-  useEffect(() => {
-    if (mobile || globalSearchTerm.trim().length < 2) {
-      setGlobalSearchResults([]);
-      setGlobalSearchLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setGlobalSearchLoading(true);
-
-    const timer = window.setTimeout(() => {
-      searchInventory(globalSearchTerm)
-        .then((rows) => {
-          if (!cancelled) setGlobalSearchResults(rows);
-        })
-        .catch((error) => {
-          console.error(error);
-          if (!cancelled) setGlobalSearchResults([]);
-        })
-        .finally(() => {
-          if (!cancelled) setGlobalSearchLoading(false);
-        });
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [globalSearchTerm, mobile]);
-
-  function handleGlobalSearchChange(event: ChangeEvent<HTMLInputElement>) {
-    setGlobalSearchTerm(event.target.value);
-    setGlobalSearchFocused(true);
-  }
-
-  async function openGlobalMaterialDetails(materialCode: string) {
-    setGlobalSearchFocused(false);
-
-    try {
-      const materials = await searchMaterials(materialCode);
-      setSelectedMaterial(materials.find((m) => m.material_code === materialCode) ?? null);
-    } catch (error) {
-      console.error(error);
-      setSelectedMaterial(null);
-    }
-  }
-
-  const showGlobalSearchPopover =
-    !mobile && globalSearchFocused && globalSearchTerm.trim().length >= 2;
-
-  const globalSearchField = (
-    <Box sx={{ position: "relative", width: "100%", maxWidth: 640 }}>
-      <TextField
-        fullWidth
-        value={globalSearchTerm}
-        onChange={handleGlobalSearchChange}
-        onFocus={() => setGlobalSearchFocused(true)}
-        onBlur={() => window.setTimeout(() => setGlobalSearchFocused(false), 100)}
-        placeholder="Search material code or description..."
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ color: BRAND_PURPLE }} />
-              </InputAdornment>
-            ),
-            endAdornment: globalSearchTerm && (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setGlobalSearchTerm("")}>
-                  <ClearIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ),
-            sx: {
-              bgcolor: "#FFFFFF",
-              borderRadius: "12px",
-              "& fieldset": { border: "none" },
-            },
-          },
-        }}
-      />
-
-      {showGlobalSearchPopover && (
-        <Box
-          sx={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            left: 0,
-            right: 0,
-            bgcolor: "#FFFFFF",
-            borderRadius: 2,
-            boxShadow: 4,
-            maxHeight: 360,
-            overflowY: "auto",
-            zIndex: theme.zIndex.modal,
-          }}
-        >
-          {globalSearchLoading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : globalSearchResults.length === 0 ? (
-            <Alert severity="info" sx={{ borderRadius: 2 }}>No materials found.</Alert>
-          ) : (
-            <List disablePadding>
-              {globalSearchResults.map((row) => (
-                <CardActionArea
-                  key={row.material_code}
-                  component="li"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => openGlobalMaterialDetails(row.material_code)}
-                  sx={{ display: "block", px: 2, py: 1.25 }}
-                >
-                  <Typography sx={{ fontWeight: 800, color: "#111827" }} noWrap>
-                    {row.material_code}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {row.short_description}
-                  </Typography>
-                  <Typography variant="caption" color="primary.main" sx={{ fontWeight: 700 }}>
-                    Stock: {row.currentStock} {row.uom}
-                  </Typography>
-                </CardActionArea>
-              ))}
-            </List>
-          )}
-        </Box>
-      )}
-    </Box>
-  );
 
   function handleNavigate(path: string) {
     navigate(path);
@@ -466,6 +331,8 @@ export default function AppLayout() {
 
   return (
 
+    <HeaderSlotContext.Provider value={headerSlotEl}>
+
     <Box sx={{ display: "flex" }}>
 
       {/* Hidden while the mobile drawer is open so only one header (the
@@ -584,10 +451,13 @@ export default function AppLayout() {
               </Box>
             )}
 
-            {/* Desktop-only: global material search stays in the header on every screen. */}
+            {/* Desktop-only: portal target for the active page's search
+                field (see useHeaderSlot), centered and width-capped rather
+                than stretched edge-to-edge. Empty/unused on pages that
+                don't portal anything into it. */}
             {!mobile && (
               <Box sx={{ flexGrow: 1, display: "flex", justifyContent: "center" }}>
-                {globalSearchField}
+                <Box ref={setHeaderSlotEl} sx={{ width: "100%", maxWidth: 640 }} />
               </Box>
             )}
 
@@ -784,11 +654,6 @@ export default function AppLayout() {
 
       </Box>
 
-      <MaterialInfoDialog
-        material={selectedMaterial}
-        onClose={() => setSelectedMaterial(null)}
-      />
-
       {mobile && !mobileOpen && (
 
         <BottomNavigation
@@ -831,7 +696,7 @@ export default function AppLayout() {
 
     </Box>
 
-
+    </HeaderSlotContext.Provider>
 
   );
 
