@@ -15,6 +15,87 @@ import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 
+/**
+ * Max number of codes sent in a single .in() lookup. Two separate limits
+ * bite once a code list gets large, and chunking avoids both:
+ *  1. PostgREST caps every response at 1000 rows by default - a single
+ *     .in() with thousands of codes still only returns the first 1000
+ *     matches, silently dropping the rest even though Postgres matched
+ *     them all.
+ *  2. Supabase-js sends .in() as a GET request with the codes in the
+ *     query string. Codes containing "/" or spaces (e.g. "CS/HF21 BIN A")
+ *     expand a lot once URL-encoded, so even a few hundred codes can push
+ *     the URL past the reverse proxy's max length and fail the whole
+ *     request - which, left unchecked, looks identical to "nothing
+ *     matched" and marks otherwise-valid codes as not found.
+ * 300 keeps both request count and URL size comfortably small.
+ */
+const IN_QUERY_CHUNK_SIZE = 300;
+
+/**
+ * Runs an .in() lookup in chunks of `chunkSize` and merges the results,
+ * so large code lists never hit the row cap or URL-length failure modes
+ * described above. Any chunk that errors throws immediately instead of
+ * being swallowed and treated as "no matches" - a failed lookup should
+ * never silently turn into false "not found" errors for the user.
+ */
+async function fetchByCodesInChunks<T>(
+  table: string,
+  column: string,
+  selectColumns: string,
+  codes: string[],
+  chunkSize: number = IN_QUERY_CHUNK_SIZE
+): Promise<T[]> {
+  const results: T[] = [];
+
+  for (let i = 0; i < codes.length; i += chunkSize) {
+    const chunk = codes.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectColumns)
+      .in(column, chunk);
+
+    if (error) {
+      throw new Error(`Failed to look up ${table}.${column}: ${error.message}`);
+    }
+
+    results.push(...((data ?? []) as T[]));
+  }
+
+  return results;
+}
+
+/**
+ * Same chunking strategy as fetchByCodesInChunks, but for the one lookup
+ * that also needs an extra .eq() filter (unallocated balances), which a
+ * generic helper can't express cleanly.
+ */
+async function fetchUnallocatedBalancesInChunks(
+  materialCodes: string[],
+  chunkSize: number = IN_QUERY_CHUNK_SIZE
+): Promise<{ material_code: string; quantity: number }[]> {
+  const results: { material_code: string; quantity: number }[] = [];
+
+  for (let i = 0; i < materialCodes.length; i += chunkSize) {
+    const chunk = materialCodes.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from("material_allocation")
+      .select("material_code, quantity")
+      .eq("location_code", UNALLOCATED_LOCATION)
+      .in("material_code", chunk);
+
+    if (error) {
+      throw new Error(`Failed to look up unallocated balances: ${error.message}`);
+    }
+
+    results.push(
+      ...((data ?? []) as { material_code: string; quantity: number }[])
+    );
+  }
+
+  return results;
+}
+
 interface UnallocatedRow {
   id: number;
   quantity: number;
@@ -269,33 +350,30 @@ export async function getCurrentStock(): Promise<CurrentStockRow[]> {
     new Set(allocations.map((a) => a.location_code))
   );
 
-  const [materialsResult, locationsResult] = await Promise.all([
-    supabase
-      .from("material_master")
-      .select("material_code, short_description")
-      .in("material_code", materialCodes),
-    supabase
-      .from("location_master")
-      .select("location_code, location_description")
-      .in("location_code", locationCodes),
+  const [materialRows, locationRows] = await Promise.all([
+    fetchByCodesInChunks<{ material_code: string; short_description: string }>(
+      "material_master",
+      "material_code",
+      "material_code, short_description",
+      materialCodes
+    ),
+    fetchByCodesInChunks<{
+      location_code: string;
+      location_description: string;
+    }>(
+      "location_master",
+      "location_code",
+      "location_code, location_description",
+      locationCodes
+    ),
   ]);
 
   const materialMap = new Map<string, string>(
-    (materialsResult.data ?? []).map(
-      (m: { material_code: string; short_description: string }) => [
-        m.material_code,
-        m.short_description,
-      ]
-    )
+    materialRows.map((m) => [m.material_code, m.short_description])
   );
 
   const locationMap = new Map<string, string>(
-    (locationsResult.data ?? []).map(
-      (l: { location_code: string; location_description: string }) => [
-        l.location_code,
-        l.location_description,
-      ]
-    )
+    locationRows.map((l) => [l.location_code, l.location_description])
   );
 
   return allocations.map((a) => ({
@@ -518,39 +596,27 @@ export async function validateAllocationExcelRows(
     new Set(candidates.map((c) => c.location_code))
   );
 
-  const [materialsResult, locationsResult, unallocatedResult] =
-    await Promise.all([
-      supabase
-        .from("material_master")
-        .select("material_code")
-        .in("material_code", materialCodes),
-      supabase
-        .from("location_master")
-        .select("location_code")
-        .in("location_code", locationCodes),
-      supabase
-        .from("material_allocation")
-        .select("material_code, quantity")
-        .eq("location_code", UNALLOCATED_LOCATION)
-        .in("material_code", materialCodes),
-    ]);
+  const [materialRows, locationRows, unallocatedRows] = await Promise.all([
+    fetchByCodesInChunks<{ material_code: string }>(
+      "material_master",
+      "material_code",
+      "material_code",
+      materialCodes
+    ),
+    fetchByCodesInChunks<{ location_code: string }>(
+      "location_master",
+      "location_code",
+      "location_code",
+      locationCodes
+    ),
+    fetchUnallocatedBalancesInChunks(materialCodes),
+  ]);
 
-  const knownMaterials = new Set(
-    (materialsResult.data ?? []).map(
-      (m: { material_code: string }) => m.material_code
-    )
-  );
-  const knownLocations = new Set(
-    (locationsResult.data ?? []).map(
-      (l: { location_code: string }) => l.location_code
-    )
-  );
+  const knownMaterials = new Set(materialRows.map((m) => m.material_code));
+  const knownLocations = new Set(locationRows.map((l) => l.location_code));
 
   const runningBalance = new Map<string, number>();
-  for (const row of (unallocatedResult.data ?? []) as {
-    material_code: string;
-    quantity: number;
-  }[]) {
+  for (const row of unallocatedRows) {
     runningBalance.set(row.material_code, Number(row.quantity));
   }
 
