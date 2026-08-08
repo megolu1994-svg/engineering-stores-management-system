@@ -64,13 +64,13 @@ export default function LocationTable({
       maxWidth="xs"
       fullScreen={mobile}
     >
-      <DialogTitle>Location Details</DialogTitle>
+      <DialogTitle>Bin Location Details</DialogTitle>
 
       <DialogContent>
         <Stack spacing={1.5} sx={{ mt: 1 }}>
           <Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              Location Code
+              Bin Location Code
             </Typography>
             <Typography variant="body1" sx={{ fontWeight: "bold" }}>
               {viewLocation?.location_code}
@@ -141,7 +141,7 @@ export default function LocationTable({
         <Table stickyHeader sx={{ "& td, & th": { borderColor: "divider" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
-              <TableCell>Location Code</TableCell>
+              <TableCell>Bin Location Code</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="right">Actions</TableCell>

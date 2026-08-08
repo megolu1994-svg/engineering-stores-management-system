@@ -10,6 +10,7 @@ import {
   applyStockMovement,
   generateReferenceNumber,
 } from "./inventoryTransactionService";
+import { DEFAULT_STORAGE_LOCATION } from "./storageLocationService";
 
 import {
   type BulkImportReportRow,
@@ -44,6 +45,7 @@ export interface PendingStockUpdate {
   material_code: string;
   short_description: string | null;
   uom: string | null;
+  storage_location_code: string;
   uploaded_qty: number;
   system_qty_at_upload: number;
   difference: number;
@@ -52,7 +54,7 @@ export interface PendingStockUpdate {
 }
 
 const PENDING_COLUMNS =
-  "id, material_code, short_description, uom, uploaded_qty, system_qty_at_upload, difference, batch_file_name, uploaded_at";
+  "id, material_code, storage_location_code, short_description, uom, uploaded_qty, system_qty_at_upload, difference, batch_file_name, uploaded_at";
 
 export async function getPendingStockUpdates(): Promise<
   PendingStockUpdate[]
@@ -111,7 +113,8 @@ export async function applyPendingIncreaseToUnallocated(
     pending.material_code,
     UNALLOCATED_LOCATION,
     pending.difference,
-    `Bulk Stock Update reconciliation (uploaded ${pending.uploaded_qty})`
+    `Bulk Stock Update reconciliation (uploaded ${pending.uploaded_qty})`,
+    pending.storage_location_code
   );
 
   await dismissPendingStockUpdate(pending.material_code);
@@ -134,7 +137,7 @@ export async function applyPendingDecreaseFromUnallocated(
   const shortfall = Math.abs(pending.difference);
   const allocations = await getAllocations(pending.material_code);
   const unallocatedRow = allocations.find(
-    (a) => a.location_code === UNALLOCATED_LOCATION
+    (a) => a.location_code === UNALLOCATED_LOCATION && a.storage_location_code === pending.storage_location_code
   );
   const unallocatedQty = unallocatedRow?.quantity ?? 0;
 
@@ -149,7 +152,8 @@ export async function applyPendingDecreaseFromUnallocated(
     UNALLOCATED_LOCATION,
     unallocatedQty - shortfall,
     "Physical Count Variance",
-    `Bulk Stock Update reconciliation (uploaded ${pending.uploaded_qty})`
+    `Bulk Stock Update reconciliation (uploaded ${pending.uploaded_qty})`,
+    pending.storage_location_code
   );
 
   await dismissPendingStockUpdate(pending.material_code);
@@ -183,6 +187,7 @@ export async function applyStockReconciliation(
 export interface StockUpdateImportRow {
   rowNumber: number;
   material_code: string;
+  storage_location_code: string;
   location_code: string;
   short_description: string;
   uom: string;
@@ -253,6 +258,7 @@ export function parseStockUpdateExcelRows(
     string,
     {
       rowNumber: number;
+      storage_location_code: string;
       location_code: string;
       short_description: string;
       uom: string;
@@ -276,7 +282,16 @@ export function parseStockUpdateExcelRows(
       "material_code",
       "Material",
     ]);
+    const storageLocationCode = getFieldValue(row, [
+      "Storage Location",
+      "storage_location_code",
+      "StorageLocation",
+      "SLoc",
+    ]) || DEFAULT_STORAGE_LOCATION;
+
     const locationCode = getFieldValue(row, [
+      "Bin Location",
+      "Bin Location Code",
       "Location Code",
       "location_code",
       "Location",
@@ -327,11 +342,14 @@ export function parseStockUpdateExcelRows(
       return;
     }
 
-    const key = materialCode.toUpperCase();
+    const normalizedMaterialCode = materialCode.toUpperCase();
+    const normalizedStorageLocationCode = storageLocationCode.toUpperCase();
+    const key = `${normalizedMaterialCode}|${normalizedStorageLocationCode}`;
 
     if (!grouped.has(key)) {
       grouped.set(key, {
         rowNumber,
+        storage_location_code: normalizedStorageLocationCode,
         location_code: locationCode,
         short_description: shortDescription,
         uom,
@@ -346,6 +364,9 @@ export function parseStockUpdateExcelRows(
     entry.quantity += quantity;
     // Fill in master-data/location fields from whichever row provides
     // them first, in case only some rows for a material carry them.
+    if (!entry.storage_location_code && storageLocationCode) {
+      entry.storage_location_code = storageLocationCode.toUpperCase();
+    }
     if (!entry.location_code && locationCode) {
       entry.location_code = locationCode;
     }
@@ -363,7 +384,8 @@ export function parseStockUpdateExcelRows(
     const entry = grouped.get(key)!;
     return {
       rowNumber: entry.rowNumber,
-      material_code: key,
+      material_code: key.split("|")[0],
+      storage_location_code: entry.storage_location_code || DEFAULT_STORAGE_LOCATION,
       location_code: entry.location_code,
       short_description: entry.short_description,
       uom: entry.uom,
@@ -498,6 +520,7 @@ async function insertNewMaterialsBatch(
 
         await applyStockMovement({
           materialCode: row.material_code,
+          storageLocationCode: row.storage_location_code,
           locationCode,
           prevQuantity: 0,
           newQuantity: row.quantity,
@@ -535,6 +558,7 @@ async function insertNewMaterialsBatch(
     .insert(
       batch.map((row) => ({
         material_code: row.material_code,
+        storage_location_code: row.storage_location_code,
         location_code: row.location_code || UNALLOCATED_LOCATION,
         quantity: row.quantity,
       }))
@@ -565,6 +589,7 @@ async function insertNewMaterialsBatch(
       transaction_no: generateReferenceNumber("OB"),
       transaction_type: "OPENING_STOCK",
       material_code: row.material_code,
+      storage_location_code: row.storage_location_code,
       location_code: row.location_code || UNALLOCATED_LOCATION,
       quantity: row.quantity,
       movement: "IN",
@@ -610,7 +635,8 @@ async function postStockUpdateRow(
       row.material_code,
       row.location_code || UNALLOCATED_LOCATION,
       row.quantity,
-      fileName ? `Bulk Stock Update (from ${fileName})` : "Bulk Stock Update"
+      fileName ? `Bulk Stock Update (from ${fileName})` : "Bulk Stock Update",
+      row.storage_location_code
     );
 
     summary.posted += 1;
@@ -736,16 +762,14 @@ export async function bulkApplyStockUpdate(
   await runChunked(existingCodeList, 0.2, 0.35, reportProgress, async (codes) => {
     const { data, error } = await supabase
       .from("material_allocation")
-      .select("material_code, quantity")
+      .select("material_code, storage_location_code, quantity")
       .in("material_code", codes);
 
     if (error) throw error;
 
-    (data ?? []).forEach((a: { material_code: string; quantity: number }) => {
-      systemQtyMap.set(
-        a.material_code,
-        (systemQtyMap.get(a.material_code) ?? 0) + Number(a.quantity)
-      );
+    (data ?? []).forEach((a: { material_code: string; storage_location_code?: string; quantity: number }) => {
+      const key = `${a.material_code}|${a.storage_location_code || DEFAULT_STORAGE_LOCATION}`;
+      systemQtyMap.set(key, (systemQtyMap.get(key) ?? 0) + Number(a.quantity));
     });
   });
 
@@ -753,7 +777,7 @@ export async function bulkApplyStockUpdate(
   // this is effectively instantaneous even for 10,000+ rows ----
   const newMaterialRows: StockUpdateImportRow[] = [];
   const postRows: StockUpdateImportRow[] = [];
-  const matchedCodes: string[] = [];
+  const matchedRows: { material_code: string; storage_location_code: string }[] = [];
   const flaggedRows: { row: StockUpdateImportRow; systemQty: number }[] = [];
 
   for (const row of rows) {
@@ -788,10 +812,10 @@ export async function bulkApplyStockUpdate(
       continue;
     }
 
-    const systemQty = systemQtyMap.get(row.material_code) ?? 0;
+    const systemQty = systemQtyMap.get(`${row.material_code}|${row.storage_location_code}`) ?? 0;
 
     if (systemQty === row.quantity) {
-      matchedCodes.push(row.material_code);
+      matchedRows.push({ material_code: row.material_code, storage_location_code: row.storage_location_code });
       summary.matched += 1;
       summary.outcomes.push({
         rowNumber: row.rowNumber,
@@ -824,11 +848,18 @@ export async function bulkApplyStockUpdate(
   // ---- Phase 4: counts agree -> clear any stale pending flag. A single
   // `DELETE ... WHERE material_code IN (...)` per batch, best-effort
   // (matches the original per-row dismiss, which also ignored errors) ----
-  await runChunked(matchedCodes, 0.4, 0.5, reportProgress, async (codes) => {
+  await runChunked(matchedRows, 0.4, 0.5, reportProgress, async (matched) => {
+    const filters = matched
+      .map(
+        (row) =>
+          `and(material_code.eq.${row.material_code},storage_location_code.eq.${row.storage_location_code})`
+      )
+      .join(",");
+
     const { error } = await supabase
       .from("pending_stock_updates")
       .delete()
-      .in("material_code", codes);
+      .or(filters);
 
     if (error) {
       console.warn("Failed to clear pending stock updates for a batch:", error);
@@ -843,6 +874,7 @@ export async function bulkApplyStockUpdate(
   await runChunked(flaggedRows, 0.5, 0.6, reportProgress, async (batch) => {
     const payload = batch.map(({ row, systemQty }) => ({
       material_code: row.material_code,
+      storage_location_code: row.storage_location_code,
       short_description: row.short_description || null,
       uom: row.uom || null,
       uploaded_qty: row.quantity,
@@ -854,7 +886,7 @@ export async function bulkApplyStockUpdate(
 
     const { error } = await supabase
       .from("pending_stock_updates")
-      .upsert(payload, { onConflict: "user_id,material_code" });
+      .upsert(payload, { onConflict: "user_id,material_code,storage_location_code" });
 
     if (!error) return;
 
@@ -871,6 +903,7 @@ export async function bulkApplyStockUpdate(
           .upsert(
             {
               material_code: row.material_code,
+              storage_location_code: row.storage_location_code,
               short_description: row.short_description || null,
               uom: row.uom || null,
               uploaded_qty: row.quantity,

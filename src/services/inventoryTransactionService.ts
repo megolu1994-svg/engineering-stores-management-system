@@ -1,4 +1,5 @@
 import { supabase } from "../config/supabase";
+import { DEFAULT_STORAGE_LOCATION } from "./storageLocationService";
 
 /* =========================================================================
  * Inventory Transaction Engine
@@ -28,6 +29,7 @@ export interface InventoryTransactionRecord {
   transaction_no: string;
   transaction_type: InventoryTransactionType;
   material_code: string;
+  storage_location_code: string;
   location_code: string;
   quantity: number;
   movement: MovementDirection;
@@ -104,6 +106,7 @@ export async function recordInventoryTransaction(
 export interface ApplyStockMovementParams {
   materialCode: string;
   locationCode: string;
+  storageLocationCode?: string;
   /** Quantity at this location before the movement (0 if no row exists yet). */
   prevQuantity: number;
   /** Absolute quantity at this location after the movement. */
@@ -137,6 +140,7 @@ export async function applyStockMovement(
   const {
     materialCode,
     locationCode,
+    storageLocationCode = DEFAULT_STORAGE_LOCATION,
     prevQuantity,
     newQuantity,
     allocationId,
@@ -159,6 +163,7 @@ export async function applyStockMovement(
     const { error } = await supabase.from("material_allocation").insert([
       {
         material_code: materialCode,
+        storage_location_code: storageLocationCode,
         location_code: locationCode,
         quantity: newQuantity,
       },
@@ -179,6 +184,7 @@ export async function applyStockMovement(
   await recordInventoryTransaction({
     transaction_type: transactionType,
     material_code: materialCode,
+    storage_location_code: storageLocationCode,
     location_code: locationCode,
     quantity,
     movement,
@@ -194,6 +200,7 @@ export async function applyStockMovement(
 export interface ReverseStockMovementParams {
   materialCode: string;
   locationCode: string;
+  storageLocationCode?: string;
   allocationId: number;
   /** Quantity at this location before it is removed. */
   prevQuantity: number;
@@ -215,6 +222,7 @@ export async function reverseStockMovement(
   const {
     materialCode,
     locationCode,
+    storageLocationCode = DEFAULT_STORAGE_LOCATION,
     allocationId,
     prevQuantity,
     transactionType,
@@ -239,6 +247,7 @@ export async function reverseStockMovement(
   await recordInventoryTransaction({
     transaction_type: transactionType,
     material_code: materialCode,
+    storage_location_code: storageLocationCode,
     location_code: locationCode,
     quantity: prevQuantity,
     movement: "OUT",
