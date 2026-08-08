@@ -12,8 +12,10 @@ import {
   type BulkImportRowStatus,
 } from "../utils/bulkImportReport";
 import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
+import { DEFAULT_STORAGE_LOCATION } from "./storageLocationService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
+function storageOf(value?: string | null): string { return value || DEFAULT_STORAGE_LOCATION; }
 
 interface UnallocatedRow {
   id: number;
@@ -27,12 +29,14 @@ interface UnallocatedRow {
  * image happens to this same row.
  */
 async function getUnallocatedRow(
-  materialCode: string
+  materialCode: string,
+  storageLocationCode: string = DEFAULT_STORAGE_LOCATION
 ): Promise<UnallocatedRow | null> {
   const { data, error } = await supabase
     .from("material_allocation")
     .select("id, quantity")
     .eq("material_code", materialCode)
+    .eq("storage_location_code", storageLocationCode)
     .eq("location_code", UNALLOCATED_LOCATION)
     .maybeSingle();
 
@@ -56,7 +60,10 @@ export async function getAllocations(
     return [];
   }
 
-  return data as MaterialAllocation[];
+  return ((data ?? []) as MaterialAllocation[]).map((row) => ({
+    ...row,
+    storage_location_code: storageOf(row.storage_location_code),
+  }));
 }
 
 /**
@@ -72,7 +79,8 @@ export async function getAllocations(
 export async function addAllocation(
   allocation: Omit<MaterialAllocation, "id">
 ): Promise<void> {
-  const unallocatedRow = await getUnallocatedRow(allocation.material_code);
+  const storageLocationCode = storageOf(allocation.storage_location_code);
+  const unallocatedRow = await getUnallocatedRow(allocation.material_code, storageLocationCode);
   const unallocatedQty = unallocatedRow?.quantity ?? 0;
 
   if (allocation.quantity > unallocatedQty) {
@@ -88,6 +96,7 @@ export async function addAllocation(
   // OUT of UNALLOCATED.
   await applyStockMovement({
     materialCode: allocation.material_code,
+    storageLocationCode,
     locationCode: UNALLOCATED_LOCATION,
     prevQuantity: unallocatedQty,
     newQuantity: unallocatedQty - allocation.quantity,
@@ -100,6 +109,7 @@ export async function addAllocation(
   // IN to the target location.
   await applyStockMovement({
     materialCode: allocation.material_code,
+    storageLocationCode,
     locationCode: allocation.location_code,
     prevQuantity: 0,
     newQuantity: allocation.quantity,
@@ -123,7 +133,7 @@ export async function updateAllocation(
 ): Promise<void> {
   const { data, error: fetchError } = await supabase
     .from("material_allocation")
-    .select("material_code, location_code, quantity")
+    .select("material_code, storage_location_code, location_code, quantity")
     .eq("id", id)
     .maybeSingle();
 
@@ -134,6 +144,7 @@ export async function updateAllocation(
   }
 
   const materialCode = data.material_code as string;
+  const storageLocationCode = storageOf(data.storage_location_code as string | null);
   const prevQuantity = Number(data.quantity);
   const delta = quantity - prevQuantity;
 
@@ -142,7 +153,7 @@ export async function updateAllocation(
   const referenceNumber = generateReferenceNumber("ALC");
 
   if (delta !== 0) {
-    const unallocatedRow = await getUnallocatedRow(materialCode);
+    const unallocatedRow = await getUnallocatedRow(materialCode, storageLocationCode);
     const unallocatedQty = unallocatedRow?.quantity ?? 0;
 
     if (delta > unallocatedQty) {
@@ -153,6 +164,7 @@ export async function updateAllocation(
 
     await applyStockMovement({
       materialCode,
+      storageLocationCode,
       locationCode: UNALLOCATED_LOCATION,
       prevQuantity: unallocatedQty,
       newQuantity: unallocatedQty - delta,
@@ -165,6 +177,7 @@ export async function updateAllocation(
 
   await applyStockMovement({
     materialCode,
+    storageLocationCode,
     locationCode: data.location_code,
     prevQuantity,
     newQuantity: quantity,
@@ -184,7 +197,7 @@ export async function updateAllocation(
 export async function deleteAllocation(id: number): Promise<void> {
   const { data, error: fetchError } = await supabase
     .from("material_allocation")
-    .select("material_code, location_code, quantity")
+    .select("material_code, storage_location_code, location_code, quantity")
     .eq("id", id)
     .maybeSingle();
 
@@ -195,6 +208,7 @@ export async function deleteAllocation(id: number): Promise<void> {
   }
 
   const materialCode = data.material_code as string;
+  const storageLocationCode = storageOf(data.storage_location_code as string | null);
   const prevQuantity = Number(data.quantity);
 
   // Shared by both halves of this move, so the Movement report can pair
@@ -203,6 +217,7 @@ export async function deleteAllocation(id: number): Promise<void> {
 
   await reverseStockMovement({
     materialCode,
+    storageLocationCode,
     locationCode: data.location_code,
     allocationId: id,
     prevQuantity,
@@ -212,11 +227,12 @@ export async function deleteAllocation(id: number): Promise<void> {
   });
 
   if (prevQuantity > 0) {
-    const unallocatedRow = await getUnallocatedRow(materialCode);
+    const unallocatedRow = await getUnallocatedRow(materialCode, storageLocationCode);
     const unallocatedQty = unallocatedRow?.quantity ?? 0;
 
     await applyStockMovement({
       materialCode,
+      storageLocationCode,
       locationCode: UNALLOCATED_LOCATION,
       prevQuantity: unallocatedQty,
       newQuantity: unallocatedQty + prevQuantity,
@@ -235,6 +251,7 @@ export async function deleteAllocation(id: number): Promise<void> {
 export interface CurrentStockRow {
   material_code: string;
   short_description: string;
+  storage_location_code: string;
   location_code: string;
   location_description: string;
   quantity: number;
@@ -301,6 +318,7 @@ export async function getCurrentStock(): Promise<CurrentStockRow[]> {
   return allocations.map((a) => ({
     material_code: a.material_code,
     short_description: materialMap.get(a.material_code) ?? "",
+    storage_location_code: storageOf(a.storage_location_code),
     location_code: a.location_code,
     location_description: locationMap.get(a.location_code) ?? "",
     quantity: Number(a.quantity),
@@ -322,11 +340,12 @@ export async function applyOpeningStock(
   materialCode: string,
   locationCode: string,
   quantity: number,
-  remarks?: string
+  remarks?: string,
+  storageLocationCode: string = DEFAULT_STORAGE_LOCATION
 ): Promise<void> {
   const existing = await getAllocations(materialCode);
   const existingRow = existing.find(
-    (a) => a.location_code === locationCode
+    (a) => a.location_code === locationCode && storageOf(a.storage_location_code) === storageLocationCode
   );
 
   const prevQuantity = existingRow ? existingRow.quantity : 0;
@@ -334,6 +353,7 @@ export async function applyOpeningStock(
 
   await applyStockMovement({
     materialCode,
+    storageLocationCode,
     locationCode,
     prevQuantity,
     newQuantity,
@@ -849,17 +869,19 @@ export async function applyAdjustment(
   locationCode: string,
   newQuantity: number,
   reason: string,
-  remarks?: string
+  remarks?: string,
+  storageLocationCode: string = DEFAULT_STORAGE_LOCATION
 ): Promise<void> {
   const existing = await getAllocations(materialCode);
   const existingRow = existing.find(
-    (a) => a.location_code === locationCode
+    (a) => a.location_code === locationCode && storageOf(a.storage_location_code) === storageLocationCode
   );
 
   const prevQuantity = existingRow?.quantity ?? 0;
 
   await applyStockMovement({
     materialCode,
+    storageLocationCode,
     locationCode,
     prevQuantity,
     newQuantity,

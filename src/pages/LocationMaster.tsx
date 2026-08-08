@@ -157,7 +157,7 @@ export default function LocationMaster() {
 
   function handleDownloadTemplate() {
     downloadWorkbook(
-      ["Location Code", "Description"],
+      ["Bin Location Code", "Description"],
       [
         ["WH-A-01-01", "Warehouse A, Rack 1, Bin 1"],
         ["WH-A-01-02", "Warehouse A, Rack 1, Bin 2"],
@@ -434,7 +434,7 @@ export default function LocationMaster() {
           fontSize: { xs: "1.4rem", sm: "1.75rem", md: "2.1rem" },
         }}
       >
-        Location Master
+        Bin Location Master
       </Typography>
 
       <Box
@@ -448,7 +448,7 @@ export default function LocationMaster() {
         }}
       >
         <TextField
-          label="Search Location"
+          label="Search Bin Location"
           placeholder="Search by Code or Description"
           value={search}
           onChange={(e) => handleSearchChange(e.target.value)}
@@ -490,7 +490,7 @@ export default function LocationMaster() {
             "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
           }}
         >
-          Add Location
+          Add Bin Location
         </Button>
 
         <Button
@@ -548,12 +548,12 @@ export default function LocationMaster() {
                 <ArrowBackIcon fontSize="small" />
               </IconButton>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                Import Location Excel
+                Import Bin Location Excel
               </Typography>
             </Box>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Columns: Location Code, Description.
+              Columns: Bin Location Code, Description.
             </Typography>
 
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.75 }}>
@@ -618,7 +618,7 @@ export default function LocationMaster() {
                     <TableHead>
                       <TableRow>
                         <TableCell>Row</TableCell>
-                        <TableCell>Location Code</TableCell>
+                        <TableCell>Bin Location Code</TableCell>
                         <TableCell>Description</TableCell>
                         <TableCell>Status</TableCell>
                       </TableRow>
@@ -707,7 +707,7 @@ export default function LocationMaster() {
                       <Table size="small" stickyHeader>
                         <TableHead>
                           <TableRow>
-                            <TableCell>Location Code</TableCell>
+                            <TableCell>Bin Location Code</TableCell>
                             <TableCell>Row</TableCell>
                             <TableCell>Reason</TableCell>
                           </TableRow>

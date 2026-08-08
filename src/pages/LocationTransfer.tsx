@@ -57,6 +57,7 @@ const emptyStockSummary: MaterialStockSummary = {
 
 interface LocationRowState {
   rowKey: string;
+  storage_location_code: string;
   from_location_code: string;
   fromAvailableQty: number;
   fromAllocationId: number;
@@ -222,6 +223,7 @@ export default function LocationTransfer() {
                 ...row.locations,
                 {
                   rowKey: makeKey(),
+                  storage_location_code: allocation.storage_location_code,
                   from_location_code: allocation.location_code,
                   fromAvailableQty: Number(allocation.quantity),
                   fromAllocationId: allocation.id as number,
@@ -273,7 +275,7 @@ export default function LocationTransfer() {
             // `stockLocations` excludes zero-quantity rows.
             const existing = to
               ? row.allStockLocations.find(
-                  (a) => a.location_code === to.location_code
+                  (a) => a.storage_location_code === l.storage_location_code && a.location_code === to.location_code
                 )
               : undefined;
 
@@ -335,6 +337,7 @@ export default function LocationTransfer() {
         locations: row.locations
           .filter((l) => l.to)
           .map((l): TransferLocationInput => ({
+            storage_location_code: l.storage_location_code,
             from_location_code: l.from_location_code,
             fromAvailableQty: l.fromAvailableQty,
             fromAllocationId: l.fromAllocationId,
@@ -559,7 +562,7 @@ export default function LocationTransfer() {
                                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
                                     <PlaceIcon sx={{ fontSize: 14 }} color="action" />
                                     <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                                      {loc.from_location_code}
+                                      {loc.storage_location_code} / {loc.from_location_code}
                                     </Typography>
                                   </Box>
                                   <Typography variant="caption" color="text.secondary">
@@ -590,7 +593,7 @@ export default function LocationTransfer() {
                                     onChange={(to) =>
                                       updateToLocation(row.rowKey, loc.rowKey, to)
                                     }
-                                    label="To Location"
+                                    label="To Bin Location"
                                   />
                                 </Box>
 
@@ -660,7 +663,7 @@ export default function LocationTransfer() {
                     const remainingLocations = row.stockLocations.filter(
                       (a) =>
                         !row.locations.some(
-                          (l) => l.from_location_code === a.location_code
+                          (l) => l.storage_location_code === a.storage_location_code && l.from_location_code === a.location_code
                         )
                     );
 
@@ -677,11 +680,11 @@ export default function LocationTransfer() {
                         select
                         size="small"
                         fullWidth
-                        label="Add Location"
+                        label="Add Bin Location"
                         value=""
                         onChange={(e) => {
                           const allocation = remainingLocations.find(
-                            (a) => a.location_code === e.target.value
+                            (a) => `${a.storage_location_code}|${a.location_code}` === e.target.value
                           );
                           if (allocation) addLocationRow(row.rowKey, allocation);
                         }}
@@ -693,15 +696,15 @@ export default function LocationTransfer() {
                             renderValue: () => (
                               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "primary.main" }}>
                                 <AddIcon fontSize="small" />
-                                <span>Add Location</span>
+                                <span>Add Bin Location</span>
                               </Box>
                             ),
                           },
                         }}
                       >
                         {remainingLocations.map((a) => (
-                          <MenuItem key={a.location_code} value={a.location_code}>
-                            {a.location_code} (available: {a.quantity})
+                          <MenuItem key={`${a.storage_location_code}|${a.location_code}`} value={`${a.storage_location_code}|${a.location_code}`}>
+                            {a.storage_location_code} / {a.location_code} (available: {a.quantity})
                           </MenuItem>
                         ))}
                       </TextField>
