@@ -48,7 +48,6 @@ type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
 interface LocationRowState {
   rowKey: string;
-  storage_location_code: string;
   location_code: string;
   availableQty: number;
   allocationId: number;
@@ -212,7 +211,6 @@ export default function MaterialIssue() {
                 ...row.locations,
                 {
                   rowKey: makeKey(),
-                  storage_location_code: allocation.storage_location_code,
                   location_code: allocation.location_code,
                   availableQty: Number(allocation.quantity),
                   allocationId: allocation.id as number,
@@ -265,7 +263,6 @@ export default function MaterialIssue() {
         short_description: row.material!.short_description,
         uom: row.material!.uom,
         locations: row.locations.map((l): IssueLocationInput => ({
-          storage_location_code: l.storage_location_code,
           location_code: l.location_code,
           availableQty: l.availableQty,
           allocationId: l.allocationId,
@@ -472,7 +469,7 @@ export default function MaterialIssue() {
                             <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
                               <PlaceIcon sx={{ fontSize: 14 }} color="action" />
                               <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                                {loc.storage_location_code} / {loc.location_code}
+                                {loc.location_code}
                               </Typography>
                             </Box>
                             <Typography variant="caption" color="text.secondary">
@@ -514,11 +511,11 @@ export default function MaterialIssue() {
                       select
                       size="small"
                       fullWidth
-                      label="Add Bin Location"
+                      label="Add Location"
                       value=""
                       onChange={(e) => {
                         const allocation = row.stockLocations.find(
-                          (a) => `${a.storage_location_code}|${a.location_code}` === e.target.value
+                          (a) => a.location_code === e.target.value
                         );
                         if (allocation) addLocationRow(row.rowKey, allocation);
                       }}
@@ -530,7 +527,7 @@ export default function MaterialIssue() {
                           renderValue: () => (
                             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "primary.main" }}>
                               <AddIcon fontSize="small" />
-                              <span>Add Bin Location</span>
+                              <span>Add Location</span>
                             </Box>
                           ),
                         },
@@ -540,12 +537,12 @@ export default function MaterialIssue() {
                         .filter(
                           (a) =>
                             !row.locations.some(
-                              (l) => l.storage_location_code === a.storage_location_code && l.location_code === a.location_code
+                              (l) => l.location_code === a.location_code
                             )
                         )
                         .map((a) => (
-                          <MenuItem key={`${a.storage_location_code}|${a.location_code}`} value={`${a.storage_location_code}|${a.location_code}`}>
-                            {a.storage_location_code} / {a.location_code} (available: {a.quantity})
+                          <MenuItem key={a.location_code} value={a.location_code}>
+                            {a.location_code} (available: {a.quantity})
                           </MenuItem>
                         ))}
                     </TextField>

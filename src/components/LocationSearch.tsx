@@ -14,7 +14,7 @@ interface Props {
 export default function LocationSearch({
   value,
   onChange,
-  label = "Search Bin Location",
+  label = "Search Location",
 }: Props) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [inputValue, setInputValue] = useState("");

@@ -7,10 +7,8 @@ import {
 } from "@mui/material";
 
 import LocationSearch from "./LocationSearch";
-import StorageLocationSelect from "./StorageLocationSelect";
 
 import { usePersistentState } from "../hooks/usePersistentState";
-import { DEFAULT_STORAGE_LOCATION } from "../services/storageLocationService";
 
 import type { Location } from "../types/location";
 
@@ -21,7 +19,6 @@ interface Props {
   // of leaking one material's in-progress location/quantity into another's.
   materialCode: string;
   onAllocate: (
-    storageLocationCode: string,
     locationCode: string,
     quantity: number
   ) => void;
@@ -31,11 +28,6 @@ export default function AllocationForm({
   materialCode,
   onAllocate,
 }: Props) {
-
-  const [storageLocationCode, setStorageLocationCode] = usePersistentState(
-    `allocationForm.${materialCode}.storageLocation`,
-    DEFAULT_STORAGE_LOCATION
-  );
 
   const [location, setLocation] =
     usePersistentState<Location | null>(
@@ -48,11 +40,6 @@ export default function AllocationForm({
 
   function handleAllocate() {
 
-    if (!storageLocationCode) {
-      alert("Please select a storage location.");
-      return;
-    }
-
     if (!location) {
       alert("Please select a location.");
       return;
@@ -64,7 +51,6 @@ export default function AllocationForm({
     }
 
     onAllocate(
-      storageLocationCode,
       location.location_code,
       Number(quantity)
     );
@@ -90,18 +76,10 @@ export default function AllocationForm({
           gap: 1,
         }}
       >
-        <Box sx={{ flex: { sm: 1.4 } }}>
-          <StorageLocationSelect
-            value={storageLocationCode}
-            onChange={setStorageLocationCode}
-          />
-        </Box>
-
         <Box sx={{ flex: { sm: 2 } }}>
           <LocationSearch
             value={location}
             onChange={setLocation}
-            label="Search Bin Location"
           />
         </Box>
 

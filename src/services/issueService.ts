@@ -60,7 +60,6 @@ export interface IssueItemLocation {
  * materialAllocationService.getAllocations) and are required so the
  * Inventory Engine knows the exact allocation row to decrease. */
 export interface IssueLocationInput {
-  storage_location_code: string;
   location_code: string;
   availableQty: number;
   allocationId: number;
@@ -131,14 +130,14 @@ export function validateIssue(
       if (!loc.issueQty || loc.issueQty <= 0) {
         return {
           valid: false,
-          error: `Issue Qty must be greater than zero for ${material.material_code} at ${loc.storage_location_code}/${loc.location_code}.`,
+          error: `Issue Qty must be greater than zero for ${material.material_code} at ${loc.location_code}.`,
         };
       }
 
       if (loc.issueQty > loc.availableQty) {
         return {
           valid: false,
-          error: `Issue Qty (${loc.issueQty}) exceeds available quantity (${loc.availableQty}) for ${material.material_code} at ${loc.storage_location_code}/${loc.location_code}.`,
+          error: `Issue Qty (${loc.issueQty}) exceeds available quantity (${loc.availableQty}) for ${material.material_code} at ${loc.location_code}.`,
         };
       }
     }
@@ -242,7 +241,6 @@ export async function createIssue(
       // MATERIAL_ISSUE / OUT transaction for this location.
       await applyStockMovement({
         materialCode: material.material_code,
-        storageLocationCode: loc.storage_location_code,
         locationCode: loc.location_code,
         prevQuantity: loc.availableQty,
         newQuantity: loc.availableQty - loc.issueQty,
@@ -259,7 +257,6 @@ export async function createIssue(
         .insert([
           {
             issue_item_id: issueItemId,
-            storage_location_code: loc.storage_location_code,
             location_code: loc.location_code,
             issue_qty: loc.issueQty,
           },

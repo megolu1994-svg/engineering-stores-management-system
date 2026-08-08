@@ -224,19 +224,14 @@ export default function MaterialAllocation() {
     }, 100);
   }
 
-  async function handleAllocate(storageLocationCode: string, locationCode: string, quantity: number) {
+  async function handleAllocate(locationCode: string, quantity: number) {
     if (!material) {
       showSnackbar("Please select a material first.", "warning");
       return;
     }
 
-    if (!storageLocationCode) {
-      showSnackbar("Please select a storage location.", "warning");
-      return;
-    }
-
     if (!locationCode) {
-      showSnackbar("Please select a bin location.", "warning");
+      showSnackbar("Please select a location.", "warning");
       return;
     }
 
@@ -246,14 +241,10 @@ export default function MaterialAllocation() {
     }
 
     const existingRow = allocations.find(
-      (a) => a.location_code === locationCode && a.storage_location_code === storageLocationCode
+      (a) => a.location_code === locationCode
     );
 
-    const availableToAllocate = safeNumber(
-      allocations
-        .filter((a) => a.location_code === UNALLOCATED_LOCATION && a.storage_location_code === storageLocationCode)
-        .reduce((sum, a) => sum + safeNumber(a.quantity), 0)
-    );
+    const availableToAllocate = safeNumber(unallocatedQty);
 
     if (quantity > availableToAllocate) {
       showSnackbar(
@@ -273,15 +264,14 @@ export default function MaterialAllocation() {
       } else {
         await addAllocation({
           material_code: material.material_code,
-          storage_location_code: storageLocationCode,
           location_code: locationCode,
           quantity,
         });
       }
 
       const allocationMessage = existingRow
-        ? `Allocation updated for ${storageLocationCode} / bin ${locationCode}.`
-        : `Stock allocated to ${storageLocationCode} / bin ${locationCode}.`;
+        ? `Allocation updated for location ${locationCode}.`
+        : `Stock allocated to location ${locationCode}.`;
 
       if (pendingPhoto) {
         try {
@@ -305,7 +295,7 @@ export default function MaterialAllocation() {
       await loadAllocations(material.material_code);
 
       scrollToAllocations();
-    } catch {
+    } catch (err) {
       showSnackbar("Something went wrong while saving the allocation.", "error");
     } finally {
       setSavingAllocation(false);
@@ -367,7 +357,7 @@ export default function MaterialAllocation() {
       closeEditDialog();
 
       await loadAllocations(material.material_code);
-    } catch {
+    } catch (err) {
       showSnackbar("Something went wrong while updating the allocation.", "error");
     } finally {
       setSavingAllocation(false);
@@ -404,7 +394,7 @@ export default function MaterialAllocation() {
       closeDeleteDialog();
 
       await loadAllocations(material.material_code);
-    } catch {
+    } catch (err) {
       showSnackbar("Something went wrong while deleting the allocation.", "error");
     } finally {
       setSavingAllocation(false);
