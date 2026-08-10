@@ -66,6 +66,71 @@ async function fetchByCodesInChunks<T>(
 }
 
 /**
+ * Collapses all whitespace (including non-breaking spaces, which JS
+ * treats as whitespace but which commonly slip in via copy/paste from
+ * PDFs, Word, or OCR'd registers) down to single regular spaces, and
+ * trims the ends. Two codes that only differ by "how many/what kind of
+ * spaces" are treated as the same code once normalized.
+ */
+function normalizeCode(code: string): string {
+  return code.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+const LOCATION_PAGE_SIZE = 1000;
+
+/**
+ * Fetches every active location_code from location_master, paginated via
+ * `.range()` so it isn't silently capped at PostgREST's default 1000-row
+ * response limit no matter how large the table grows.
+ *
+ * Requires an explicit `.order()` alongside `.range()`. Without it,
+ * Postgres/PostgREST don't guarantee a stable row order across separate
+ * paginated requests - once the table has more rows than one page, later
+ * pages can come back with rows shuffled, skipped, or duplicated relative
+ * to earlier pages. That silently drops real locations from the merged
+ * list and makes them look "not found" even though they exist - which is
+ * exactly what every other `.range()` call in this codebase (see
+ * locationService.ts, materialService.ts) already guards against by
+ * ordering on location_code / material_code first.
+ *
+ * This intentionally does NOT filter by an `.in()` against the codes
+ * typed in the Excel file. If a location's code in the database has a
+ * stray double space, non-breaking space, or different case than what
+ * the user typed (e.g. left over from an earlier bulk import of a
+ * scanned/handwritten register), an exact `.in()` match would silently
+ * miss that row and report a real, existing location as "not found".
+ * Fetching every active code and matching locally by a normalized key
+ * (see `normalizeCode`) makes the match whitespace/case-tolerant
+ * regardless of how the stored code happens to be formatted.
+ */
+async function fetchAllActiveLocationCodes(): Promise<string[]> {
+  const codes: string[] = [];
+  let from = 0;
+
+  for (;;) {
+    const to = from + LOCATION_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("location_master")
+      .select("location_code")
+      .eq("is_active", true)
+      .order("location_code")
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Failed to look up location_master: ${error.message}`);
+    }
+
+    const page = (data ?? []) as { location_code: string }[];
+    codes.push(...page.map((row) => row.location_code));
+
+    if (page.length < LOCATION_PAGE_SIZE) break;
+    from += LOCATION_PAGE_SIZE;
+  }
+
+  return codes;
+}
+
+/**
  * Same chunking strategy as fetchByCodesInChunks, but for the one lookup
  * that also needs an extra .eq() filter (unallocated balances), which a
  * generic helper can't express cleanly.
@@ -592,28 +657,27 @@ export async function validateAllocationExcelRows(
   const materialCodes = Array.from(
     new Set(candidates.map((c) => c.material_code))
   );
-  const locationCodes = Array.from(
-    new Set(candidates.map((c) => c.location_code))
-  );
 
-  const [materialRows, locationRows, unallocatedRows] = await Promise.all([
+  const [materialRows, allLocationCodes, unallocatedRows] = await Promise.all([
     fetchByCodesInChunks<{ material_code: string }>(
       "material_master",
       "material_code",
       "material_code",
       materialCodes
     ),
-    fetchByCodesInChunks<{ location_code: string }>(
-      "location_master",
-      "location_code",
-      "location_code",
-      locationCodes
-    ),
+    fetchAllActiveLocationCodes(),
     fetchUnallocatedBalancesInChunks(materialCodes),
   ]);
 
   const knownMaterials = new Set(materialRows.map((m) => m.material_code));
-  const knownLocations = new Set(locationRows.map((l) => l.location_code));
+
+  // Normalized (whitespace/case-collapsed) code -> the actual code as
+  // stored in location_master, so a match can still resolve to the exact
+  // existing row even if the Excel file's spacing/case differs slightly.
+  const locationByNormalizedCode = new Map<string, string>();
+  for (const code of allLocationCodes) {
+    locationByNormalizedCode.set(normalizeCode(code), code);
+  }
 
   const runningBalance = new Map<string, number>();
   for (const row of unallocatedRows) {
@@ -629,7 +693,11 @@ export async function validateAllocationExcelRows(
       errors.push(`Material Code "${candidate.material_code}" was not found.`);
     }
 
-    if (!knownLocations.has(candidate.location_code)) {
+    const resolvedLocationCode = locationByNormalizedCode.get(
+      normalizeCode(candidate.location_code)
+    );
+
+    if (!resolvedLocationCode) {
       errors.push(`Location Code "${candidate.location_code}" was not found.`);
     }
 
@@ -643,6 +711,12 @@ export async function validateAllocationExcelRows(
       });
       continue;
     }
+
+    // Use the location code exactly as stored in location_master (not
+    // necessarily byte-identical to what was typed in the Excel file) so
+    // the allocation is written against the real existing row instead of
+    // risking a near-duplicate location code.
+    candidate.location_code = resolvedLocationCode as string;
 
     const available = runningBalance.get(candidate.material_code) ?? 0;
     let warning: string | undefined;
