@@ -241,7 +241,15 @@ function getFieldValue(
       const value = row[match];
       return value === null || value === undefined
         ? ""
-        : String(value).trim();
+        // Collapse any run of whitespace - including non-breaking spaces
+        // that commonly slip in via copy/paste from PDFs, Word, or
+        // OCR'd registers - down to a single regular space, in addition
+        // to trimming the ends. Without this, a location code imported
+        // here with e.g. a double space or NBSP looks identical on
+        // screen but will silently fail to match an exact string
+        // elsewhere (e.g. bulk allocate) even though it's "the same"
+        // code.
+        : String(value).replace(/\s+/g, " ").trim();
     }
   }
 
