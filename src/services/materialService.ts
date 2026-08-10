@@ -154,6 +154,7 @@ export async function materialExists(
     .from("material_master")
     .select("material_code")
     .eq("material_code", materialCode)
+    .eq("is_active", true)
     .maybeSingle();
 
   if (error) throw error;
@@ -165,12 +166,40 @@ export async function addMaterial(
   material: Material
 ): Promise<void> {
 
-  const exists = await materialExists(
-    material.material_code
-  );
+  // Look up the row regardless of active status, so we can tell the
+  // difference between "truly new code" and "previously deleted code"
+  // instead of relying on materialExists() alone (which only sees
+  // active rows and would otherwise let us hit a duplicate-key error
+  // on insert).
+  const { data: existing, error: findError } = await supabase
+    .from("material_master")
+    .select("material_code, is_active")
+    .eq("material_code", material.material_code)
+    .maybeSingle();
 
-  if (exists) {
+  if (findError) throw findError;
+
+  if (existing?.is_active) {
     throw new Error("Material Code already exists.");
+  }
+
+  if (existing && !existing.is_active) {
+    // The code was previously soft-deleted (is_active = false). Reactivate
+    // and refresh it instead of inserting a new row, which would otherwise
+    // violate the unique constraint on material_code.
+    const { error } = await supabase
+      .from("material_master")
+      .update({
+        short_description: material.short_description,
+        uom: material.uom,
+        hsn_code: material.hsn_code,
+        material_group: material.material_group,
+        is_active: true,
+      })
+      .eq("material_code", material.material_code);
+
+    if (error) throw error;
+    return;
   }
 
   const { error } = await supabase
