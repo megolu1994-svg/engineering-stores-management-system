@@ -158,7 +158,7 @@ export default function MaterialStockDetailsDialog({
               unallocatedQty={unallocatedQty}
             />
 
-            {data?.sapTotal !== null && (
+            {data && data.sapTotal !== null && (
               <Box
                 sx={{
                   display: "flex",
