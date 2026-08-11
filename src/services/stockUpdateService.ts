@@ -6,6 +6,7 @@ import {
   applyAdjustment,
 } from "./materialAllocationService";
 import { addMaterial } from "./materialService";
+import { normalizeMaterialCode } from "../utils/materialCode";
 import {
   applyStockMovement,
   generateReferenceNumber,
@@ -276,6 +277,7 @@ export function parseStockUpdateExcelRows(
       "material_code",
       "Material",
     ]);
+    const normalizedCode = normalizeMaterialCode(materialCode);
     const locationCode = getFieldValue(row, [
       "Location Code",
       "location_code",
@@ -305,6 +307,8 @@ export function parseStockUpdateExcelRows(
 
     if (!materialCode) {
       errors.push("Material Code is required.");
+    } else if (!normalizedCode) {
+      errors.push(`Material Code "${materialCode}" is not numeric.`);
     }
 
     const quantity = parseQuantity(quantityRaw);
@@ -327,7 +331,7 @@ export function parseStockUpdateExcelRows(
       return;
     }
 
-    const key = materialCode.toUpperCase();
+    const key = (normalizedCode ?? materialCode).toUpperCase();
 
     if (!grouped.has(key)) {
       grouped.set(key, {

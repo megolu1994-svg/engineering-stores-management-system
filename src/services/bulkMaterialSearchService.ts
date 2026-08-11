@@ -1,4 +1,5 @@
 import { supabase } from "../config/supabase";
+import { normalizeMaterialCode } from "../utils/materialCode";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const CHUNK_SIZE = 100;
@@ -50,10 +51,15 @@ export function parseMaterialCodes(raw: string): string[] {
     const code = token.trim().replace(/^['"`]+|['"`]+$/g, "");
     if (!code) continue;
 
-    const key = code.toUpperCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    codes.push(code);
+    // Numeric material-code rule: IN000219 / 000219 normalize to 219.
+    // Tokens with no digits at all can't match a numeric master and are
+    // dropped (they are still shown by the dialog's raw count).
+    const normalized = normalizeMaterialCode(code);
+    if (!normalized) continue;
+
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    codes.push(normalized);
   }
 
   return codes;

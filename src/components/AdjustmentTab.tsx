@@ -31,6 +31,11 @@ import {
   applyAdjustment,
   getAllocations,
 } from "../services/materialAllocationService";
+import {
+  getSapReconciliationReviews,
+  type SapStockReview,
+} from "../services/sapHistoryService";
+import SapReviewDialog from "./SapReviewDialog";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 type Direction = "increase" | "decrease";
@@ -76,6 +81,40 @@ export default function AdjustmentTab() {
   const [reason, setReason] = usePersistentState("adjustment.reason", "");
   const [remarks, setRemarks] = usePersistentState("adjustment.remarks", "");
   const [saving, setSaving] = useState(false);
+
+  // SAP reconciliation reviews - differences between SAP totals and app
+  // stock, created by the MB52 import. Resolved here (Apply = one audited
+  // ADJUSTMENT, Dismiss = keep as history).
+  const [reviews, setReviews] = useState<
+    (SapStockReview & { material_code: string })[] | null
+  >(null);
+  const [activeReview, setActiveReview] = useState<
+    (SapStockReview & { material_code: string }) | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getSapReconciliationReviews()
+      .then((data) => {
+        if (!cancelled) {
+          setReviews(data.filter((r) => r.status === "open"));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setReviews([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function reloadReviews() {
+    getSapReconciliationReviews()
+      .then((data) => setReviews(data.filter((r) => r.status === "open")))
+      .catch(() => setReviews([]));
+  }
 
   // No location means "Unallocated" for both directions - Increase adds
   // to Unallocated to be allocated later, and Decrease (e.g. reversing
@@ -179,6 +218,68 @@ export default function AdjustmentTab() {
 
   return (
     <Box sx={{ mt: 1.5 }}>
+      {reviews !== null && reviews.length > 0 && (
+        <Box sx={{ mb: 1.5 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 0.75 }}>
+            SAP Reconciliation - {reviews.length} open review(s)
+          </Typography>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+            {reviews.map((review) => {
+              const diff = review.difference;
+              return (
+                <Box
+                  key={review.id}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    p: 1.25,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {review.material_code}
+                        {review.short_description ? ` - ${review.short_description}` : ""}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        SAP {review.sap_total} ({
+                          (review.sloc_breakdown ?? [])
+                            .map((b) => `${b.storage_location}: ${b.quantity}`)
+                            .join(" · ")
+                        }) vs App {review.app_total}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 800,
+                          color: diff > 0 ? "info.main" : "error.main",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {diff > 0 ? `App ${diff} below` : `App ${-diff} above`}
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => setActiveReview(review)}
+                        sx={{ borderRadius: 2, fontWeight: 700 }}
+                      >
+                        Review
+                      </Button>
+                    </Box>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        </Box>
+      )}
+
       <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)" }}>
         <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
           <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", mb: 1 }}>
@@ -313,6 +414,17 @@ export default function AdjustmentTab() {
           </Box>
         </CardContent>
       </Card>
+
+      <SapReviewDialog
+        review={activeReview}
+        onClose={() => setActiveReview(null)}
+        onResolved={() => {
+          setActiveReview(null);
+          reloadReviews();
+          showSnackbar("Reconciliation updated.", "success");
+        }}
+        onError={(message) => showSnackbar(message, "error")}
+      />
 
       <Snackbar
         open={snackbar.open}

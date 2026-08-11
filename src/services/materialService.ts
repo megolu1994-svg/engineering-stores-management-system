@@ -1,6 +1,7 @@
 import { supabase } from "../config/supabase";
 import type { Material } from "../types/material";
 import { type BulkImportReportRow } from "../utils/bulkImportReport";
+import { normalizeMaterialCode } from "../utils/materialCode";
 import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
 export async function getMaterials(): Promise<Material[]> {
@@ -308,13 +309,18 @@ function isRowBlank(row: Record<string, unknown>): boolean {
 export function extractMaterialFields(
   row: Record<string, unknown>
 ): MaterialPreviewFields {
+  const rawMaterialCode = getFieldValue(row, [
+    "Material Code",
+    "material_code",
+    "MaterialCode",
+    "Material",
+  ]);
+
   return {
-    material_code: getFieldValue(row, [
-      "Material Code",
-      "material_code",
-      "MaterialCode",
-      "Material",
-    ]),
+    // Numeric material-code rule: codes normalize to their digits
+    // (IN000219 / 000219 -> 219). Non-numeric codes are kept as-is so the
+    // parser can reject them with a clear message.
+    material_code: normalizeMaterialCode(rawMaterialCode) ?? rawMaterialCode,
     short_description: getFieldValue(row, [
       "Short Description",
       "Description",
@@ -395,6 +401,17 @@ export function parseMaterialExcelRows(
 
     if (!fields.material_code) {
       errors.push("Material Code is required.");
+    } else if (
+      !normalizeMaterialCode(
+        getFieldValue(row, [
+          "Material Code",
+          "material_code",
+          "MaterialCode",
+          "Material",
+        ])
+      )
+    ) {
+      errors.push(`Material Code "${fields.material_code}" is not numeric.`);
     }
 
     if (!fields.short_description) {

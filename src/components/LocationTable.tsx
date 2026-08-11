@@ -226,9 +226,11 @@ export default function LocationTable({
             }}
           >
             <Box sx={{ minWidth: 0, flex: 1, pt: 0.5 }}>
-              <Typography variant="body2" sx={{ fontWeight: "bold" }} noWrap>
-                {location.location_code}
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Typography variant="body2" sx={{ fontWeight: "bold" }} noWrap>
+                  {location.location_code}
+                </Typography>
+              </Box>
 
               <Typography
                 variant="caption"

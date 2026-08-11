@@ -31,6 +31,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
+import SapHistoryImportCard from "./SapHistoryImportCard";
 
 import { usePersistentState } from "../hooks/usePersistentState";
 
@@ -304,6 +305,9 @@ export default function StockUpdateTab({ onImportComplete }: StockUpdateTabProps
         review under Stock &gt; the search screen instead of being applied
         automatically.
       </Alert>
+
+      {/* ---- SAP Material History import ---- */}
+      <SapHistoryImportCard onImportComplete={onImportComplete} />
 
       {/* ---- Manual entry ---- */}
       <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)" }}>

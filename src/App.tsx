@@ -12,6 +12,8 @@ import MaterialReceipt from "./pages/MaterialReceipt";
 import MaterialIssue from "./pages/MaterialIssue";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import SapStock from "./pages/SapStock";
+import SapHistory from "./pages/SapHistory";
 
 export default function App() {
   return (
@@ -33,6 +35,10 @@ export default function App() {
           <Route path="material-issue" element={<MaterialIssue />} />
 
           <Route path="reports" element={<Reports />} />
+
+          <Route path="sap-stock" element={<SapStock />} />
+
+          <Route path="sap-history" element={<SapHistory />} />
 
           <Route path="settings" element={<Settings />} />
         </Route>

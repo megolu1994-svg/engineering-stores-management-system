@@ -204,14 +204,12 @@ export async function deleteLocation(
 export interface LocationPreviewFields {
   location_code: string;
   location_description: string;
-  location_type: string;
 }
 
 export interface LocationImportRow {
   rowNumber: number;
   location_code: string;
   location_description: string;
-  location_type: string;
 }
 
 export interface LocationInvalidRow {
@@ -277,11 +275,6 @@ export function extractLocationFields(
       "Description",
       "location_description",
     ]),
-    location_type: getFieldValue(row, [
-      "Location Type",
-      "Type",
-      "location_type",
-    ]),
   };
 }
 
@@ -333,7 +326,6 @@ export function parseLocationExcelRows(
       rowNumber,
       location_code: fields.location_code,
       location_description: fields.location_description,
-      location_type: fields.location_type,
     });
   });
 

@@ -34,6 +34,8 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import PersonIcon from "@mui/icons-material/Person";
 import ContentPasteSearchIcon from "@mui/icons-material/ContentPasteSearch";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import HistoryIcon from "@mui/icons-material/History";
 
 import { useTheme } from "@mui/material/styles";
 
@@ -97,6 +99,8 @@ const menuItems = [
   { text: "Inventory", path: "/allocation", icon: <FactCheckIcon /> },
   { text: "Material Receipt", path: "/material-receipt", icon: <LocalShippingIcon /> },
   { text: "Material Issue", path: "/material-issue", icon: <OutputIcon /> },
+  { text: "SAP Stock", path: "/sap-stock", icon: <AccountTreeIcon /> },
+  { text: "SAP History", path: "/sap-history", icon: <HistoryIcon /> },
   { text: "Reports", path: "/reports", icon: <BarChartIcon /> },
   { text: "Settings", path: "/settings", icon: <SettingsIcon /> },
 ];
