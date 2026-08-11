@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 
 import {
   AppBar,
@@ -44,6 +44,7 @@ import {
 import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 import { useInventoryNotifications } from "../hooks/useInventoryNotifications";
 import { useBranding } from "../contexts/BrandingContext";
+import GlobalMaterialSearch from "./GlobalMaterialSearch";
 
 // Desktop permanent sidebar width only - the mobile temporary drawer is
 // untouched and keeps its own (wider) width below, since the mobile UI
@@ -118,16 +119,6 @@ const DESKTOP_HEADER_HEIGHT = TOOLBAR_HEIGHT.md;
 // bar and no reserved blank space.
 const COMPANY_BAR_HEIGHT = 22;
 
-// Lets a page (currently just Dashboard) render its search field into the
-// desktop header's toolbar, next to the brand logo, instead of in its own
-// page content - purely a portal target, so the page keeps full ownership
-// of the field's state/logic. Only meaningful at "md"+: on mobile the
-// header slot node is never mounted, so this is always null there and
-// pages must fall back to their normal (unchanged) mobile layout.
-const HeaderSlotContext = createContext<HTMLDivElement | null>(null);
-export function useHeaderSlot() {
-  return useContext(HeaderSlotContext);
-}
 
 // Height of the fixed bottom navigation bar shown on mobile (below the "md"
 // breakpoint) - exported so pages with their own fixed/sticky bottom bars
@@ -177,8 +168,6 @@ export default function AppLayout() {
   };
 
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  const [headerSlotEl, setHeaderSlotEl] = useState<HTMLDivElement | null>(null);
 
   // Desktop-only: gated by `!mobile` so the realtime subscription itself
   // (not just the bell UI) has no footprint on mobile.
@@ -330,8 +319,6 @@ export default function AppLayout() {
 
   return (
 
-    <HeaderSlotContext.Provider value={headerSlotEl}>
-
     <Box sx={{ display: "flex" }}>
 
       {/* Hidden while the mobile drawer is open so only one header (the
@@ -450,13 +437,18 @@ export default function AppLayout() {
               </Box>
             )}
 
-            {/* Desktop-only: portal target for the active page's search
-                field (see useHeaderSlot), centered and width-capped rather
-                than stretched edge-to-edge. Empty/unused on pages that
-                don't portal anything into it. */}
+            {/* Desktop-only: global material search, centered and width-
+                capped - available on every screen, not just Dashboard. */}
             {!mobile && (
-              <Box sx={{ flexGrow: 1, display: "flex", justifyContent: "center" }}>
-                <Box ref={setHeaderSlotEl} sx={{ width: "100%", maxWidth: 640 }} />
+              <Box
+                sx={{
+                  flexGrow: 1,
+                  display: "flex",
+                  justifyContent: "center",
+                  px: { md: 2 },
+                }}
+              >
+                <GlobalMaterialSearch />
               </Box>
             )}
 
@@ -695,8 +687,6 @@ export default function AppLayout() {
       )}
 
     </Box>
-
-    </HeaderSlotContext.Provider>
 
   );
 
