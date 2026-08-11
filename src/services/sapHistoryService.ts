@@ -417,6 +417,18 @@ export function parseSapDate(value: unknown): string | null {
   const text = String(value).trim();
   if (!text) return null;
 
+  // xlsx hands date cells back as numeric serials (e.g. 46234) and cellAt
+  // has already stringified them by now - route pure-numeric text through
+  // the numeric branches again. Only values that could be a plausible
+  // date serial / yyyymmdd are recursed, so quantity-like text
+  // ("84.758") still falls through to the text formats and returns null.
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(text)) {
+    const numeric = Number(text);
+    if (Number.isFinite(numeric) && numeric > 20000) {
+      return parseSapDate(numeric);
+    }
+  }
+
   let match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (match) {
     const [, y, m, d] = match;
@@ -540,6 +552,9 @@ export function parseMb51ExcelRows(
   const detectedHeader = detectHeaderValues(rows2d, headerRowIndex);
 
   let totalRecords = 0;
+  // SAP MB51 exports merge the material cell across consecutive rows of
+  // the same material; remember the last code so blank cells inherit it.
+  let lastMaterialCode: string | null = null;
 
   rows2d.forEach((row, index) => {
     if (index <= headerRowIndex) return;
@@ -549,8 +564,14 @@ export function parseMb51ExcelRows(
     // Excel row numbers are 1-based; rows2d index 0 is Excel row 1.
     const rowNumber = index + 1;
 
-    const rawMaterialCode = cellAt(row, colMap, "material");
-    const materialCode = normalizeMaterialCode(rawMaterialCode);
+    const rawMaterialCell = cellAt(row, colMap, "material");
+    let rawMaterialCode = rawMaterialCell;
+    let materialCode = normalizeMaterialCode(rawMaterialCode);
+    if (!materialCode && lastMaterialCode) {
+      rawMaterialCode = lastMaterialCode;
+      materialCode = lastMaterialCode;
+    }
+    if (materialCode) lastMaterialCode = materialCode;
     const materialDescription = cellAt(row, colMap, "description");
     const item = cellAt(row, colMap, "item");
     const storageLocation = normalizeSapLocation(cellAt(row, colMap, "sloc"));
@@ -638,6 +659,8 @@ export function parseMb52ExcelRows(
   const detectedHeader = detectHeaderValues(rows2d, headerRowIndex);
 
   let totalRecords = 0;
+  // MB52 exports also merge the material cell across consecutive rows.
+  let lastMaterialCode: string | null = null;
 
   rows2d.forEach((row, index) => {
     if (index <= headerRowIndex) return;
@@ -646,8 +669,14 @@ export function parseMb52ExcelRows(
     totalRecords += 1;
     const rowNumber = index + 1;
 
-    const rawMaterialCode = cellAt(row, colMap, "material");
-    const materialCode = normalizeMaterialCode(rawMaterialCode);
+    const rawMaterialCell = cellAt(row, colMap, "material");
+    let rawMaterialCode = rawMaterialCell;
+    let materialCode = normalizeMaterialCode(rawMaterialCode);
+    if (!materialCode && lastMaterialCode) {
+      rawMaterialCode = lastMaterialCode;
+      materialCode = lastMaterialCode;
+    }
+    if (materialCode) lastMaterialCode = materialCode;
     const materialDescription = cellAt(row, colMap, "description");
     const uom = cellAt(row, colMap, "unit");
     const storageLocation = normalizeSapLocation(cellAt(row, colMap, "sloc"));
