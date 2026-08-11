@@ -267,36 +267,79 @@ export default function BulkMaterialSearchDialog({ open, onClose }: Props) {
                             }}
                           >
                             {row.locations.map((loc) => (
-                              <Chip
+                              <Box
                                 key={loc.location_code}
-                                size="small"
-                                label={
-                                  <Box
-                                    component="span"
-                                    sx={{ display: "inline-flex", alignItems: "baseline", gap: 0.75 }}
-                                  >
-                                    <Box component="span">{loc.location_code}</Box>
-                                    <Box component="span" sx={{ fontWeight: 800 }}>
-                                      {loc.quantity}
-                                    </Box>
-                                  </Box>
-                                }
-                                sx={{
-                                  bgcolor: "primary.soft",
-                                  color: "primary.main",
-                                  fontWeight: 600,
-                                  "& .MuiChip-label": { px: 1 },
-                                }}
-                              />
+                                component="span"
+                                sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}
+                              >
+                                <Chip
+                                  size="small"
+                                  label={loc.location_code}
+                                  sx={{
+                                    bgcolor: "primary.soft",
+                                    color: "primary.main",
+                                    fontWeight: 700,
+                                    height: 24,
+                                    "& .MuiChip-label": { px: 1 },
+                                  }}
+                                />
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    minWidth: 22,
+                                    height: 22,
+                                    px: 0.75,
+                                    borderRadius: 999,
+                                    bgcolor: "primary.main",
+                                    color: "primary.contrastText",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "0.6875rem",
+                                    fontWeight: 800,
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  {loc.quantity}
+                                </Box>
+                              </Box>
                             ))}
                             {row.unallocatedQty > 0 && (
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                color="warning"
-                                label={`UNALLOCATED: ${row.unallocatedQty}`}
-                                sx={{ fontWeight: 600 }}
-                              />
+                              <Box
+                                component="span"
+                                sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}
+                              >
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  color="warning"
+                                  label="UNALLOCATED"
+                                  sx={{
+                                    height: 24,
+                                    fontWeight: 600,
+                                    "& .MuiChip-label": { px: 1 },
+                                  }}
+                                />
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    minWidth: 22,
+                                    height: 22,
+                                    px: 0.75,
+                                    borderRadius: 999,
+                                    bgcolor: "warning.main",
+                                    color: "warning.contrastText",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "0.6875rem",
+                                    fontWeight: 800,
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  {row.unallocatedQty}
+                                </Box>
+                              </Box>
                             )}
                           </Box>
                         )}
