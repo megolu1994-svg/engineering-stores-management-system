@@ -68,6 +68,7 @@ export default function MaterialStockDetailsDialog({
     history: MaterialMovementRow[];
     sapTotal: number | null;
     sapDiff: number | null;
+    sapLocations: { storage_location: string; quantity: number }[];
   } | null>(null);
   // The code whose data currently lives in `data` - loading is derived from
   // it so the effect below only ever calls setState inside async callbacks.
@@ -98,6 +99,7 @@ export default function MaterialStockDetailsDialog({
           history,
           sapTotal: sapInfo ? sapInfo.total : null,
           sapDiff: sapInfo?.review ? sapInfo.review.difference : null,
+          sapLocations: sapInfo?.locations ?? [],
         });
         setLoadedForCode(materialCode);
       })
@@ -111,6 +113,7 @@ export default function MaterialStockDetailsDialog({
           history: [],
           sapTotal: null,
           sapDiff: null,
+          sapLocations: [],
         });
         setLoadedForCode(materialCode);
       });
@@ -176,6 +179,14 @@ export default function MaterialStockDetailsDialog({
                   variant="outlined"
                   label={`SAP total: ${data!.sapTotal}`}
                 />
+                {data!.sapLocations.map((loc) => (
+                  <Chip
+                    key={loc.storage_location}
+                    size="small"
+                    sx={{ bgcolor: "background.paper" }}
+                    label={`${loc.storage_location}: ${loc.quantity}`}
+                  />
+                ))}
                 {data!.sapDiff !== null && data!.sapDiff !== 0 ? (
                   <Chip
                     size="small"
