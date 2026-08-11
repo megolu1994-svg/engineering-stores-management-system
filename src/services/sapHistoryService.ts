@@ -1460,6 +1460,52 @@ export async function getSapStockDistribution(): Promise<SapStockRow[]> {
     .sort((a, b) => a.material_code.localeCompare(b.material_code));
 }
 
+/**
+ * SAP status for ONE material (total across its storage locations + the
+ * open reconciliation review, if any). Scoped query - unlike
+ * getSapStockDistribution() it never scans the whole distribution table,
+ * so the material details box opens instantly even with a large MB52
+ * snapshot imported. Returns null when the material has no SAP data at
+ * all (no distribution rows and no review).
+ */
+export async function getSapStockForMaterial(
+  materialCode: string
+): Promise<{ total: number; review: SapStockReview | null } | null> {
+  const [distribution, review] = await Promise.all([
+    supabase
+      .from("sap_stock_distribution")
+      .select("quantity")
+      .eq("material_code", materialCode),
+    supabase
+      .from("stock_reconciliation_reviews")
+      .select(REVIEW_COLUMNS)
+      .eq("material_code", materialCode)
+      .eq("status", "open")
+      .maybeSingle(),
+  ]);
+
+  if (distribution.error || review.error) {
+    if (distribution.error) console.error(distribution.error);
+    if (review.error) console.error(review.error);
+    return null;
+  }
+
+  const rows = (distribution.data ?? []) as { quantity: number }[];
+  const reviewRow = review.data as Record<string, unknown> | null;
+
+  // No distribution rows and no open review - the material simply has no
+  // SAP data, so the caller hides the SAP strip entirely.
+  if (rows.length === 0 && !reviewRow) return null;
+
+  const total = rows.reduce((sum, r) => sum + Number(r.quantity), 0);
+  const parsed = reviewRow ? toSapStockReview(reviewRow) : null;
+
+  return {
+    total,
+    review: parsed ? { ...parsed, material_code: materialCode } : null,
+  };
+}
+
 export interface SapHistoryFilters {
   from?: string | null;
   to?: string | null;
