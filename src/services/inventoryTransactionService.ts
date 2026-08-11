@@ -250,3 +250,45 @@ export async function reverseStockMovement(
     created_by: createdBy,
   });
 }
+
+/* -------------------------------------------------------------------------
+ * Reads
+ * ---------------------------------------------------------------------- */
+
+export interface MaterialMovementRow {
+  id: number;
+  transaction_type: string;
+  movement: "IN" | "OUT";
+  quantity: number;
+  balance_after: number;
+  location_code: string;
+  created_at: string;
+  reference_number: string | null;
+  reason: string | null;
+}
+
+/**
+ * Latest app movements (receipts, issues, allocations, transfers,
+ * adjustments) for one material, newest first. App-only - SAP movements
+ * live in sap_material_documents and are shown via the SAP History screen.
+ */
+export async function getMaterialAppMovements(
+  materialCode: string,
+  limit = 25
+): Promise<MaterialMovementRow[]> {
+  const { data, error } = await supabase
+    .from("inventory_transactions")
+    .select(
+      "id, transaction_type, movement, quantity, balance_after, location_code, created_at, reference_number, reason"
+    )
+    .eq("material_code", materialCode)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return (data ?? []) as MaterialMovementRow[];
+}

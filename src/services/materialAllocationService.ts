@@ -1,5 +1,6 @@
 import { supabase } from "../config/supabase";
 import type { MaterialAllocation } from "../types/materialAllocation";
+import { normalizeMaterialCode } from "../utils/materialCode";
 
 import {
   applyStockMovement,
@@ -590,11 +591,12 @@ export async function validateAllocationExcelRows(
 
     const rowNumber = index + 2;
 
-    const materialCode = getAllocationFieldValue(row, [
+    const rawMaterialCode = getAllocationFieldValue(row, [
       "Material Code",
       "material_code",
       "Material",
     ]);
+    const materialCode = normalizeMaterialCode(rawMaterialCode) ?? rawMaterialCode;
 
     const locationCode = getAllocationFieldValue(row, [
       "Location Code",
@@ -613,6 +615,8 @@ export async function validateAllocationExcelRows(
 
     if (!materialCode) {
       errors.push("Material Code is required.");
+    } else if (!normalizeMaterialCode(rawMaterialCode)) {
+      errors.push(`Material Code "${rawMaterialCode}" is not numeric.`);
     }
 
     if (!locationCode) {
