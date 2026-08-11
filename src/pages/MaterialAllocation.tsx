@@ -4,6 +4,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -50,6 +51,7 @@ import {
   deleteAllocation,
 } from "../services/materialAllocationService";
 import { uploadMaterialPhoto } from "../services/materialPhotoService";
+import { getSapStockForMaterial } from "../services/sapHistoryService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 
@@ -99,6 +101,29 @@ export default function MaterialAllocation() {
   const [allocations, setAllocations] = useState<MaterialAllocationType[]>(
     []
   );
+
+  // Read-only SAP reference for the selected material (MB52 snapshot):
+  // total, per-SLoc split, and match/difference vs the app total. Purely
+  // informational - SAP storage locations are accounting buckets and are
+  // never mapped onto physical bins here.
+  const [sapState, setSapState] = useState<{
+    code: string;
+    info: {
+      total: number;
+      locations: { storage_location: string; quantity: number }[];
+      review: { difference: number } | null;
+    } | null;
+  } | null>(null);
+
+  const selectedMaterialCode = material?.material_code ?? null;
+  // Only trust the fetched SAP data when it belongs to the currently
+  // selected material (guards against a stale fetch resolving late).
+  const sapInfo =
+    selectedMaterialCode !== null && sapState?.code === selectedMaterialCode
+      ? sapState.info
+      : null;
+  const sapLoading =
+    selectedMaterialCode !== null && sapState?.code !== selectedMaterialCode;
 
   // Derived purely from the Inventory Engine's material_allocation rows -
   // Material Master no longer carries a quantity, so these are the only
@@ -165,6 +190,24 @@ export default function MaterialAllocation() {
 
     loadAllocations(material.material_code);
   }, [material]);
+
+  useEffect(() => {
+    if (!selectedMaterialCode) return;
+
+    let cancelled = false;
+
+    getSapStockForMaterial(selectedMaterialCode)
+      .then((info) => {
+        if (!cancelled) setSapState({ code: selectedMaterialCode, info });
+      })
+      .catch(() => {
+        if (!cancelled) setSapState({ code: selectedMaterialCode, info: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMaterialCode]);
 
   // The selected material can be restored from a previous visit (see
   // usePersistentState above) - refresh its own fields once on mount in
@@ -496,6 +539,60 @@ export default function MaterialAllocation() {
             allocatedQty={allocatedQty}
             unallocatedQty={unallocatedQty}
           />
+
+          {material && sapLoading ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.75 }}>
+              <CircularProgress size={16} />
+              <Typography variant="caption" color="text.secondary">
+                Loading SAP stock…
+              </Typography>
+            </Box>
+          ) : material && sapInfo ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexWrap: "wrap",
+                mt: 0.5,
+                mb: 1,
+                px: 1.25,
+                py: 0.75,
+                borderRadius: 2,
+                bgcolor: "grey.50",
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                SAP stock
+              </Typography>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Total: ${sapInfo.total}`}
+              />
+              {sapInfo.locations.map((loc) => (
+                <Chip
+                  key={loc.storage_location}
+                  size="small"
+                  sx={{ bgcolor: "background.paper" }}
+                  label={`${loc.storage_location}: ${loc.quantity}`}
+                />
+              ))}
+              {sapInfo.review && sapInfo.review.difference !== 0 ? (
+                <Chip
+                  size="small"
+                  color={sapInfo.review.difference > 0 ? "info" : "error"}
+                  label={
+                    sapInfo.review.difference > 0
+                      ? `App ${sapInfo.review.difference} below SAP`
+                      : `App ${-sapInfo.review.difference} above SAP`
+                  }
+                />
+              ) : (
+                <Chip size="small" color="success" label="✓ Matches SAP" />
+              )}
+            </Box>
+          ) : null}
 
           {material ? (
             <AllocationForm
