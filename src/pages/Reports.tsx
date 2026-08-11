@@ -48,7 +48,6 @@ import MaterialSearch from "../components/MaterialSearch";
 import PaginationControls from "../components/PaginationControls";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
-import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
@@ -430,8 +429,8 @@ function ExportSummaryRow({
     >
       <Avatar
         sx={{
-          bgcolor: BRAND_PURPLE_SOFT,
-          color: BRAND_PURPLE,
+          bgcolor: "primary.soft",
+          color: "primary.main",
           width: { xs: 44, md: 56 },
           height: { xs: 44, md: 56 },
           "& svg": { fontSize: { xs: 22, md: 28 } },

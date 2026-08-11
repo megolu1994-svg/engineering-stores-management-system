@@ -27,7 +27,6 @@ import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
-import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import type { Material } from "../types/material";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -66,8 +65,8 @@ function StatItem({ icon, value, label }: { icon: ReactNode; value: string; labe
           width: { xs: 34, sm: 40, md: 48 },
           height: { xs: 34, sm: 40, md: 48 },
           borderRadius: 2,
-          bgcolor: BRAND_PURPLE_SOFT,
-          color: BRAND_PURPLE,
+          bgcolor: "primary.soft",
+          color: "primary.main",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -199,7 +198,7 @@ export default function MaterialMasterListView({
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
                   <Typography
-                    sx={{ fontWeight: 700, color: BRAND_PURPLE, fontSize: { xs: "0.9rem", sm: "1rem" } }}
+                    sx={{ fontWeight: 700, color: "primary.main", fontSize: { xs: "0.9rem", sm: "1rem" } }}
                     noWrap
                   >
                     {material.material_code}
@@ -211,8 +210,8 @@ export default function MaterialMasterListView({
                       height: 20,
                       fontSize: "0.65rem",
                       fontWeight: 700,
-                      bgcolor: BRAND_PURPLE_SOFT,
-                      color: BRAND_PURPLE,
+                      bgcolor: "primary.soft",
+                      color: "primary.main",
                     }}
                   />
                 </Box>
@@ -306,9 +305,9 @@ export default function MaterialMasterListView({
                     key={material.material_code}
                     hover
                     onClick={() => onRowClick(material)}
-                    sx={{ cursor: "pointer", height: 60, "&:hover": { bgcolor: "#FAF5FF" } }}
+                    sx={{ cursor: "pointer", height: 60, "&:hover": { bgcolor: "primary.hover" } }}
                   >
-                    <TableCell sx={{ fontWeight: 700, color: BRAND_PURPLE }}>
+                    <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>
                       {material.material_code}
                     </TableCell>
                     <TableCell sx={{ maxWidth: 480 }}>
@@ -324,8 +323,8 @@ export default function MaterialMasterListView({
                           height: 22,
                           fontSize: "0.7rem",
                           fontWeight: 700,
-                          bgcolor: BRAND_PURPLE_SOFT,
-                          color: BRAND_PURPLE,
+                          bgcolor: "primary.soft",
+                          color: "primary.main",
                         }}
                       />
                     </TableCell>

@@ -58,7 +58,6 @@ import AllocationSummary from "../components/AllocationSummary";
 import AllocationTable from "../components/AllocationTable";
 import type { Material } from "../types/material";
 import type { MaterialAllocation } from "../types/materialAllocation";
-import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { useHeaderSlot } from "../components/AppLayout";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
@@ -574,7 +573,7 @@ export default function Dashboard() {
         input: {
           startAdornment: (
             <InputAdornment position="start">
-              <SearchIcon sx={{ color: BRAND_PURPLE }} />
+              <SearchIcon sx={{ color: "primary.main" }} />
             </InputAdornment>
           ),
           endAdornment: searchTerm && (
@@ -585,7 +584,7 @@ export default function Dashboard() {
             </InputAdornment>
           ),
           sx: {
-            bgcolor: "#FFFFFF",
+            bgcolor: "background.paper",
             borderRadius: "12px",
             "& fieldset": { border: "none" },
           },
@@ -601,7 +600,7 @@ export default function Dashboard() {
       {mobile && (
         <Box
           sx={{
-            bgcolor: BRAND_PURPLE,
+            bgcolor: "primary.main",
             mx: -2,
             mt: -2,
             mb: 3,
@@ -668,10 +667,10 @@ export default function Dashboard() {
               px: 3,
             },
             "& .Mui-selected": {
-              color: `${BRAND_PURPLE} !important`,
+              color: `${theme.palette.primary.main} !important`,
             },
             "& .MuiTabs-indicator": {
-              backgroundColor: BRAND_PURPLE,
+              backgroundColor: theme.palette.primary.main,
               height: 2,
             },
           }}
@@ -751,8 +750,8 @@ export default function Dashboard() {
                 <Card elevation={0} sx={{ height: "100%", p: { xs: 1.5, md: 3 }, textAlign: "center" }}>
                   <Avatar
                     sx={{
-                      bgcolor: BRAND_PURPLE_SOFT,
-                      color: BRAND_PURPLE,
+                      bgcolor: "primary.soft",
+                      color: "primary.main",
                       width: { xs: 44, md: 64 },
                       height: { xs: 44, md: 64 },
                       mx: "auto",
@@ -765,7 +764,7 @@ export default function Dashboard() {
                   {loadingStats ? (
                     <CircularProgress size={18} />
                   ) : (
-                    <Typography sx={{ fontWeight: 800, color: BRAND_PURPLE, fontSize: { xs: "1.1rem", sm: "1.4rem", md: "2rem" } }}>
+                    <Typography sx={{ fontWeight: 800, color: "primary.main", fontSize: { xs: "1.1rem", sm: "1.4rem", md: "2rem" } }}>
                       {card.value.toLocaleString("en-IN")}
                     </Typography>
                   )}
@@ -798,8 +797,8 @@ export default function Dashboard() {
                         display: { xs: "block", md: "flex" },
                         alignItems: "center",
                         justifyContent: "center",
-                        color: { xs: BRAND_PURPLE, md: "#FFFFFF" },
-                        bgcolor: { xs: "transparent", md: BRAND_PURPLE },
+                        color: { xs: "primary.main", md: "#FFFFFF" },
+                        bgcolor: { xs: "transparent", md: "primary.main" },
                         borderRadius: { md: 2.5 },
                         width: { xs: "auto", md: 56 },
                         height: { xs: "auto", md: 56 },
@@ -821,7 +820,7 @@ export default function Dashboard() {
                     </Typography>
                     <ArrowForwardIcon
                       fontSize="small"
-                      sx={{ display: { xs: "none", md: "block" }, color: BRAND_PURPLE, mt: 1.5 }}
+                      sx={{ display: { xs: "none", md: "block" }, color: "primary.main", mt: 1.5 }}
                     />
                   </CardActionArea>
                 </Card>
@@ -836,22 +835,22 @@ export default function Dashboard() {
               alignItems: "center",
               justifyContent: "space-between",
               gap: 2,
-              bgcolor: BRAND_PURPLE_SOFT,
+              bgcolor: "primary.soft",
               borderRadius: 2,
               px: 2.5,
               py: 1.5,
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <InfoIcon sx={{ color: BRAND_PURPLE }} fontSize="small" />
-              <Typography variant="body2" sx={{ fontWeight: 600, color: "#111827" }}>
+              <InfoIcon sx={{ color: "primary.main" }} fontSize="small" />
+              <Typography variant="body2" sx={{ fontWeight: 600, color: "text.primary" }}>
                 Welcome back! Here&apos;s what&apos;s happening with your store today.
               </Typography>
             </Box>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexShrink: 0 }}>
-              <CalendarMonthIcon sx={{ color: BRAND_PURPLE }} fontSize="small" />
-              <Typography variant="body2" sx={{ fontWeight: 600, color: "#111827" }}>
+              <CalendarMonthIcon sx={{ color: "primary.main" }} fontSize="small" />
+              <Typography variant="body2" sx={{ fontWeight: 600, color: "text.primary" }}>
                 {now.toLocaleString("en-IN", {
                   day: "2-digit",
                   month: "short",
@@ -922,7 +921,7 @@ export default function Dashboard() {
               <Card elevation={0} sx={{ height: "100%" }}>
                 <CardContent>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1.5 }}>
-                    <HistoryIcon sx={{ color: BRAND_PURPLE }} />
+                    <HistoryIcon sx={{ color: "primary.main" }} />
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Recent Activity
                     </Typography>

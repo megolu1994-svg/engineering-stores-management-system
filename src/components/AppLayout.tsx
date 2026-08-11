@@ -41,7 +41,6 @@ import {
   useNavigate,
 } from "react-router-dom";
 
-import { BRAND_PURPLE, BRAND_PURPLE_SOFT } from "../theme";
 import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 import { useInventoryNotifications } from "../hooks/useInventoryNotifications";
 import { useBranding } from "../contexts/BrandingContext";
@@ -144,7 +143,7 @@ function BrandLogo({ letter, size = 32 }: { letter: string; size?: number }) {
         width: size,
         height: size,
         bgcolor: "#FFFFFF",
-        color: BRAND_PURPLE,
+        color: "primary.main",
         fontWeight: 900,
         fontSize: size * 0.5,
       }}
@@ -237,19 +236,19 @@ export default function AppLayout() {
                 minHeight: { xs: 60, md: 58 },
                 pl: { xs: 3, md: 1.75 },
                 pr: { md: 1.25 },
-                color: selected ? BRAND_PURPLE : "#111827",
+                color: selected ? "primary.main" : "text.primary",
                 "&.Mui-selected": {
-                  bgcolor: BRAND_PURPLE_SOFT,
+                  bgcolor: "primary.soft",
                 },
                 "&.Mui-selected:hover": {
-                  bgcolor: BRAND_PURPLE_SOFT,
+                  bgcolor: "primary.soft",
                 },
               }}
             >
               <ListItemIcon
                 sx={{
                   minWidth: { xs: 40, md: 36 },
-                  color: selected ? BRAND_PURPLE : "#111827",
+                  color: selected ? "primary.main" : "text.primary",
                   "& svg": { fontSize: { xs: 24, md: 27 } },
                 }}
               >
@@ -267,10 +266,10 @@ export default function AppLayout() {
 
       </List>
 
-      <Divider sx={{ borderColor: "#E5E7EB" }} />
+      <Divider sx={{ borderColor: "divider" }} />
 
       <Box sx={{ pb: 3, pt: 1.5, textAlign: "center" }}>
-        <Typography sx={{ fontWeight: 700, color: "#111827", fontSize: 14 }}>
+        <Typography sx={{ fontWeight: 700, color: "text.primary", fontSize: 14 }}>
           Version {APP_VERSION}
         </Typography>
       </Box>
@@ -286,7 +285,7 @@ export default function AppLayout() {
       <Box
         sx={{
           minHeight: 120,
-          bgcolor: BRAND_PURPLE,
+          bgcolor: "primary.main",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -345,7 +344,7 @@ export default function AppLayout() {
           elevation={0}
           sx={{
             zIndex: theme.zIndex.drawer + 1,
-            bgcolor: BRAND_PURPLE,
+            bgcolor: "primary.main",
             width: "100%",
           }}
         >
@@ -496,14 +495,14 @@ export default function AppLayout() {
                 >
                   <Box sx={{ width: 340, maxHeight: 420, overflowY: "auto" }}>
 
-                    <Typography sx={{ px: 2, py: 1.5, fontWeight: 700, color: "#111827" }}>
+                    <Typography sx={{ px: 2, py: 1.5, fontWeight: 700, color: "text.primary" }}>
                       Notifications
                     </Typography>
 
                     <Divider />
 
                     {notifications.length === 0 ? (
-                      <Typography sx={{ px: 2, py: 3, color: "#6B7280", textAlign: "center" }}>
+                      <Typography sx={{ px: 2, py: 3, color: "text.secondary", textAlign: "center" }}>
                         No new notifications
                       </Typography>
                     ) : (
@@ -518,8 +517,8 @@ export default function AppLayout() {
                               primary={notification.message}
                               secondary={formatNotificationTime(notification.createdAt)}
                               slotProps={{
-                                primary: { sx: { fontSize: 14, fontWeight: 600, color: "#111827" } },
-                                secondary: { sx: { fontSize: 12, color: "#6B7280" } },
+                            primary: { sx: { fontSize: 14, fontWeight: 600, color: "text.primary" } },
+                            secondary: { sx: { fontSize: 12, color: "text.secondary" } },
                               }}
                             />
                           </ListItemButton>
@@ -613,7 +612,7 @@ export default function AppLayout() {
           // the entire app and force horizontal scrolling everywhere.
           minWidth: 0,
           overflowX: "hidden",
-          bgcolor: "#FFFFFF",
+          bgcolor: "background.default",
           minHeight: "100vh",
 
           // `px` only (not the `p` shorthand) - `pt`/`pb` are set explicitly
@@ -668,7 +667,8 @@ export default function AppLayout() {
             height: BOTTOM_NAV_HEIGHT,
             paddingBottom: "env(safe-area-inset-bottom)",
             zIndex: theme.zIndex.drawer + 1,
-            borderTop: "1px solid #E5E7EB",
+            borderTop: "1px solid",
+            borderColor: "divider",
           }}
         >
 
@@ -681,9 +681,9 @@ export default function AppLayout() {
               aria-label={item.label}
               sx={{
                 minWidth: 0,
-                color: "#6B7280",
+                color: "text.secondary",
                 "&.Mui-selected": {
-                  color: BRAND_PURPLE,
+                  color: "primary.main",
                 },
               }}
             />

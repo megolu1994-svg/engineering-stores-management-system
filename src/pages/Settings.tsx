@@ -27,12 +27,19 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import LogoutIcon from "@mui/icons-material/Logout";
+import PaletteIcon from "@mui/icons-material/Palette";
 
 import { useNavigate } from "react-router-dom";
 
 import { useSwipeOpenDrawer } from "../hooks/useSwipeTabs";
 import { useAuth } from "../contexts/AuthContext";
 import { useBranding } from "../contexts/BrandingContext";
+import { useThemeSettings } from "../contexts/ThemeSettingsContext";
+import {
+  FONT_FAMILY_OPTIONS,
+  PRIMARY_COLOR_OPTIONS,
+  type ThemeSettings,
+} from "../types/themeSettings";
 
 const APP_VERSION = "1.0.0";
 const DEVELOPER_NAME = "ESMS Engineering Team";
@@ -49,7 +56,14 @@ function SectionCard({
   return (
     <Card
       elevation={0}
-      sx={{ borderRadius: 3, boxShadow: "0 2px 14px rgba(15, 23, 42, 0.06)", mb: 2.5 }}
+      sx={(theme) => ({
+        borderRadius: 3,
+        boxShadow:
+          theme.palette.mode === "dark"
+            ? "0 2px 14px rgba(0, 0, 0, 0.4)"
+            : "0 2px 14px rgba(15, 23, 42, 0.06)",
+        mb: 2.5,
+      })}
     >
       <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
@@ -71,6 +85,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const branding = useBranding();
+  const themeSettings = useThemeSettings();
 
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
@@ -84,20 +99,39 @@ export default function Settings() {
     navigate("/login", { replace: true });
   }
 
-  // Application - header branding, persisted per account (see
-  // BrandingContext). Local state mirrors the context so the fields are
-  // editable, and is re-synced whenever the account's saved values load.
+  // Application - header branding + theme, persisted per account (see
+  // BrandingContext / ThemeSettingsContext). Local state mirrors the
+  // contexts so the fields are editable, and is re-synced whenever the
+  // account's saved values load.
   const [companyName, setCompanyName] = useState("");
   const [warehouseName, setWarehouseName] = useState("");
   const [logoLetter, setLogoLetter] = useState("");
-  const [theme, setTheme] = useState("light");
+  const [themeMode, setThemeMode] = useState<ThemeSettings["mode"]>("light");
+  const [primaryColor, setPrimaryColor] = useState(PRIMARY_COLOR_OPTIONS[0].value);
+  const [fontFamily, setFontFamily] = useState(FONT_FAMILY_OPTIONS[0].value);
 
   useEffect(() => {
-    if (branding.loading) return;
+    if (branding.loading || themeSettings.loading) return;
     setCompanyName(branding.companyName);
     setWarehouseName(branding.warehouseName);
     setLogoLetter(branding.logoLetter);
-  }, [branding.loading, branding.companyName, branding.warehouseName, branding.logoLetter]);
+    setThemeMode(themeSettings.mode);
+    setPrimaryColor(themeSettings.primaryColor);
+    setFontFamily(themeSettings.fontFamily);
+  }, [
+    branding.loading,
+    branding.companyName,
+    branding.warehouseName,
+    branding.logoLetter,
+    themeSettings.loading,
+    themeSettings.mode,
+    themeSettings.primaryColor,
+    themeSettings.fontFamily,
+  ]);
+
+  const isCustomColor = !PRIMARY_COLOR_OPTIONS.some(
+    (o) => o.value.toLowerCase() === primaryColor.toLowerCase()
+  );
 
   // Inventory
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
@@ -113,11 +147,16 @@ export default function Settings() {
 
     try {
       await branding.updateBranding({ companyName, warehouseName, logoLetter });
+      await themeSettings.updateThemeSettings({
+        mode: themeMode,
+        primaryColor,
+        fontFamily,
+      });
       setSnackbarSeverity("success");
-      setSnackbarMessage("Header branding saved.");
+      setSnackbarMessage("Settings saved.");
     } catch {
       setSnackbarSeverity("error");
-      setSnackbarMessage("Could not save header branding. Please try again.");
+      setSnackbarMessage("Could not save settings. Please try again.");
     } finally {
       setSaving(false);
       setSnackbarOpen(true);
@@ -139,8 +178,9 @@ export default function Settings() {
       </Typography>
 
       <Alert severity="info" sx={{ mb: 2.5, borderRadius: 2 }}>
-        Company Name, Warehouse Name and Logo Letter are saved to your
-        account and shown in the header. Other settings below are for
+        Company Name, Warehouse Name, Logo Letter and the theme (Light/Dark
+        mode, colors and fonts) are saved to your account and applied across
+        the app on both desktop and mobile. Other settings below are for
         reference only in this release and are not yet saved.
       </Alert>
 
@@ -210,20 +250,136 @@ export default function Settings() {
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             />
           </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Divider sx={{ mt: 1, mb: 2.5 }} />
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+              <PaletteIcon color="primary" fontSize="small" />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Appearance
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
+              Choose how the app looks. The theme applies everywhere - desktop and mobile -
+              the moment you save.
+            </Typography>
+          </Grid>
+
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
               select
               label="Theme"
               fullWidth
               size="small"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
+              value={themeMode}
+              onChange={(e) => setThemeMode(e.target.value as ThemeSettings["mode"])}
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             >
               <MenuItem value="light">Light</MenuItem>
               <MenuItem value="dark">Dark</MenuItem>
               <MenuItem value="system">System Default</MenuItem>
             </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              select
+              label="Font Family"
+              fullWidth
+              size="small"
+              value={fontFamily}
+              onChange={(e) => setFontFamily(e.target.value)}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            >
+              {FONT_FAMILY_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mb: 1 }}
+            >
+              Primary Color
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
+              {PRIMARY_COLOR_OPTIONS.map((option) => {
+                const selected = primaryColor.toLowerCase() === option.value.toLowerCase();
+                return (
+                  <Box
+                    key={option.value}
+                    component="button"
+                    type="button"
+                    title={option.label}
+                    aria-label={`Set primary color to ${option.label}`}
+                    onClick={() => setPrimaryColor(option.value)}
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: "50%",
+                      bgcolor: option.value,
+                      cursor: "pointer",
+                      p: 0,
+                      border: "2px solid",
+                      borderColor: selected ? "primary.main" : "transparent",
+                      outline: selected ? `2px solid ${themeSettings.effectiveMode === "dark" ? "#FFFFFF" : "#0E1116"}` : "none",
+                      outlineOffset: 2,
+                      transition: "transform 0.15s ease",
+                      "&:hover": { transform: "scale(1.12)" },
+                    }}
+                  />
+                );
+              })}
+
+              {/* Custom color picker (rainbow swatch) */}
+              <Box
+                component="label"
+                title="Custom color"
+                sx={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  position: "relative",
+                  overflow: "hidden",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "2px solid",
+                  borderColor: isCustomColor ? "primary.main" : "transparent",
+                  outline: isCustomColor ? `2px solid ${themeSettings.effectiveMode === "dark" ? "#FFFFFF" : "#0E1116"}` : "none",
+                  outlineOffset: 2,
+                  transition: "transform 0.15s ease",
+                  "&:hover": { transform: "scale(1.12)" },
+                }}
+              >
+                <Box
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    background:
+                      "conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
+                  }}
+                />
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={(e) => setPrimaryColor(e.target.value)}
+                  aria-label="Pick a custom primary color"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: 0,
+                    width: "100%",
+                    height: "100%",
+                    cursor: "pointer",
+                  }}
+                />
+              </Box>
+            </Box>
           </Grid>
         </Grid>
       </SectionCard>
