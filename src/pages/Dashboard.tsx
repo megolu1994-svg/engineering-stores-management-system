@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -12,9 +11,6 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Grid,
   IconButton,
   InputAdornment,
@@ -41,7 +37,6 @@ import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
-import CloseIcon from "@mui/icons-material/Close";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import InfoIcon from "@mui/icons-material/Info";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
@@ -52,15 +47,10 @@ import {
   searchInventory,
   type InventoryOverviewRow,
 } from "../services/inventoryOverviewService";
-import { searchMaterials } from "../services/materialService";
 import { getAllocations } from "../services/materialAllocationService";
-import AllocationSummary from "../components/AllocationSummary";
-import AllocationTable from "../components/AllocationTable";
-import type { Material } from "../types/material";
-import type { MaterialAllocation } from "../types/materialAllocation";
-import { useHeaderSlot } from "../components/AppLayout";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
+import MaterialStockDetailsDialog from "../components/MaterialStockDetailsDialog";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const LOW_STOCK_THRESHOLD = 10;
@@ -209,7 +199,6 @@ export default function Dashboard() {
 
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down("md"));
-  const headerSlotEl = useHeaderSlot();
 
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -222,10 +211,7 @@ export default function Dashboard() {
   const isSearchMode = searchTerm.trim().length >= MIN_SEARCH_LENGTH;
   const { direction } = useSwipeTabs(activeTab, setActiveTab, 2, !isSearchMode);
 
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsMaterial, setDetailsMaterial] = useState<Material | null>(null);
-  const [detailsAllocations, setDetailsAllocations] = useState<MaterialAllocation[]>([]);
+  const [detailsCode, setDetailsCode] = useState<string | null>(null);
 
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -512,43 +498,13 @@ export default function Dashboard() {
   // Opens the Material Details view for a search result, reusing the same
   // AllocationSummary / AllocationTable components and services as the
   // Inventory > Allocate tab - no new business logic or queries.
-  async function openMaterialDetails(materialCode: string) {
-    setDetailsOpen(true);
-    setDetailsLoading(true);
-
-    try {
-      const [materials, allocations] = await Promise.all([
-        searchMaterials(materialCode, 0, 1),
-        getAllocations(materialCode),
-      ]);
-
-      const exact =
-        materials.find((m) => m.material_code === materialCode) ??
-        materials[0] ??
-        null;
-
-      setDetailsMaterial(exact);
-      setDetailsAllocations(allocations);
-    } finally {
-      setDetailsLoading(false);
-    }
+  function openMaterialDetails(materialCode: string) {
+    setDetailsCode(materialCode);
   }
 
   function closeDetails() {
-    setDetailsOpen(false);
-    setDetailsMaterial(null);
-    setDetailsAllocations([]);
+    setDetailsCode(null);
   }
-
-  const detailsTotalStock = safeNumber(
-    detailsAllocations.reduce((sum, a) => sum + safeNumber(a.quantity), 0)
-  );
-  const detailsUnallocatedQty = safeNumber(
-    detailsAllocations
-      .filter((a) => a.location_code === UNALLOCATED_LOCATION)
-      .reduce((sum, a) => sum + safeNumber(a.quantity), 0)
-  );
-  const detailsAllocatedQty = safeNumber(detailsTotalStock - detailsUnallocatedQty);
 
   const liveOverview = [
     { label: "Total no. Of Materials", value: stats.totalMaterials, icon: <Inventory2Icon /> },
@@ -643,12 +599,10 @@ export default function Dashboard() {
         </Box>
       )}
 
-      {/* ---- Desktop only: search portals into the header next to the
-          logo (see useHeaderSlot); tabs sit on plain white background
-          directly below it, underline-styled instead of white-on-purple. ---- */}
-      {!mobile && headerSlotEl && createPortal(searchField, headerSlotEl)}
-
-      {!mobile && !isSearchMode && (
+      {/* ---- Desktop: the header carries the global material search now
+          (see GlobalMaterialSearch), so the page only ever shows the tab
+          strip; mobile keeps its own in-page search + results. ---- */}
+      {!mobile && (
         <Tabs
           value={activeTab}
           onChange={(_e, value) => setActiveTab(value)}
@@ -680,7 +634,7 @@ export default function Dashboard() {
         </Tabs>
       )}
 
-      {isSearchMode ? (
+      {mobile && isSearchMode ? (
         <Box sx={{ mt: 2 }}>
           {searching ? (
             <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
@@ -1022,44 +976,7 @@ export default function Dashboard() {
       )}
 
       {/* ---- Material Details (from the inventory search above) ---- */}
-      <Dialog open={detailsOpen} onClose={closeDetails} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          Material Details
-          <IconButton size="small" onClick={closeDetails} aria-label="Close">
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent>
-          {detailsLoading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-              <CircularProgress size={28} />
-            </Box>
-          ) : (
-            <>
-              <AllocationSummary
-                material={detailsMaterial}
-                totalStock={detailsTotalStock}
-                allocatedQty={detailsAllocatedQty}
-                unallocatedQty={detailsUnallocatedQty}
-              />
-
-              <Typography
-                variant="subtitle2"
-                sx={{ fontWeight: "bold", mb: 0.75, mt: 1.5, fontSize: "0.85rem" }}
-              >
-                Allocated Locations
-              </Typography>
-
-              <AllocationTable
-                allocations={detailsAllocations.filter(
-                  (a) => a.location_code !== UNALLOCATED_LOCATION
-                )}
-              />
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <MaterialStockDetailsDialog materialCode={detailsCode} onClose={closeDetails} />
     </Box>
   );
 }
