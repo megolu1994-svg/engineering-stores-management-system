@@ -16,6 +16,7 @@ import {
   ListItemText,
   Popover,
   Toolbar,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -32,6 +33,7 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import SettingsIcon from "@mui/icons-material/Settings";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import PersonIcon from "@mui/icons-material/Person";
+import ContentPasteSearchIcon from "@mui/icons-material/ContentPasteSearch";
 
 import { useTheme } from "@mui/material/styles";
 
@@ -45,6 +47,7 @@ import { SWIPE_OPEN_DRAWER_EVENT } from "../hooks/useSwipeTabs";
 import { useInventoryNotifications } from "../hooks/useInventoryNotifications";
 import { useBranding } from "../contexts/BrandingContext";
 import GlobalMaterialSearch from "./GlobalMaterialSearch";
+import BulkMaterialSearchDialog from "./BulkMaterialSearchDialog";
 
 // Desktop permanent sidebar width only - the mobile temporary drawer is
 // untouched and keeps its own (wider) width below, since the mobile UI
@@ -168,6 +171,10 @@ export default function AppLayout() {
   };
 
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const [bulkSearchOpen, setBulkSearchOpen] = useState(false);
+  // Bumped on every open so the bulk dialog remounts fresh each time.
+  const [bulkSearchSession, setBulkSearchSession] = useState(0);
 
   // Desktop-only: gated by `!mobile` so the realtime subscription itself
   // (not just the bell UI) has no footprint on mobile.
@@ -448,7 +455,37 @@ export default function AppLayout() {
                   px: { md: 2 },
                 }}
               >
-                <GlobalMaterialSearch />
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    width: "100%",
+                    maxWidth: 640,
+                  }}
+                >
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <GlobalMaterialSearch />
+                  </Box>
+                  <Tooltip title="Bulk search - paste multiple material codes">
+                    <IconButton
+                      color="inherit"
+                      aria-label="Bulk material search"
+                      onClick={() => {
+                        setBulkSearchOpen(true);
+                        setBulkSearchSession((s) => s + 1);
+                      }}
+                      sx={{
+                        width: 38,
+                        height: 38,
+                        bgcolor: "rgba(255,255,255,0.15)",
+                        "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
+                      }}
+                    >
+                      <ContentPasteSearchIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
             )}
 
@@ -685,6 +722,12 @@ export default function AppLayout() {
         </BottomNavigation>
 
       )}
+
+      <BulkMaterialSearchDialog
+        key={bulkSearchSession}
+        open={bulkSearchOpen}
+        onClose={() => setBulkSearchOpen(false)}
+      />
 
     </Box>
 
