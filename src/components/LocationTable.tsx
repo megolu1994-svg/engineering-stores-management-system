@@ -152,7 +152,7 @@ export default function LocationTable({
               <TableRow
                 key={location.location_code}
                 hover
-                sx={{ height: 60, "&:hover": { bgcolor: "#FAF5FF" } }}
+                sx={{ height: 60, "&:hover": { bgcolor: "primary.hover" } }}
               >
                 <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>
                   {location.location_code}

@@ -16,7 +16,6 @@ import {
 } from "@mui/material";
 
 import { useAuth } from "../contexts/AuthContext";
-import { BRAND_PURPLE } from "../theme";
 
 type Mode = "signin" | "signup";
 
@@ -72,14 +71,14 @@ export default function Login() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        bgcolor: "#F9FAFB",
+        bgcolor: "background.default",
         px: 2,
       }}
     >
       <Card sx={{ width: "100%", maxWidth: 420 }}>
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", mb: 2 }}>
-            <Avatar sx={{ bgcolor: BRAND_PURPLE, width: 48, height: 48, fontWeight: 900, mb: 1.5 }}>
+            <Avatar sx={{ bgcolor: "primary.main", width: 48, height: 48, fontWeight: 900, mb: 1.5 }}>
               D
             </Avatar>
             <Typography variant="h5" sx={{ fontWeight: 800 }}>

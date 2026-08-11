@@ -38,7 +38,6 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { BRAND_PURPLE } from "../theme";
 
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
@@ -1485,7 +1484,7 @@ export default function MaterialReceipt() {
             alignItems: "center",
             justifyContent: "space-between",
             fontWeight: 700,
-            backgroundColor: BRAND_PURPLE,
+            backgroundColor: "primary.main",
             color: "#FFFFFF",
           }}
         >
