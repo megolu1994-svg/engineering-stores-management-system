@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -157,28 +158,35 @@ export default function BulkMaterialSearchDialog({ open, onClose }: Props) {
             <Box
               sx={{
                 display: "flex",
-                alignItems: "baseline",
+                alignItems: "center",
                 justifyContent: "space-between",
                 gap: 1,
-                mb: 1,
+                mb: 1.5,
                 flexWrap: "wrap",
               }}
             >
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                {result.rows.length} material{result.rows.length === 1 ? "" : "s"} found
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                <Chip
+                  size="small"
+                  color="primary"
+                  label={`${result.rows.length} found`}
+                  sx={{ fontWeight: 700 }}
+                />
                 {result.notFound.length > 0 && (
-                  <Typography
-                    component="span"
-                    variant="caption"
-                    color="warning.main"
-                    sx={{ ml: 1, fontWeight: 700 }}
-                  >
-                    {result.notFound.length} not found
-                  </Typography>
+                  <Chip
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    label={`${result.notFound.length} not found`}
+                    sx={{ fontWeight: 700 }}
+                  />
                 )}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Total stock: {totalStockSum}
+              </Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "text.primary" }}>
+                Total stock:{" "}
+                <Box component="span" sx={{ color: "primary.main", fontWeight: 800 }}>
+                  {totalStockSum}
+                </Box>
               </Typography>
             </Box>
 
@@ -193,14 +201,25 @@ export default function BulkMaterialSearchDialog({ open, onClose }: Props) {
               </Alert>
             )}
 
-            <TableContainer sx={{ maxHeight: "55vh" }}>
+            <TableContainer
+              sx={{
+                maxHeight: "55vh",
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 2,
+              }}
+            >
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Material Code</TableCell>
+                    <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                      Material Code
+                    </TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Description</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>UoM</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
+                    <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                      UoM
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
                       Total Stock
                     </TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Locations</TableCell>
@@ -208,27 +227,78 @@ export default function BulkMaterialSearchDialog({ open, onClose }: Props) {
                 </TableHead>
                 <TableBody>
                   {result.rows.map((row) => (
-                    <TableRow key={row.material_code} hover>
-                      <TableCell sx={{ fontWeight: 700 }}>{row.material_code}</TableCell>
-                      <TableCell>{row.short_description}</TableCell>
-                      <TableCell>{row.uom}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 800, color: "primary.main" }}>
+                    <TableRow
+                      key={row.material_code}
+                      hover
+                      sx={{
+                        "&:nth-of-type(even)": {
+                          bgcolor: (theme) => theme.palette.action.hover,
+                        },
+                      }}
+                    >
+                      <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {row.material_code}
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 220, wordBreak: "break-word" }}>
+                        {row.short_description}
+                      </TableCell>
+                      <TableCell sx={{ textAlign: "center" }}>{row.uom}</TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{ fontWeight: 800, color: "primary.main", whiteSpace: "nowrap" }}
+                      >
                         {row.totalStock}
                       </TableCell>
                       <TableCell>
                         {row.locations.length === 0 && row.unallocatedQty === 0 ? (
-                          <Typography variant="body2" color="text.secondary">
-                            No stock
-                          </Typography>
+                          <Chip
+                            size="small"
+                            label="No stock"
+                            variant="outlined"
+                            sx={{ color: "text.secondary" }}
+                          />
                         ) : (
-                          <Typography variant="body2">
-                            {row.locations
-                              .map((l) => `${l.location_code}: ${l.quantity}`)
-                              .join(", ")}
-                            {row.unallocatedQty > 0 &&
-                              (row.locations.length > 0 ? " · " : "") +
-                                `UNALLOCATED: ${row.unallocatedQty}`}
-                          </Typography>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 0.5,
+                              py: 0.25,
+                            }}
+                          >
+                            {row.locations.map((loc) => (
+                              <Chip
+                                key={loc.location_code}
+                                size="small"
+                                label={
+                                  <Box
+                                    component="span"
+                                    sx={{ display: "inline-flex", alignItems: "baseline", gap: 0.75 }}
+                                  >
+                                    <Box component="span">{loc.location_code}</Box>
+                                    <Box component="span" sx={{ fontWeight: 800 }}>
+                                      {loc.quantity}
+                                    </Box>
+                                  </Box>
+                                }
+                                sx={{
+                                  bgcolor: "primary.soft",
+                                  color: "primary.main",
+                                  fontWeight: 600,
+                                  "& .MuiChip-label": { px: 1 },
+                                }}
+                              />
+                            ))}
+                            {row.unallocatedQty > 0 && (
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                color="warning"
+                                label={`UNALLOCATED: ${row.unallocatedQty}`}
+                                sx={{ fontWeight: 600 }}
+                              />
+                            )}
+                          </Box>
                         )}
                       </TableCell>
                     </TableRow>
