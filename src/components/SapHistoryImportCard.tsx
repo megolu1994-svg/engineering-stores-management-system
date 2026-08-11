@@ -50,15 +50,29 @@ type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
 const IMPORT_PREVIEW_LIMIT = 30;
 
-async function readExcelFile(file: File): Promise<Record<string, unknown>[]> {
+async function readExcelFile(file: File): Promise<unknown[][]> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
-  const firstSheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[firstSheetName];
-  return XLSX.utils.sheet_to_json(sheet, { defval: "" }) as Record<
-    string,
-    unknown
-  >[];
+
+  // Pick the sheet with the most rows - SAP workbooks sometimes carry a
+  // cover / criteria sheet before the data sheet.
+  let bestSheet = workbook.Sheets[workbook.SheetNames[0]];
+  let bestRows = -1;
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    const rowCount = sheet["!ref"]
+      ? XLSX.utils.decode_range(sheet["!ref"]).e.r
+      : 0;
+    if (rowCount > bestRows) {
+      bestRows = rowCount;
+      bestSheet = sheet;
+    }
+  }
+
+  return XLSX.utils.sheet_to_json(bestSheet, {
+    header: 1,
+    defval: "",
+  }) as unknown[][];
 }
 
 interface Props {
@@ -69,12 +83,33 @@ type Mb51Validation = {
   totalRecords: number;
   validRows: SapDocumentRow[];
   invalidRows: SapInvalidRow[];
+  detectedHeader: string[];
 };
 type Mb52Validation = {
   totalRecords: number;
   validRows: SapDistributionRow[];
   invalidRows: SapInvalidRow[];
+  detectedHeader: string[];
 };
+
+/** Most frequent rejection reasons across invalid rows, e.g.
+ *  "Quantity is required (39394×); Posting Date is required (39394×)". */
+function topRejectionReasons(
+  invalidRows: SapInvalidRow[],
+  maxReasons = 2
+): string {
+  const counts = new Map<string, number>();
+  for (const row of invalidRows) {
+    for (const error of row.errors) {
+      counts.set(error, (counts.get(error) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxReasons)
+    .map(([error, count]) => `${error} (${count}×)`)
+    .join("; ");
+}
 
 function useSnackbar() {
   const [snackbar, setSnackbar] = useState<{
@@ -168,8 +203,9 @@ function Mb51Tab({
         MB51 = Material Document List (movement history). Every movement is
         stored as history with its SAP details (movement type, posting date,
         document, PO, vendor, invoice, user). History never affects app
-        stock. Re-uploading the same file updates existing documents instead
-        of duplicating them. Only numeric material codes are accepted.
+        stock. Materials not yet in Material Master are created
+        automatically (numeric codes only). Re-uploading the same file
+        updates existing documents instead of duplicating them.
       </Alert>
 
       <Button
@@ -209,6 +245,18 @@ function Mb51Tab({
         Preview
       </Button>
 
+      {validation && validation.detectedHeader.length > 0 && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          title={validation.detectedHeader.join(" | ")}
+          sx={{ display: "block", maxWidth: "100%" }}
+        >
+          Detected headers: {validation.detectedHeader.join(" · ")}
+        </Typography>
+      )}
+
       {validation && (
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
           <Chip size="small" label={`Movements: ${validRows.length}`} />
@@ -238,6 +286,7 @@ function Mb51Tab({
                 <TableCell>Date</TableCell>
                 <TableCell align="right">Qty</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Reason</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -256,8 +305,12 @@ function Mb51Tab({
                       size="small"
                       label={row.status}
                       color={row.status === "Valid" ? "success" : "error"}
-                      title={row.errors.join(", ")}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {row.errors.length > 0
+                      ? row.errors.join("; ")
+                      : ""}
                   </TableCell>
                 </TableRow>
               ))}
@@ -308,19 +361,10 @@ function Mb51Tab({
             <HistoryIcon fontSize="small" />
             <span>
               Imported: {summary.inserted}, Updated: {summary.updated},
-              Not in Material Master: {summary.notInMaster}, Failed:{" "}
+              Materials created: {summary.materialsCreated}, Failed:{" "}
               {summary.failed}
             </span>
           </Box>
-          {summary.notInMasterCodes.length > 0 && (
-            <Typography variant="caption" sx={{ display: "block", mt: 0.5 }}>
-              Not in Material Master (history stored, master may need them):{" "}
-              {summary.notInMasterCodes.slice(0, 8).join(", ")}
-              {summary.notInMasterCodes.length > 8
-                ? ` (+${summary.notInMasterCodes.length - 8} more)`
-                : ""}
-            </Typography>
-          )}
         </Alert>
       )}
 
@@ -409,8 +453,9 @@ function Mb52Tab({
         compares each material's SAP total against the app's physical
         stock: totals that match are marked matched, differences create
         reconciliation reviews for you to review in the Adjust tab.
-        Re-importing replaces the snapshot. Only numeric material codes are
-        accepted; the app's stock is never changed automatically.
+        Materials not yet in Material Master are created automatically
+        (numeric codes only). Re-importing replaces the snapshot; the app's
+        stock is never changed automatically.
       </Alert>
 
       <Button
@@ -450,6 +495,18 @@ function Mb52Tab({
         Preview
       </Button>
 
+      {validation && validation.detectedHeader.length > 0 && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          title={validation.detectedHeader.join(" | ")}
+          sx={{ display: "block", maxWidth: "100%" }}
+        >
+          Detected headers: {validation.detectedHeader.join(" · ")}
+        </Typography>
+      )}
+
       {validation && (
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
           <Chip size="small" label={`Rows: ${validRows.length}`} />
@@ -477,6 +534,7 @@ function Mb52Tab({
                 <TableCell>Location</TableCell>
                 <TableCell align="right">Qty</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Reason</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -491,8 +549,10 @@ function Mb52Tab({
                       size="small"
                       label={row.status}
                       color={row.status === "Valid" ? "success" : "error"}
-                      title={row.errors.join(", ")}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {row.errors.length > 0 ? row.errors.join("; ") : ""}
                   </TableCell>
                 </TableRow>
               ))}
@@ -544,8 +604,8 @@ function Mb52Tab({
             <span>
               Distribution rows: {summary.distributionRowsWritten}, Materials:{" "}
               {summary.materialsProcessed}, Matched: {summary.matched},
-              Reviews created: {summary.reviewsCreated}, Not in master:{" "}
-              {summary.notInMaster}, Failed: {summary.failed}
+              Reviews created: {summary.reviewsCreated}, Materials created:{" "}
+              {summary.materialsCreated}, Failed: {summary.failed}
             </span>
           </Box>
           {summary.reviewsCreated > 0 && (
@@ -635,7 +695,7 @@ export default function SapHistoryImportCard({ onImportComplete }: Props) {
       setMb51Validation(result);
       showSnackbar(
         result.validRows.length === 0
-          ? "No valid movement rows found in the file."
+          ? `No valid movement rows found. ${topRejectionReasons(result.invalidRows)}`
           : `Preview ready. ${result.validRows.length} movements across ${new Set(result.validRows.map((r) => r.material_code)).size} material(s).`,
         result.validRows.length === 0 ? "error" : "success"
       );
@@ -659,7 +719,7 @@ export default function SapHistoryImportCard({ onImportComplete }: Props) {
       setMb52Validation(result);
       showSnackbar(
         result.validRows.length === 0
-          ? "No valid stock rows found in the file."
+          ? `No valid stock rows found. ${topRejectionReasons(result.invalidRows)}`
           : `Preview ready. ${result.validRows.length} rows across ${new Set(result.validRows.map((r) => r.material_code)).size} material(s).`,
         result.validRows.length === 0 ? "error" : "success"
       );

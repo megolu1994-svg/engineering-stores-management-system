@@ -32,8 +32,9 @@ import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
  *
  * All bulk uploads follow the numeric material-code rule
  * (src/utils/materialCode.ts): codes are normalized to their digits and
- * non-numeric codes are rejected in preview. Materials are never
- * auto-created from an SAP upload - unknown codes are reported instead.
+ * non-numeric codes are rejected in preview. Materials missing from
+ * Material Master are auto-created (numeric codes only) with the first
+ * non-blank description / UoM the file provides for each code.
  * ========================================================================= */
 
 const BATCH_SIZE = 500;
@@ -42,36 +43,341 @@ const BATCH_SIZE = 500;
  * Shared parsing helpers
  * ---------------------------------------------------------------------- */
 
-function getFieldValue(row: Record<string, unknown>, aliases: string[]): string {
-  const keys = Object.keys(row);
+/* -------------------------------------------------------------------------
+ * Column matching (MB51 / MB52 sheets)
+ *
+ * SAP exports are inconsistent: header wording varies ("Qty in unit of
+ * entry" vs "Quantity in unit of entry", "S.Loc" vs "Storage Location"),
+ * and the first sheet row is sometimes a report title instead of the
+ * column header. Matching is fuzzy: headers are normalized to
+ * alphanumerics-only lowercase, aliases are matched exactly against that
+ * normalized form, and the header row itself is auto-detected from the
+ * first few rows by which row matches the most known columns.
+ * ---------------------------------------------------------------------- */
 
-  for (const alias of aliases) {
-    const match = keys.find(
-      (key) => key.trim().toLowerCase() === alias.toLowerCase()
-    );
+function normColumn(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
-    if (match !== undefined) {
-      const value = row[match];
-      return value === null || value === undefined
-        ? ""
-        : String(value).replace(/\s+/g, " ").trim();
+const COLUMN_ALIASES: Record<string, string[]> = {
+  material: [
+    "material",
+    "materialnumber",
+    "materialcode",
+    "materialno",
+    "matnr",
+    "matno",
+    "materialnumberchar",
+    "mat",
+    "matl",
+  ],
+  description: [
+    "materialdescription",
+    "materialdesc",
+    "description",
+    "materialtext",
+    "matdescr",
+    "shortdescription",
+    "materialdescriptiontext",
+    "matdesc",
+    "matldesc",
+    "materialshorttext",
+  ],
+  item: ["item", "itemno", "itemnumber"],
+  sloc: [
+    "storagelocation",
+    "storageloc",
+    "sloc",
+    "storloc",
+    "storage",
+    "storagecode",
+    "slocation",
+    "location",
+    "storagebin",
+  ],
+  mvt: [
+    "movementtype",
+    "mvttype",
+    "movement",
+    "mvt",
+    "bwart",
+    "movementtypecode",
+    "mvtcode",
+  ],
+  specialstock: [
+    "specialstock",
+    "specialstk",
+    "sobkar",
+    "specialstockindicator",
+  ],
+  doc: [
+    "materialdocument",
+    "materialdoc",
+    "matdocument",
+    "matdoc",
+    "documentnumber",
+    "mblnr",
+    "materialdocnumber",
+    "matdocno",
+    "materialdocno",
+  ],
+  docitem: [
+    "materialdocitem",
+    "matdocitem",
+    "materialdocitemno",
+    "docitem",
+    "zeile",
+    "materialdocit",
+    "matdocitemno",
+  ],
+  postingdate: [
+    "postingdate",
+    "postingdt",
+    "postingdateintext",
+    "bldat",
+    "postgdate",
+    "pstngdate",
+    "postdate",
+    "buchungsdatum",
+    "docdate",
+    "documentdate",
+  ],
+  quantity: [
+    "qtyinunitofentry",
+    "quantityinunitofentry",
+    "mvtqtyinunitofentry",
+    "mvtqty",
+    "quantity",
+    "qty",
+    "quantityinbaseunitofmeasure",
+    "qtyinbaseunitofmeasure",
+    "quantityinbaseunit",
+    "stockqty",
+    // SAP short labels / field names (ERFMG = qty in unit of entry):
+    "qtyinunofentry",
+    "quantityinunofentry",
+    "mvtqtyinunofentry",
+    "erfmg",
+    "menge",
+    // MB52 (current stock) column names:
+    "unrestricted",
+    "unrestrictedstock",
+    "unrestrictedqty",
+    "totalstock",
+    "totalqty",
+    "stock",
+  ],
+  unit: [
+    "unitofentry",
+    "unit",
+    "uom",
+    "baseunitofmeasure",
+    "baseunit",
+    "entryunit",
+    "unofentry",
+  ],
+  po: [
+    "purchaseorder",
+    "purchaseordernumber",
+    "purchasedocument",
+    "ponumber",
+    "po",
+    "ebeln",
+    "pono",
+  ],
+  user: [
+    "username",
+    "user",
+    "createdby",
+    "usnam",
+    "postedby",
+    "createdbyuser",
+  ],
+  invoice: [
+    "invoicenum",
+    "invoicenumber",
+    "invoice",
+    "rebnr",
+    "invoiceno",
+    "invoicedoc",
+    "invoicedocno",
+    "invoicedocument",
+  ],
+  vendor: [
+    "vendor",
+    "vendorcode",
+    "supplier",
+    "lifnr",
+    "vendornumber",
+    "vendorname",
+    "suppliercode",
+  ],
+  headertext: [
+    "documentheadertext",
+    "docheadertext",
+    "headertext",
+    "bktxt",
+    "documenttext",
+    "itemtext",
+    "docheadertext1",
+  ],
+};
+
+const KNOWN_COLUMNS = new Set<string>(
+  Object.values(COLUMN_ALIASES).flat().map(normColumn)
+);
+
+/** Picks the row (within the first 15) that matches the most known
+ *  column names - handles SAP sheets whose first row is a report title
+ *  or a merged label instead of the actual header. Exact header hits are
+ *  weighted double and a row with any exact hit beats one with only
+ *  fuzzy hits, so a selection-criteria block ("Material: …", "Posting
+ *  Date: …") never wins over the real header row. */
+function detectHeaderRow(rows: unknown[][]): number {
+  let bestRow = 0;
+  let bestScore = -1;
+  const scanLimit = Math.min(rows.length, 15);
+  const known = Array.from(KNOWN_COLUMNS);
+
+  for (let r = 0; r < scanLimit; r++) {
+    let score = 0;
+    let exactHits = 0;
+    for (const cell of rows[r] ?? []) {
+      if (cell === null || cell === undefined) continue;
+      const normalized = normColumn(String(cell));
+      if (normalized === "") continue;
+      if (KNOWN_COLUMNS.has(normalized)) {
+        score += 2;
+        exactHits += 1;
+      } else if (known.some((k) => k.length >= 5 && normalized.includes(k))) {
+        score += 1;
+      }
+    }
+    const tieBreak = exactHits > 0 ? 1 : 0;
+    if (score * 2 + tieBreak > bestScore) {
+      bestScore = score * 2 + tieBreak;
+      bestRow = r;
     }
   }
 
-  return "";
+  return bestRow;
 }
 
-function isRowBlank(row: Record<string, unknown>): boolean {
-  return Object.values(row).every((value) => {
+function buildColumnMap(headerRow: unknown[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  const used = new Set<number>();
+
+  // Pass 1: exact match against every alias.
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    for (const alias of aliases) {
+      const target = normColumn(alias);
+      if (!target) continue;
+      const idx = headerRow.findIndex((cell, i) => {
+        if (used.has(i)) return false;
+        if (cell === null || cell === undefined) return false;
+        return normColumn(String(cell)) === target;
+      });
+
+      if (idx !== -1) {
+        map[field] = idx;
+        used.add(idx);
+        break;
+      }
+    }
+  }
+
+  // Pass 2: fuzzy (substring) matching for fields still unmatched, e.g.
+  // "Postg. date" -> postingdate, "Qty in un of entry" -> qtyinunofentry,
+  // "Mat. Desc" -> matdesc. Longest alias first so a generic alias never
+  // grabs a cell that belongs to a more specific column, and only free
+  // cells are considered, so a confident exact match is never overridden.
+  for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
+    if (map[field] !== undefined) continue;
+    const sorted = [...aliases].sort((a, b) => b.length - a.length);
+    for (const alias of sorted) {
+      const target = normColumn(alias);
+      if (target.length < 3) continue;
+      let found = -1;
+      for (let i = 0; i < headerRow.length; i++) {
+        if (used.has(i)) continue;
+        const cell = headerRow[i];
+        if (cell === null || cell === undefined) continue;
+        if (normColumn(String(cell)).includes(target)) {
+          found = i;
+          break;
+        }
+      }
+      if (found !== -1) {
+        map[field] = found;
+        used.add(found);
+        break;
+      }
+    }
+  }
+
+  return map;
+}
+
+function cellAt(
+  row: unknown[],
+  colMap: Record<string, number>,
+  field: string
+): string {
+  const idx = colMap[field];
+  if (idx === undefined) return "";
+  const value = row[idx];
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function rowIsBlank(row: unknown[]): boolean {
+  return row.every((value) => {
     if (value === null || value === undefined) return true;
     return String(value).trim() === "";
   });
 }
 
 function parseSapQuantity(raw: string): number {
-  const cleaned = raw.replace(/,/g, "").trim();
+  let cleaned = String(raw).replace(/\s/g, "").trim();
   if (!cleaned) return NaN;
-  return Number(cleaned);
+
+  // SAP prints negative quantities with a trailing minus ("40.000-") and
+  // Excel can hand us parentheses ("(40)").
+  let negative = false;
+  if (cleaned.endsWith("-")) {
+    negative = true;
+    cleaned = cleaned.slice(0, -1);
+  } else if (cleaned.startsWith("(") && cleaned.endsWith(")")) {
+    negative = true;
+    cleaned = cleaned.slice(1, -1);
+  }
+  if (cleaned === "") return NaN;
+
+  const hasDot = cleaned.includes(".");
+  const hasComma = cleaned.includes(",");
+
+  if (hasDot && hasComma) {
+    // Both separators: the LAST one is the decimal separator.
+    // "1.234,56" -> 1234.56, "1,234.56" -> 1234.56. Remove the
+    // thousands separator entirely, then normalize the remaining
+    // decimal separator to ".".
+    const lastDot = cleaned.lastIndexOf(".");
+    const lastComma = cleaned.lastIndexOf(",");
+    if (lastDot > lastComma) {
+      cleaned = cleaned.replace(/,/g, "");
+    } else {
+      cleaned = cleaned.replace(/\./g, "").replace(/,/g, ".");
+    }
+  } else if (hasComma) {
+    // A lone comma is a decimal separator: "1,000" -> 1, "1,5" -> 1.5.
+    cleaned = cleaned.replace(/,/g, ".");
+  }
+  // A lone dot is kept as-is: English SAP displays quantities with a
+  // decimal point ("40.000" = 40).
+
+  const value = Number(cleaned);
+  if (Number.isNaN(value)) return NaN;
+  return negative ? -value : value;
 }
 
 function normalizeSapLocation(raw: string): string {
@@ -80,7 +386,8 @@ function normalizeSapLocation(raw: string): string {
 
 const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30);
 
-/** Parses a SAP date cell (Excel serial, Date, dd-mm-yyyy ...) to ISO. */
+/** Parses a SAP date cell (Excel serial, Date, dd-mm-yyyy, yyyymmdd ...)
+ *  to ISO (yyyy-mm-dd). */
 export function parseSapDate(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
 
@@ -88,12 +395,23 @@ export function parseSapDate(value: unknown): string | null {
     return value.toISOString().slice(0, 10);
   }
 
-  if (typeof value === "number" && Number.isFinite(value) && value > 20000) {
-    const date = new Date(EXCEL_EPOCH_UTC + Math.round(value) * 86400000);
-    if (!Number.isNaN(date.getTime())) {
-      return date.toISOString().slice(0, 10);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 1000000 && Number.isInteger(value)) {
+      // SAP exports posting dates as yyyymmdd numbers (e.g. 20260811).
+      const s = String(Math.round(value));
+      const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+      if (iso.length === 10 && !Number.isNaN(Date.parse(`${iso}T00:00:00Z`))) {
+        return iso;
+      }
+      return null;
     }
-    return null;
+    if (value > 20000) {
+      const date = new Date(EXCEL_EPOCH_UTC + Math.round(value) * 86400000);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString().slice(0, 10);
+      }
+      return null;
+    }
   }
 
   const text = String(value).trim();
@@ -110,6 +428,12 @@ export function parseSapDate(value: unknown): string | null {
   if (match) {
     const [, d, m, y] = match;
     const iso = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    return Number.isNaN(Date.parse(`${iso}T00:00:00Z`)) ? null : iso;
+  }
+
+  // yyyymmdd (8 digits, e.g. "20260811").
+  if (/^\d{8}$/.test(text)) {
+    const iso = `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
     return Number.isNaN(Date.parse(`${iso}T00:00:00Z`)) ? null : iso;
   }
 
@@ -162,6 +486,8 @@ export interface SapDocumentRow {
 export interface SapDistributionRow {
   rowNumber: number;
   material_code: string;
+  material_description: string;
+  uom: string;
   storage_location: string;
   quantity: number;
 }
@@ -172,82 +498,73 @@ export interface SapInvalidRow {
   errors: string[];
 }
 
+export interface SapParseResult {
+  /** Non-empty cells of the detected header row, for the UI to show so a
+   *  wrong header detection is immediately visible. */
+  detectedHeader: string[];
+}
+
+/** Non-empty header-cell values (first 14) for display/diagnostics. */
+function detectHeaderValues(
+  rows2d: unknown[][],
+  headerRowIndex: number
+): string[] {
+  const values: string[] = [];
+  for (const cell of rows2d[headerRowIndex] ?? []) {
+    if (cell === null || cell === undefined) continue;
+    const text = String(cell).replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    values.push(text);
+    if (values.length >= 14) break;
+  }
+  return values;
+}
+
 /* -------------------------------------------------------------------------
  * MB51 parser (material document list / material history)
  * ---------------------------------------------------------------------- */
 
 export function parseMb51ExcelRows(
-  rawRows: Record<string, unknown>[]
-): { totalRecords: number; validRows: SapDocumentRow[]; invalidRows: SapInvalidRow[] } {
+  rows2d: unknown[][]
+): {
+  totalRecords: number;
+  validRows: SapDocumentRow[];
+  invalidRows: SapInvalidRow[];
+  detectedHeader: string[];
+} {
   const invalidRows: SapInvalidRow[] = [];
   const validRows: SapDocumentRow[] = [];
 
+  const headerRowIndex = detectHeaderRow(rows2d);
+  const colMap = buildColumnMap(rows2d[headerRowIndex] ?? []);
+  const detectedHeader = detectHeaderValues(rows2d, headerRowIndex);
+
   let totalRecords = 0;
 
-  rawRows.forEach((row, index) => {
-    if (isRowBlank(row)) return;
+  rows2d.forEach((row, index) => {
+    if (index <= headerRowIndex) return;
+    if (rowIsBlank(row)) return;
 
     totalRecords += 1;
-    const rowNumber = index + 2;
+    // Excel row numbers are 1-based; rows2d index 0 is Excel row 1.
+    const rowNumber = index + 1;
 
-    const rawMaterialCode = getFieldValue(row, ["Material", "Material Code"]);
+    const rawMaterialCode = cellAt(row, colMap, "material");
     const materialCode = normalizeMaterialCode(rawMaterialCode);
-    const materialDescription = getFieldValue(row, [
-      "Material Description",
-      "Material Desc",
-      "Description",
-    ]);
-    const item = getFieldValue(row, ["Item", "Item No"]);
-    const storageLocation = normalizeSapLocation(
-      getFieldValue(row, ["Storage Location", "S.Loc", "SLoc", "Storage Loc"])
-    );
-    const movementType = getFieldValue(row, [
-      "Movement Type",
-      "Mvt Type",
-      "Movement",
-    ]);
-    const specialStock = getFieldValue(row, ["Special Stock", "SpecialStk"]);
-    const materialDocument = getFieldValue(row, [
-      "Material Document",
-      "Material Doc",
-      "Mat. Document",
-    ]);
-    const materialDocItem = getFieldValue(row, [
-      "Material Doc.Item",
-      "Material Doc Item",
-      "Mat. Doc.Item",
-    ]);
-    const quantityRaw = getFieldValue(row, [
-      "Qty in unit of entry",
-      "Qty in Unit of Entry",
-      "Quantity",
-      "Qty",
-    ]);
-    const unitOfEntry = getFieldValue(row, [
-      "Unit of Entry",
-      "Unit",
-      "UoM",
-      "UOM",
-    ]);
-    const purchaseOrder = getFieldValue(row, [
-      "Purchase order",
-      "Purchase Order",
-      "PO",
-      "PO Number",
-    ]);
-    const userName = getFieldValue(row, ["User Name", "User", "Username"]);
-    const invoiceNumber = getFieldValue(row, [
-      "Invoice Num.",
-      "Invoice No.",
-      "Invoice Number",
-      "Invoice",
-    ]);
-    const vendor = getFieldValue(row, ["Vendor", "Vendor Code"]);
-    const documentHeaderText = getFieldValue(row, [
-      "Document Header Text",
-      "Doc Header Text",
-      "Header Text",
-    ]);
+    const materialDescription = cellAt(row, colMap, "description");
+    const item = cellAt(row, colMap, "item");
+    const storageLocation = normalizeSapLocation(cellAt(row, colMap, "sloc"));
+    const movementType = cellAt(row, colMap, "mvt");
+    const specialStock = cellAt(row, colMap, "specialstock");
+    const materialDocument = cellAt(row, colMap, "doc");
+    const materialDocItem = cellAt(row, colMap, "docitem");
+    const quantityRaw = cellAt(row, colMap, "quantity");
+    const unitOfEntry = cellAt(row, colMap, "unit");
+    const purchaseOrder = cellAt(row, colMap, "po");
+    const userName = cellAt(row, colMap, "user");
+    const invoiceNumber = cellAt(row, colMap, "invoice");
+    const vendor = cellAt(row, colMap, "vendor");
+    const documentHeaderText = cellAt(row, colMap, "headertext");
 
     const errors: string[] = [];
 
@@ -263,9 +580,7 @@ export function parseMb51ExcelRows(
       errors.push("Quantity must be a number.");
     }
 
-    const postingDate = parseSapDate(
-      getFieldValue(row, ["Posting Date", "PostingDt"])
-    );
+    const postingDate = parseSapDate(cellAt(row, colMap, "postingdate"));
     if (!postingDate) {
       errors.push("Posting Date is required (dd-mm-yyyy).");
     }
@@ -300,7 +615,7 @@ export function parseMb51ExcelRows(
     });
   });
 
-  return { totalRecords, validRows, invalidRows };
+  return { totalRecords, validRows, invalidRows, detectedHeader };
 }
 
 /* -------------------------------------------------------------------------
@@ -308,38 +623,35 @@ export function parseMb51ExcelRows(
  * ---------------------------------------------------------------------- */
 
 export function parseMb52ExcelRows(
-  rawRows: Record<string, unknown>[]
-): { totalRecords: number; validRows: SapDistributionRow[]; invalidRows: SapInvalidRow[] } {
+  rows2d: unknown[][]
+): {
+  totalRecords: number;
+  validRows: SapDistributionRow[];
+  invalidRows: SapInvalidRow[];
+  detectedHeader: string[];
+} {
   const invalidRows: SapInvalidRow[] = [];
   const validRows: SapDistributionRow[] = [];
 
+  const headerRowIndex = detectHeaderRow(rows2d);
+  const colMap = buildColumnMap(rows2d[headerRowIndex] ?? []);
+  const detectedHeader = detectHeaderValues(rows2d, headerRowIndex);
+
   let totalRecords = 0;
 
-  rawRows.forEach((row, index) => {
-    if (isRowBlank(row)) return;
+  rows2d.forEach((row, index) => {
+    if (index <= headerRowIndex) return;
+    if (rowIsBlank(row)) return;
 
     totalRecords += 1;
-    const rowNumber = index + 2;
+    const rowNumber = index + 1;
 
-    const rawMaterialCode = getFieldValue(row, [
-      "Material",
-      "Material Number",
-      "Material Code",
-    ]);
+    const rawMaterialCode = cellAt(row, colMap, "material");
     const materialCode = normalizeMaterialCode(rawMaterialCode);
-    const storageLocation = normalizeSapLocation(
-      getFieldValue(row, ["Storage Location", "S.Loc", "SLoc", "Storage Loc"])
-    );
-    const quantityRaw = getFieldValue(row, [
-      "Unrestricted",
-      "Unrestricted Stock",
-      "Unrestricted Qty",
-      "Quantity",
-      "Qty",
-      "Total Stock",
-      "Total Qty",
-      "Stock",
-    ]);
+    const materialDescription = cellAt(row, colMap, "description");
+    const uom = cellAt(row, colMap, "unit");
+    const storageLocation = normalizeSapLocation(cellAt(row, colMap, "sloc"));
+    const quantityRaw = cellAt(row, colMap, "quantity");
 
     const errors: string[] = [];
 
@@ -375,12 +687,14 @@ export function parseMb52ExcelRows(
     validRows.push({
       rowNumber,
       material_code: materialCode as string,
+      material_description: materialDescription,
+      uom,
       storage_location: storageLocation,
       quantity,
     });
   });
 
-  return { totalRecords, validRows, invalidRows };
+  return { totalRecords, validRows, invalidRows, detectedHeader };
 }
 
 /* -------------------------------------------------------------------------
@@ -438,13 +752,51 @@ export interface Mb51ImportSummary {
   totalRows: number;
   inserted: number;
   updated: number;
+  materialsCreated: number;
   failed: number;
-  /** Materials referenced by the file that don't exist in Material
-   *  Master - history is still stored (it's a mirror of SAP), but the
-   *  count is reported so the owner knows the master is missing rows. */
-  notInMaster: number;
-  notInMasterCodes: string[];
   outcomes: Mb51Outcome[];
+}
+
+/**
+ * Creates Material Master rows for codes the file references but that
+ * don't exist yet (numeric codes only - never alphanumeric junk). Uses
+ * the first non-blank description / UoM the file provides for each code.
+ * Bulk-inserts in chunks with a per-row fallback so one bad row can't
+ * block the rest. Returns how many materials were created.
+ */
+async function createMissingMaterials(
+  missingCodes: string[],
+  meta: Map<string, { description: string; uom: string }>
+): Promise<number> {
+  let created = 0;
+
+  await runChunked(missingCodes, async (batch) => {
+    const payload = batch.map((code) => ({
+      material_code: code,
+      short_description: meta.get(code)?.description || code,
+      uom: meta.get(code)?.uom || "NOS",
+      hsn_code: "",
+      material_group: code.substring(0, 2),
+      is_active: true,
+    }));
+
+    const { error } = await supabase.from("material_master").insert(payload);
+
+    if (error) {
+      for (const item of payload) {
+        const { error: rowError } = await supabase
+          .from("material_master")
+          .insert([item]);
+        if (rowError) throw rowError;
+        created += 1;
+      }
+      return;
+    }
+
+    created += batch.length;
+  });
+
+  return created;
 }
 
 /**
@@ -464,9 +816,8 @@ export async function bulkImportMb51(
     totalRows: rows.length,
     inserted: 0,
     updated: 0,
+    materialsCreated: 0,
     failed: 0,
-    notInMaster: 0,
-    notInMasterCodes: [],
     outcomes: [],
   };
 
@@ -504,16 +855,34 @@ export async function bulkImportMb51(
     );
   });
 
-  // Report materials absent from Material Master (informational).
-  const masterInfo = await fetchMaterialMasterInfo(
-    Array.from(new Set(rows.map((r) => r.material_code)))
-  ).catch(() => new Map<string, MaterialMasterInfo>());
+  // Auto-create materials missing from Material Master (numeric codes
+  // only), using the first non-blank description / UoM in the file.
+  const masterCodes = Array.from(new Set(rows.map((r) => r.material_code)));
+  const masterInfo = await fetchMaterialMasterInfo(masterCodes).catch(
+    () => new Map<string, MaterialMasterInfo>()
+  );
+  const missingCodes = masterCodes.filter((code) => !masterInfo.has(code));
 
-  const missingCodes = Array.from(
-    new Set(rows.map((r) => r.material_code))
-  ).filter((code) => !masterInfo.has(code));
-  summary.notInMaster = missingCodes.length;
-  summary.notInMasterCodes = missingCodes;
+  if (missingCodes.length > 0) {
+    const meta = new Map<string, { description: string; uom: string }>();
+    for (const row of rows) {
+      const entry = meta.get(row.material_code);
+      if (!entry) {
+        meta.set(row.material_code, {
+          description: row.material_description,
+          uom: row.unit_of_entry,
+        });
+      } else {
+        if (!entry.description && row.material_description) {
+          entry.description = row.material_description;
+        }
+        if (!entry.uom && row.unit_of_entry) {
+          entry.uom = row.unit_of_entry;
+        }
+      }
+    }
+    summary.materialsCreated = await createMissingMaterials(missingCodes, meta);
+  }
 
   reportProgress(0.3);
 
@@ -672,8 +1041,7 @@ export interface Mb52ImportSummary {
   materialsProcessed: number;
   matched: number;
   reviewsCreated: number;
-  notInMaster: number;
-  notInMasterCodes: string[];
+  materialsCreated: number;
   failed: number;
   outcomes: Mb52Outcome[];
 }
@@ -697,8 +1065,7 @@ export async function bulkImportMb52(
     materialsProcessed: 0,
     matched: 0,
     reviewsCreated: 0,
-    notInMaster: 0,
-    notInMasterCodes: [],
+    materialsCreated: 0,
     failed: 0,
     outcomes: [],
   };
@@ -729,10 +1096,28 @@ export async function bulkImportMb52(
   const masterInfo = await fetchMaterialMasterInfo(materialCodes).catch(
     () => new Map<string, MaterialMasterInfo>()
   );
-
   const missingCodes = materialCodes.filter((code) => !masterInfo.has(code));
-  summary.notInMaster = missingCodes.length;
-  summary.notInMasterCodes = missingCodes;
+
+  if (missingCodes.length > 0) {
+    const meta = new Map<string, { description: string; uom: string }>();
+    for (const row of rows) {
+      const entry = meta.get(row.material_code);
+      if (!entry) {
+        meta.set(row.material_code, {
+          description: row.material_description,
+          uom: row.uom,
+        });
+      } else {
+        if (!entry.description && row.material_description) {
+          entry.description = row.material_description;
+        }
+        if (!entry.uom && row.uom) {
+          entry.uom = row.uom;
+        }
+      }
+    }
+    summary.materialsCreated = await createMissingMaterials(missingCodes, meta);
+  }
 
   reportProgress(0.25);
 
@@ -1280,12 +1665,8 @@ export async function downloadMb51ImportReport(
       { label: "Total Excel Rows", value: validation.totalRecords },
       { label: "Movements Imported", value: summary.inserted },
       { label: "Updated (re-import)", value: summary.updated },
+      { label: "Materials Created", value: summary.materialsCreated },
       { label: "Failed", value: summary.failed },
-      { label: "Materials Not in Master", value: summary.notInMaster },
-      ...summary.notInMasterCodes.slice(0, 20).map((code) => ({
-        label: "Not in Material Master",
-        value: code,
-      })),
     ],
   });
 }
@@ -1348,11 +1729,8 @@ export async function downloadMb52ImportReport(
       { label: "Materials Processed", value: summary.materialsProcessed },
       { label: "Matched (SAP = App)", value: summary.matched },
       { label: "Reviews Created (difference)", value: summary.reviewsCreated },
-      { label: "Materials Not in Master", value: summary.notInMaster },
-      ...summary.notInMasterCodes.slice(0, 20).map((code) => ({
-        label: "Not in Material Master",
-        value: code,
-      })),
+      { label: "Materials Created", value: summary.materialsCreated },
+      { label: "Failed", value: summary.failed },
     ],
   });
 }
