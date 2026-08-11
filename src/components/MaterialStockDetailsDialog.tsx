@@ -23,7 +23,7 @@ import {
   getMaterialAppMovements,
   type MaterialMovementRow,
 } from "../services/inventoryTransactionService";
-import { getSapStockDistribution } from "../services/sapHistoryService";
+import { getSapStockForMaterial } from "../services/sapHistoryService";
 import AllocationSummary from "./AllocationSummary";
 import AllocationTable from "./AllocationTable";
 import type { Material } from "../types/material";
@@ -84,21 +84,20 @@ export default function MaterialStockDetailsDialog({
       searchMaterials(materialCode, 0, 1),
       getAllocations(materialCode),
       getMaterialAppMovements(materialCode, HISTORY_LIMIT),
-      getSapStockDistribution(),
+      getSapStockForMaterial(materialCode),
     ])
-      .then(([materials, allocations, history, sapRows]) => {
+      .then(([materials, allocations, history, sapInfo]) => {
         if (cancelled) return;
         const exact =
           materials.find((m) => m.material_code === materialCode) ??
           materials[0] ??
           null;
-        const sapRow = sapRows.find((r) => r.material_code === materialCode);
         setData({
           material: exact,
           allocations,
           history,
-          sapTotal: sapRow ? sapRow.total : null,
-          sapDiff: sapRow?.review ? sapRow.review.difference : null,
+          sapTotal: sapInfo ? sapInfo.total : null,
+          sapDiff: sapInfo?.review ? sapInfo.review.difference : null,
         });
         setLoadedForCode(materialCode);
       })
