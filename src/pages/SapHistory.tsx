@@ -226,23 +226,23 @@ interface ColumnDef {
   key: string;
   label: string;
   icon: React.ReactNode;
-  minWidth: number;
+  width: string;
   align?: "right";
 }
 
 const COLUMNS: ColumnDef[] = [
-  { key: "posting_date", label: "Posting Date", icon: <CalendarMonthOutlinedIcon fontSize="small" />, minWidth: 110 },
-  { key: "material_code", label: "Material Code", icon: <Inventory2OutlinedIcon fontSize="small" />, minWidth: 105 },
-  { key: "material_description", label: "Material Description", icon: <DescriptionOutlinedIcon fontSize="small" />, minWidth: 230 },
-  { key: "movement_type", label: "Movement Type", icon: <SwapHorizOutlinedIcon fontSize="small" />, minWidth: 180 },
-  { key: "sloc", label: "SLoc", icon: <LocationOnOutlinedIcon fontSize="small" />, minWidth: 60 },
-  { key: "qty", label: "Qty", icon: <BalanceOutlinedIcon fontSize="small" />, minWidth: 70, align: "right" },
-  { key: "doc", label: "Doc", icon: <InsertDriveFileOutlinedIcon fontSize="small" />, minWidth: 130 },
-  { key: "doc_header_text", label: "Doc Header Text", icon: <SubjectOutlinedIcon fontSize="small" />, minWidth: 190 },
-  { key: "po", label: "PO", icon: <ShoppingCartOutlinedIcon fontSize="small" />, minWidth: 105 },
-  { key: "vendor", label: "Vendor", icon: <BusinessOutlinedIcon fontSize="small" />, minWidth: 105 },
-  { key: "invoice", label: "Invoice", icon: <ReceiptOutlinedIcon fontSize="small" />, minWidth: 105 },
-  { key: "user", label: "User", icon: <PersonOutlinedIcon fontSize="small" />, minWidth: 100 },
+  { key: "posting_date", label: "Posting Date", icon: <CalendarMonthOutlinedIcon fontSize="small" />, width: "6%" },
+  { key: "material_code", label: "Material Code", icon: <Inventory2OutlinedIcon fontSize="small" />, width: "8%" },
+  { key: "material_description", label: "Material Description", icon: <DescriptionOutlinedIcon fontSize="small" />, width: "16%" },
+  { key: "movement_type", label: "Movement Type", icon: <SwapHorizOutlinedIcon fontSize="small" />, width: "12%" },
+  { key: "sloc", label: "SLoc", icon: <LocationOnOutlinedIcon fontSize="small" />, width: "4%" },
+  { key: "qty", label: "Qty", icon: <BalanceOutlinedIcon fontSize="small" />, width: "6%", align: "right" },
+  { key: "doc", label: "Doc", icon: <InsertDriveFileOutlinedIcon fontSize="small" />, width: "10%" },
+  { key: "doc_header_text", label: "Doc Header Text", icon: <SubjectOutlinedIcon fontSize="small" />, width: "12%" },
+  { key: "po", label: "PO", icon: <ShoppingCartOutlinedIcon fontSize="small" />, width: "7%" },
+  { key: "vendor", label: "Vendor", icon: <BusinessOutlinedIcon fontSize="small" />, width: "7%" },
+  { key: "invoice", label: "Invoice", icon: <ReceiptOutlinedIcon fontSize="small" />, width: "6%" },
+  { key: "user", label: "User", icon: <PersonOutlinedIcon fontSize="small" />, width: "6%" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -680,7 +680,19 @@ export default function SapHistory() {
           sx={{ borderRadius: "10px", border: `1px solid ${C.border}`, overflow: "hidden" }}
         >
           <TableContainer sx={{ maxHeight: 620 }}>
-            <Table size="small" stickyHeader sx={{ minWidth: 1490 }}>
+            <Table
+              size="small"
+              stickyHeader
+              sx={{
+                // Desktop: fixed layout fills the viewport width with the
+                // proportional column widths below (no horizontal scroll).
+                // Small screens keep a horizontal scroll so columns stay
+                // readable instead of collapsing.
+                width: "100%",
+                minWidth: { xs: 900, md: 0 },
+                tableLayout: { xs: "auto", md: "fixed" },
+              }}
+            >
               <TableHead>
                 <TableRow>
                   {COLUMNS.map((column) => (
@@ -688,7 +700,7 @@ export default function SapHistory() {
                       key={column.key}
                       align={column.align}
                       sx={{
-                        minWidth: column.minWidth,
+                        width: column.width,
                         bgcolor: C.headerBg,
                         color: C.headerText,
                         fontWeight: 600,
@@ -735,13 +747,20 @@ export default function SapHistory() {
                         "&:last-child td": { borderBottom: "none" },
                       }}
                     >
-                      <TableCell sx={{ whiteSpace: "nowrap", color: C.navy }}>
+                      <TableCell
+                        sx={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: C.navy,
+                        }}
+                      >
                         {formatPostingDate(row.posting_date)}
                       </TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap", color: C.primary, fontWeight: 600 }}>
                         {row.material_code}
                       </TableCell>
-                      <TableCell sx={{ maxWidth: 230 }}>
+                      <TableCell>
                         <Typography
                           variant="body2"
                           noWrap
@@ -762,7 +781,7 @@ export default function SapHistory() {
                             py: 0.5,
                             fontSize: "12px",
                             fontWeight: 600,
-                            maxWidth: 190,
+                            maxWidth: "100%",
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -787,11 +806,18 @@ export default function SapHistory() {
                         {row.quantity > 0 ? "+" : ""}
                         {row.quantity}
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap", color: C.navy }}>
+                      <TableCell
+                        sx={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: C.navy,
+                        }}
+                      >
                         {row.material_document ?? "—"}
                         {row.material_doc_item ? ` / ${row.material_doc_item}` : ""}
                       </TableCell>
-                      <TableCell sx={{ maxWidth: 190 }}>
+                      <TableCell>
                         <Typography
                           variant="body2"
                           noWrap
@@ -801,16 +827,44 @@ export default function SapHistory() {
                           {row.document_header_text || "—"}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap", color: row.purchase_order ? C.navy : C.slate }}>
+                      <TableCell
+                        sx={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: row.purchase_order ? C.navy : C.slate,
+                        }}
+                      >
                         {row.purchase_order || "—"}
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap", color: row.vendor ? C.navy : C.slate }}>
+                      <TableCell
+                        sx={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: row.vendor ? C.navy : C.slate,
+                        }}
+                      >
                         {row.vendor || "—"}
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap", color: row.invoice_number ? C.navy : C.slate }}>
+                      <TableCell
+                        sx={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: row.invoice_number ? C.navy : C.slate,
+                        }}
+                      >
                         {row.invoice_number || "—"}
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap", color: C.navy }}>
+                      <TableCell
+                        sx={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: C.navy,
+                        }}
+                      >
                         {row.user_name || "—"}
                       </TableCell>
                     </TableRow>
