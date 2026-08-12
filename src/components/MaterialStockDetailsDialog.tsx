@@ -12,6 +12,7 @@ import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
 import IconButton from "@mui/material/IconButton";
 import LinearProgress from "@mui/material/LinearProgress";
+import Slide from "@mui/material/Slide";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -89,6 +90,11 @@ interface Props {
  * come from the existing queries/calculations (allocations, app
  * movements, SAP MB52 distribution + reconciliation review) and are never
  * recomputed differently here.
+ *
+ * Responsive: on desktop it is a centered ~840px modal; below `sm` it
+ * becomes a compact bottom sheet (rounded top corners, ~92dvh max height)
+ * where only the middle content scrolls and the header + Close footer stay
+ * fixed. Desktop styling is intentionally untouched by the mobile rules.
  */
 export default function MaterialStockDetailsDialog({
   materialCode,
@@ -227,44 +233,64 @@ export default function MaterialStockDetailsDialog({
     navigate(`/sap-history?material=${materialCode}`);
   };
 
+  /** Value + UoM shown in the Stock Comparison cells (same on both layouts). */
+  const stockValue = (main: React.ReactNode) => (
+    <>
+      {main}{" "}
+      <Box
+        component="span"
+        sx={{ fontSize: 12, fontWeight: 500, color: SLATE }}
+      >
+        {uom}
+      </Box>
+    </>
+  );
+
   return (
     <Dialog
       open={!!materialCode}
       onClose={onClose}
       fullWidth
       maxWidth="md"
-      fullScreen={isMobile}
       scroll="paper"
+      slots={{ transition: isMobile ? Slide : undefined }}
       slotProps={{
+        root: {
+          sx: { alignItems: { xs: "flex-end", sm: "center" } },
+        },
         paper: {
           sx: {
-            borderRadius: isMobile ? 0 : 3,
-            width: isMobile ? "100%" : 840,
-            maxWidth: "calc(100vw - 24px)",
-            maxHeight: isMobile ? "100%" : "calc(100dvh - 48px)",
-            boxShadow: isMobile
-              ? "none"
-              : "0 8px 32px rgba(15, 23, 42, 0.12)",
+            // Mobile: bottom sheet, rounded top corners, capped height with
+            // internal scrolling. Desktop: unchanged centered 840px modal.
+            borderRadius: { xs: "16px 16px 0 0", sm: 3 },
+            width: { xs: "100%", sm: 840 },
+            maxWidth: { xs: "100%", sm: "calc(100vw - 24px)" },
+            maxHeight: { xs: "92dvh", sm: "calc(100dvh - 48px)" },
+            margin: { xs: 0, sm: undefined },
+            boxShadow: {
+              xs: "0 -4px 24px rgba(15, 23, 42, 0.16)",
+              sm: "0 8px 32px rgba(15, 23, 42, 0.12)",
+            },
             bgcolor: "#FFFFFF",
           },
         },
       }}
     >
-      {/* ---------------- Header ---------------- */}
+      {/* ---------------- Header (compact on mobile) ---------------- */}
       <DialogTitle
         sx={{
           display: "flex",
           alignItems: "center",
           gap: 1.5,
           px: { xs: 2, sm: 3 },
-          pt: { xs: 1.5, sm: 2.5 },
-          pb: 1.5,
+          pt: { xs: 1.25, sm: 2.5 },
+          pb: { xs: 1.25, sm: 1.5 },
         }}
       >
         <Box
           sx={{
-            width: 40,
-            height: 40,
+            width: { xs: 36, sm: 40 },
+            height: { xs: 36, sm: 40 },
             borderRadius: 2,
             bgcolor: GREEN_BG,
             display: "flex",
@@ -273,11 +299,9 @@ export default function MaterialStockDetailsDialog({
             flexShrink: 0,
           }}
         >
-          <Inventory2Icon sx={{ color: GREEN, fontSize: 22 }} />
+          <Inventory2Icon sx={{ color: GREEN, fontSize: { xs: 20, sm: 22 } }} />
         </Box>
-        <Typography
-          sx={{ fontSize: { xs: 18, sm: 20 }, fontWeight: 700, color: NAVY }}
-        >
+        <Typography sx={{ fontSize: 20, fontWeight: 700, color: NAVY }}>
           Material Details
         </Typography>
         <IconButton
@@ -291,7 +315,10 @@ export default function MaterialStockDetailsDialog({
 
       <Divider sx={{ borderColor: BORDER }} />
 
-      <DialogContent sx={{ px: { xs: 2, sm: 3 }, pt: 2.5, pb: 1 }}>
+      {/* Only this middle area scrolls - header and footer stay fixed. */}
+      <DialogContent
+        sx={{ px: { xs: 2, sm: 3 }, pt: { xs: 1.5, sm: 2.5 }, pb: 1 }}
+      >
         {loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
             <CircularProgress size={30} sx={{ color: BLUE }} />
@@ -299,11 +326,18 @@ export default function MaterialStockDetailsDialog({
         ) : (
           <>
             {/* ---------------- Material Information ---------------- */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2.5 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: { xs: 1.5, sm: 2 },
+                mb: { xs: 1.5, sm: 2.5 },
+              }}
+            >
               <Box
                 sx={{
-                  width: 56,
-                  height: 56,
+                  width: { xs: 46, sm: 56 },
+                  height: { xs: 46, sm: 56 },
                   borderRadius: 2.5,
                   bgcolor: GREEN_BG,
                   display: "flex",
@@ -312,18 +346,18 @@ export default function MaterialStockDetailsDialog({
                   flexShrink: 0,
                 }}
               >
-                <Inventory2Icon sx={{ color: GREEN, fontSize: 32 }} />
+                <Inventory2Icon sx={{ color: GREEN, fontSize: { xs: 26, sm: 32 } }} />
               </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
-                  sx={{ fontSize: { xs: 17, sm: 19 }, fontWeight: 700, color: NAVY }}
+                  sx={{ fontSize: { xs: 20, sm: 19 }, fontWeight: 700, color: NAVY }}
                   noWrap
                 >
                   {material?.material_code ?? materialCode}
                 </Typography>
                 <Typography
                   sx={{
-                    fontSize: 13.5,
+                    fontSize: { xs: 14, sm: 13.5 },
                     color: SLATE,
                     mt: 0.25,
                     overflowWrap: "break-word",
@@ -346,7 +380,7 @@ export default function MaterialStockDetailsDialog({
                     fontWeight: 700,
                     fontSize: 12,
                     borderRadius: 1.5,
-                    height: 28,
+                    height: { xs: 36, sm: 28 },
                     flexShrink: 0,
                   }}
                 />
@@ -354,22 +388,32 @@ export default function MaterialStockDetailsDialog({
             </Box>
 
             {/* ---------------- Stock Summary ---------------- */}
-            <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
-              <Grid size={{ xs: 12, sm: 4 }}>
+            {/* Mobile: three equal compact cards in a single row (never
+                three stacked full-width cards). Desktop: unchanged. */}
+            <Grid container spacing={{ xs: 1, sm: 1.5 }} sx={{ mb: { xs: 1.5, sm: 2.5 } }}>
+              <Grid size={4}>
                 <Box
                   sx={{
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     bgcolor: "#F8FAFC",
-                    p: 1.75,
+                    p: { xs: 1.25, sm: 1.75 },
                     height: "100%",
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, mb: 1 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: { xs: "flex-start", sm: "center" },
+                      gap: { xs: 0.75, sm: 1.25 },
+                      mb: { xs: 0.75, sm: 1 },
+                    }}
+                  >
                     <Box
                       sx={{
-                        width: 34,
-                        height: 34,
+                        width: { xs: 28, sm: 34 },
+                        height: { xs: 28, sm: 34 },
                         borderRadius: 1.5,
                         bgcolor: GREEN_BG,
                         display: "flex",
@@ -377,38 +421,61 @@ export default function MaterialStockDetailsDialog({
                         justifyContent: "center",
                       }}
                     >
-                      <Inventory2Icon sx={{ color: GREEN, fontSize: 19 }} />
+                      <Inventory2Icon sx={{ color: GREEN, fontSize: { xs: 16, sm: 19 } }} />
                     </Box>
                     <Typography
-                      sx={{ fontSize: 12.5, fontWeight: 600, color: SLATE }}
+                      sx={{
+                        fontSize: { xs: 12, sm: 12.5 },
+                        fontWeight: 600,
+                        color: SLATE,
+                        lineHeight: 1.25,
+                      }}
                     >
                       Total Stock
                     </Typography>
                   </Box>
-                  <Typography sx={{ fontSize: 22, fontWeight: 700, color: NAVY }}>
+                  <Typography
+                    sx={{
+                      fontSize: { xs: 20, sm: 22 },
+                      fontWeight: 700,
+                      color: NAVY,
+                      lineHeight: 1.2,
+                    }}
+                  >
                     {totalStock}{" "}
-                    <Box component="span" sx={{ fontSize: 13, fontWeight: 500, color: SLATE }}>
+                    <Box
+                      component="span"
+                      sx={{ fontSize: { xs: 11, sm: 13 }, fontWeight: 500, color: SLATE }}
+                    >
                       {uom}
                     </Box>
                   </Typography>
                 </Box>
               </Grid>
 
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid size={4}>
                 <Box
                   sx={{
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     bgcolor: "#F8FAFC",
-                    p: 1.75,
+                    p: { xs: 1.25, sm: 1.75 },
                     height: "100%",
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, mb: 1 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: { xs: "flex-start", sm: "center" },
+                      gap: { xs: 0.75, sm: 1.25 },
+                      mb: { xs: 0.75, sm: 1 },
+                    }}
+                  >
                     <Box
                       sx={{
-                        width: 34,
-                        height: 34,
+                        width: { xs: 28, sm: 34 },
+                        height: { xs: 28, sm: 34 },
                         borderRadius: 1.5,
                         bgcolor: "#DBEAFE",
                         display: "flex",
@@ -416,38 +483,61 @@ export default function MaterialStockDetailsDialog({
                         justifyContent: "center",
                       }}
                     >
-                      <AssignmentTurnedInIcon sx={{ color: BLUE, fontSize: 19 }} />
+                      <AssignmentTurnedInIcon sx={{ color: BLUE, fontSize: { xs: 16, sm: 19 } }} />
                     </Box>
                     <Typography
-                      sx={{ fontSize: 12.5, fontWeight: 600, color: SLATE }}
+                      sx={{
+                        fontSize: { xs: 12, sm: 12.5 },
+                        fontWeight: 600,
+                        color: SLATE,
+                        lineHeight: 1.25,
+                      }}
                     >
                       Allocated Stock
                     </Typography>
                   </Box>
-                  <Typography sx={{ fontSize: 22, fontWeight: 700, color: NAVY }}>
+                  <Typography
+                    sx={{
+                      fontSize: { xs: 20, sm: 22 },
+                      fontWeight: 700,
+                      color: NAVY,
+                      lineHeight: 1.2,
+                    }}
+                  >
                     {allocatedQty}{" "}
-                    <Box component="span" sx={{ fontSize: 13, fontWeight: 500, color: SLATE }}>
+                    <Box
+                      component="span"
+                      sx={{ fontSize: { xs: 11, sm: 13 }, fontWeight: 500, color: SLATE }}
+                    >
                       {uom}
                     </Box>
                   </Typography>
                 </Box>
               </Grid>
 
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid size={4}>
                 <Box
                   sx={{
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     bgcolor: "#F8FAFC",
-                    p: 1.75,
+                    p: { xs: 1.25, sm: 1.75 },
                     height: "100%",
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, mb: 1 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: { xs: "flex-start", sm: "center" },
+                      gap: { xs: 0.75, sm: 1.25 },
+                      mb: { xs: 0.75, sm: 1 },
+                    }}
+                  >
                     <Box
                       sx={{
-                        width: 34,
-                        height: 34,
+                        width: { xs: 28, sm: 34 },
+                        height: { xs: 28, sm: 34 },
                         borderRadius: 1.5,
                         bgcolor: "#FFEDD5",
                         display: "flex",
@@ -455,17 +545,32 @@ export default function MaterialStockDetailsDialog({
                         justifyContent: "center",
                       }}
                     >
-                      <PendingActionsIcon sx={{ color: ORANGE, fontSize: 19 }} />
+                      <PendingActionsIcon sx={{ color: ORANGE, fontSize: { xs: 16, sm: 19 } }} />
                     </Box>
                     <Typography
-                      sx={{ fontSize: 12.5, fontWeight: 600, color: SLATE }}
+                      sx={{
+                        fontSize: { xs: 12, sm: 12.5 },
+                        fontWeight: 600,
+                        color: SLATE,
+                        lineHeight: 1.25,
+                      }}
                     >
                       Unallocated Stock
                     </Typography>
                   </Box>
-                  <Typography sx={{ fontSize: 22, fontWeight: 700, color: NAVY }}>
+                  <Typography
+                    sx={{
+                      fontSize: { xs: 20, sm: 22 },
+                      fontWeight: 700,
+                      color: NAVY,
+                      lineHeight: 1.2,
+                    }}
+                  >
                     {unallocatedQty}{" "}
-                    <Box component="span" sx={{ fontSize: 13, fontWeight: 500, color: SLATE }}>
+                    <Box
+                      component="span"
+                      sx={{ fontSize: { xs: 11, sm: 13 }, fontWeight: 500, color: SLATE }}
+                    >
                       {uom}
                     </Box>
                   </Typography>
@@ -478,8 +583,8 @@ export default function MaterialStockDetailsDialog({
               sx={{
                 border: `1px solid ${BORDER}`,
                 borderRadius: 2,
-                p: 2,
-                mb: 2.5,
+                p: { xs: 1.5, sm: 2 },
+                mb: { xs: 1.5, sm: 2.5 },
               }}
             >
               <Box
@@ -487,7 +592,7 @@ export default function MaterialStockDetailsDialog({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  mb: 1,
+                  mb: { xs: 0.75, sm: 1 },
                   gap: 1,
                   flexWrap: "wrap",
                 }}
@@ -497,7 +602,7 @@ export default function MaterialStockDetailsDialog({
                 </Typography>
                 <Typography
                   sx={{
-                    fontSize: 12.5,
+                    fontSize: { xs: 14, sm: 12.5 },
                     fontWeight: 600,
                     color: allocatedPercent >= 100 ? GREEN : BLUE,
                   }}
@@ -509,7 +614,7 @@ export default function MaterialStockDetailsDialog({
                 variant="determinate"
                 value={allocatedPercent}
                 sx={{
-                  height: 8,
+                  height: { xs: 9, sm: 8 },
                   borderRadius: 4,
                   bgcolor: BORDER,
                   "& .MuiLinearProgress-bar": {
@@ -525,8 +630,8 @@ export default function MaterialStockDetailsDialog({
                 sx={{
                   border: `1px solid ${BORDER}`,
                   borderRadius: 2,
-                  p: 2,
-                  mb: 2.5,
+                  p: { xs: 1.5, sm: 2 },
+                  mb: { xs: 1.5, sm: 2.5 },
                 }}
               >
                 <Box
@@ -535,7 +640,7 @@ export default function MaterialStockDetailsDialog({
                     alignItems: "flex-start",
                     justifyContent: "space-between",
                     gap: 1,
-                    mb: 1.5,
+                    mb: { xs: 1, sm: 1.5 },
                   }}
                 >
                   <Box>
@@ -561,7 +666,7 @@ export default function MaterialStockDetailsDialog({
                       bgcolor: "#EFF6FF",
                       borderRadius: 2,
                       fontWeight: 600,
-                      px: 1.5,
+                      px: { xs: 1.25, sm: 1.5 },
                       py: 0.5,
                       "&:hover": {
                         bgcolor: "#DBEAFE",
@@ -573,23 +678,25 @@ export default function MaterialStockDetailsDialog({
                   </Button>
                 </Box>
 
-                <Grid container spacing={1.5}>
+                {/* Desktop: three side-by-side cards. Mobile: three compact
+                    rows with the value right-aligned. */}
+                <Grid container spacing={{ xs: 1, sm: 1.5 }}>
                   <Grid size={{ xs: 12, sm: 4 }}>
                     <Box
                       sx={{
                         border: `1px solid ${BORDER}`,
                         borderRadius: 2,
                         bgcolor: "#F8FAFC",
-                        p: 1.5,
+                        p: { xs: 1, sm: 1.5 },
                         display: "flex",
                         alignItems: "center",
-                        gap: 1.25,
+                        gap: { xs: 1, sm: 1.25 },
                       }}
                     >
                       <Box
                         sx={{
-                          width: 36,
-                          height: 36,
+                          width: { xs: 30, sm: 36 },
+                          height: { xs: 30, sm: 36 },
                           borderRadius: 1.5,
                           bgcolor: GREEN_BG,
                           display: "flex",
@@ -598,27 +705,39 @@ export default function MaterialStockDetailsDialog({
                           flexShrink: 0,
                         }}
                       >
-                        <StorageIcon sx={{ color: GREEN, fontSize: 20 }} />
+                        <StorageIcon sx={{ color: GREEN, fontSize: { xs: 17, sm: 20 } }} />
                       </Box>
-                      <Box sx={{ minWidth: 0 }}>
+                      <Box sx={{ minWidth: 0, flex: { xs: 1, sm: "unset" } }}>
                         <Typography
                           sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE }}
                         >
                           SAP Stock
                         </Typography>
                         <Typography
-                          sx={{ fontSize: 16, fontWeight: 700, color: NAVY }}
+                          sx={{
+                            fontSize: 16,
+                            fontWeight: 700,
+                            color: NAVY,
+                            display: { xs: "none", sm: "block" },
+                          }}
                           noWrap
                         >
-                          {sapComparison.sap}{" "}
-                          <Box
-                            component="span"
-                            sx={{ fontSize: 12, fontWeight: 500, color: SLATE }}
-                          >
-                            {uom}
-                          </Box>
+                          {stockValue(sapComparison.sap)}
                         </Typography>
                       </Box>
+                      <Typography
+                        sx={{
+                          display: { xs: "block", sm: "none" },
+                          ml: "auto",
+                          flexShrink: 0,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: NAVY,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stockValue(sapComparison.sap)}
+                      </Typography>
                     </Box>
                   </Grid>
 
@@ -628,16 +747,16 @@ export default function MaterialStockDetailsDialog({
                         border: `1px solid ${BORDER}`,
                         borderRadius: 2,
                         bgcolor: "#F8FAFC",
-                        p: 1.5,
+                        p: { xs: 1, sm: 1.5 },
                         display: "flex",
                         alignItems: "center",
-                        gap: 1.25,
+                        gap: { xs: 1, sm: 1.25 },
                       }}
                     >
                       <Box
                         sx={{
-                          width: 36,
-                          height: 36,
+                          width: { xs: 30, sm: 36 },
+                          height: { xs: 30, sm: 36 },
                           borderRadius: 1.5,
                           bgcolor: "#DBEAFE",
                           display: "flex",
@@ -646,27 +765,39 @@ export default function MaterialStockDetailsDialog({
                           flexShrink: 0,
                         }}
                       >
-                        <MonitorIcon sx={{ color: BLUE, fontSize: 20 }} />
+                        <MonitorIcon sx={{ color: BLUE, fontSize: { xs: 17, sm: 20 } }} />
                       </Box>
-                      <Box sx={{ minWidth: 0 }}>
+                      <Box sx={{ minWidth: 0, flex: { xs: 1, sm: "unset" } }}>
                         <Typography
                           sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE }}
                         >
                           App Stock
                         </Typography>
                         <Typography
-                          sx={{ fontSize: 16, fontWeight: 700, color: NAVY }}
+                          sx={{
+                            fontSize: 16,
+                            fontWeight: 700,
+                            color: NAVY,
+                            display: { xs: "none", sm: "block" },
+                          }}
                           noWrap
                         >
-                          {sapComparison.app}{" "}
-                          <Box
-                            component="span"
-                            sx={{ fontSize: 12, fontWeight: 500, color: SLATE }}
-                          >
-                            {uom}
-                          </Box>
+                          {stockValue(sapComparison.app)}
                         </Typography>
                       </Box>
+                      <Typography
+                        sx={{
+                          display: { xs: "block", sm: "none" },
+                          ml: "auto",
+                          flexShrink: 0,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: NAVY,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stockValue(sapComparison.app)}
+                      </Typography>
                     </Box>
                   </Grid>
 
@@ -676,16 +807,16 @@ export default function MaterialStockDetailsDialog({
                         border: `1px solid ${BORDER}`,
                         borderRadius: 2,
                         bgcolor: "#F8FAFC",
-                        p: 1.5,
+                        p: { xs: 1, sm: 1.5 },
                         display: "flex",
                         alignItems: "center",
-                        gap: 1.25,
+                        gap: { xs: 1, sm: 1.25 },
                       }}
                     >
                       <Box
                         sx={{
-                          width: 36,
-                          height: 36,
+                          width: { xs: 30, sm: 36 },
+                          height: { xs: 30, sm: 36 },
                           borderRadius: 1.5,
                           bgcolor:
                             sapComparison.diff === 0 ? GREEN_BG : "#FFEDD5",
@@ -696,12 +827,12 @@ export default function MaterialStockDetailsDialog({
                         }}
                       >
                         {sapComparison.diff === 0 ? (
-                          <CheckCircleIcon sx={{ color: GREEN, fontSize: 20 }} />
+                          <CheckCircleIcon sx={{ color: GREEN, fontSize: { xs: 17, sm: 20 } }} />
                         ) : (
-                          <WarningAmberIcon sx={{ color: ORANGE, fontSize: 20 }} />
+                          <WarningAmberIcon sx={{ color: ORANGE, fontSize: { xs: 17, sm: 20 } }} />
                         )}
                       </Box>
-                      <Box sx={{ minWidth: 0 }}>
+                      <Box sx={{ minWidth: 0, flex: { xs: 1, sm: "unset" } }}>
                         <Typography
                           sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE }}
                         >
@@ -711,20 +842,27 @@ export default function MaterialStockDetailsDialog({
                           sx={{
                             fontSize: 16,
                             fontWeight: 700,
-                            color:
-                              sapComparison.diff === 0 ? GREEN : ORANGE,
+                            color: sapComparison.diff === 0 ? GREEN : ORANGE,
+                            display: { xs: "none", sm: "block" },
                           }}
                           noWrap
                         >
-                          {signedDiff(sapComparison.diff)}{" "}
-                          <Box
-                            component="span"
-                            sx={{ fontSize: 12, fontWeight: 500, color: SLATE }}
-                          >
-                            {uom}
-                          </Box>
+                          {stockValue(signedDiff(sapComparison.diff))}
                         </Typography>
                       </Box>
+                      <Typography
+                        sx={{
+                          display: { xs: "block", sm: "none" },
+                          ml: "auto",
+                          flexShrink: 0,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: sapComparison.diff === 0 ? GREEN : ORANGE,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stockValue(signedDiff(sapComparison.diff))}
+                      </Typography>
                     </Box>
                   </Grid>
                 </Grid>
@@ -738,9 +876,9 @@ export default function MaterialStockDetailsDialog({
                       bgcolor: "#F0FDF4",
                       border: `1px solid ${GREEN_LIGHT_BORDER}`,
                       borderRadius: 2,
-                      px: 1.5,
-                      py: 1.25,
-                      mt: 1.5,
+                      px: { xs: 1.25, sm: 1.5 },
+                      py: { xs: 1, sm: 1.25 },
+                      mt: { xs: 1.25, sm: 1.5 },
                     }}
                   >
                     <CheckCircleIcon
@@ -766,9 +904,9 @@ export default function MaterialStockDetailsDialog({
                       bgcolor: "#FFF7ED",
                       border: "1px solid #FED7AA",
                       borderRadius: 2,
-                      px: 1.5,
-                      py: 1.25,
-                      mt: 1.5,
+                      px: { xs: 1.25, sm: 1.5 },
+                      py: { xs: 1, sm: 1.25 },
+                      mt: { xs: 1.25, sm: 1.5 },
                     }}
                   >
                     <WarningAmberIcon
@@ -797,7 +935,7 @@ export default function MaterialStockDetailsDialog({
               sx={{
                 border: `1px solid ${BORDER}`,
                 borderRadius: 2,
-                mb: 2.5,
+                mb: { xs: 1.5, sm: 2.5 },
                 overflow: "hidden",
               }}
             >
@@ -807,7 +945,7 @@ export default function MaterialStockDetailsDialog({
                   alignItems: "center",
                   gap: 1,
                   px: 2,
-                  py: 1.5,
+                  py: { xs: 1.25, sm: 1.5 },
                   bgcolor: "#F8FAFC",
                   borderBottom: `1px solid ${BORDER}`,
                 }}
@@ -819,7 +957,7 @@ export default function MaterialStockDetailsDialog({
               </Box>
 
               {allocatedLocations.length === 0 ? (
-                <Box sx={{ py: 4, px: 2, textAlign: "center" }}>
+                <Box sx={{ py: { xs: 2.5, sm: 4 }, px: 2, textAlign: "center" }}>
                   <Inventory2OutlinedIcon
                     sx={{ fontSize: 40, color: "#CBD5E1", mb: 1 }}
                   />
@@ -887,6 +1025,10 @@ export default function MaterialStockDetailsDialog({
                               fontSize: 13,
                               py: 1,
                               pl: 2,
+                              // Mobile: allow wrapping so long codes never
+                              // force horizontal scroll; desktop unchanged.
+                              whiteSpace: { xs: "normal", sm: "nowrap" },
+                              wordBreak: { xs: "break-word", sm: "unset" },
                             }}
                           >
                             {allocation.location_code}
@@ -896,10 +1038,11 @@ export default function MaterialStockDetailsDialog({
                               color: SLATE,
                               fontSize: 13,
                               py: 1,
-                              maxWidth: 260,
-                              overflow: "hidden",
+                              maxWidth: { xs: "none", sm: 260 },
+                              overflow: { xs: "visible", sm: "hidden" },
                               textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              whiteSpace: { xs: "normal", sm: "nowrap" },
+                              wordBreak: { xs: "break-word", sm: "unset" },
                             }}
                           >
                             {locationMap[allocation.location_code] ?? "—"}
@@ -912,6 +1055,7 @@ export default function MaterialStockDetailsDialog({
                               fontSize: 13,
                               py: 1,
                               pr: 2,
+                              whiteSpace: "nowrap",
                             }}
                           >
                             {safeNumber(allocation.quantity)}
@@ -1018,8 +1162,16 @@ export default function MaterialStockDetailsDialog({
         )}
       </DialogContent>
 
-      {/* ---------------- Footer ---------------- */}
-      <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 2.5 }, pt: 1 }}>
+      {/* ---------------- Footer (sticky, never clipped) ---------------- */}
+      <DialogActions
+        sx={{
+          px: { xs: 2, sm: 3 },
+          pt: 1,
+          pb: { xs: "max(12px, env(safe-area-inset-bottom))", sm: 2.5 },
+          borderTop: { xs: `1px solid ${BORDER}`, sm: "none" },
+          bgcolor: { xs: "#FFFFFF", sm: "transparent" },
+        }}
+      >
         <Button
           variant="outlined"
           onClick={onClose}
@@ -1031,6 +1183,7 @@ export default function MaterialStockDetailsDialog({
             borderRadius: 2,
             px: 3,
             py: 0.75,
+            height: { xs: 44, sm: "auto" },
             "&:hover": { borderColor: "#CBD5E1", bgcolor: "#F8FAFC" },
           }}
         >
