@@ -5,30 +5,39 @@
 -- Stock screen then showed the same bucket twice and the Total Stock was
 -- inflated (AFCN: 8 + AFCN: 8 = 16 instead of 8).
 --
+-- Duplicates are COPIES of the same snapshot line (written by an older
+-- import path), not additional stock - so the correct collapse keeps ONE
+-- row with the original quantity (AFCN: 8 + AFCN: 8 -> AFCN: 8, total 8),
+-- never a sum (which would wrongly give 16). This matches how the review
+-- totals are computed: a material with AFCN: 10 and REVN: 5 has SAP total
+-- 15, even if the table held each bucket twice.
+--
 -- This migration:
 --   1. collapses existing duplicates - per (user, material, storage
---      location) the kept (lowest-id) row gets the SUMMED quantity and
+--      location) the kept (lowest-id) row keeps the minimum quantity and
 --      the other rows are deleted, so AFCN: 8 + AFCN: 8 -> AFCN: 8 and
 --      AFCN: 8 + REVN: 2 stays as two buckets totalling 10,
 --   2. guarantees a unique index so the importer can never write
 --      duplicates again,
 --   3. recreates v_sap_stock so the bucket list and total are computed
---      from a grouped per-SLoc aggregate - stray duplicates anywhere can
---      never inflate the numbers again.
+--      from a grouped per-SLoc aggregate (one bucket per SLoc, min
+--      quantity) - stray duplicates anywhere can never inflate the
+--      numbers again.
 --
 -- Idempotent: safe to run more than once.
 
 begin;
 
 -- 1. Collapse duplicates: for every (user, material, storage location)
---    with more than one row, the kept (lowest-id) row gets the summed
---    quantity.
+--    with more than one row, the kept (lowest-id) row keeps the minimum
+--    quantity (duplicates are copies, so min is the true bucket value;
+--    summing would double-count).
 with dupes as (
   select
     user_id,
     material_code,
     storage_location,
-    sum(quantity) as quantity,
+    min(quantity) as quantity,
     min(id) as keep_id
   from public.sap_stock_distribution
   group by user_id, material_code, storage_location
@@ -62,8 +71,9 @@ create unique index if not exists sap_stock_distribution_user_material_sloc_idx
   on public.sap_stock_distribution (user_id, material_code, storage_location);
 
 -- 3. v_sap_stock rebuilt from the per-SLoc aggregate: each storage
---    location appears exactly once with the summed quantity, so the
---    bucket list and Total Stock are correct even if the table ever
+--    location appears exactly once with the minimum quantity (duplicates
+--    are copies of the same line, so min is the true bucket value), so
+--    the bucket list and Total Stock are correct even if the table ever
 --    contains duplicate rows again.
 create or replace view public.v_sap_stock as
 with codes as (
@@ -76,7 +86,7 @@ with codes as (
   where status = 'open' and user_id = auth.uid()
 ),
 dist as (
-  select material_code, storage_location, sum(quantity) as quantity
+  select material_code, storage_location, min(quantity) as quantity
   from public.sap_stock_distribution
   where user_id = auth.uid()
   group by material_code, storage_location

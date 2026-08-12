@@ -1474,12 +1474,27 @@ export async function getSapStockPage(params: {
   const rows: SapStockRow[] = ((data ?? []) as Record<string, unknown>[]).map(
     (row) => {
       const reviewRow = row.review as Record<string, unknown> | null;
-      const locations = (
-        (row.locations ?? []) as { storage_location: string; quantity: number }[]
-      ).map((l) => ({
-        storage_location: l.storage_location,
-        quantity: Number(l.quantity),
-      }));
+      // Collapse duplicate (SLoc) entries: rows repeated by an older import
+      // are copies of the same snapshot line, so each storage location
+      // appears exactly once with its quantity (min - identical for true
+      // copies) instead of being listed twice and inflating the total.
+      const bySloc = new Map<string, number>();
+      for (const l of (row.locations ?? []) as {
+        storage_location: string;
+        quantity: number;
+      }[]) {
+        if (!l.storage_location) continue;
+        const qty = Number(l.quantity);
+        const prev = bySloc.get(l.storage_location);
+        bySloc.set(
+          l.storage_location,
+          prev === undefined ? qty : Math.min(prev, qty)
+        );
+      }
+      const locations = Array.from(bySloc.entries())
+        .map(([storage_location, quantity]) => ({ storage_location, quantity }))
+        .sort((a, b) => a.storage_location.localeCompare(b.storage_location));
+      const total = locations.reduce((sum, l) => sum + l.quantity, 0);
       const code = row.material_code as string;
       const review = reviewRow ? toSapStockReview(reviewRow) : null;
 
@@ -1488,7 +1503,7 @@ export async function getSapStockPage(params: {
         short_description: (row.short_description as string) ?? "",
         uom: (row.uom as string) ?? "",
         locations,
-        total: Number(row.total),
+        total,
         review: review ? { ...review, material_code: code } : null,
         hasSapData: locations.length > 0,
       };
@@ -1573,13 +1588,17 @@ export async function getSapStockForMaterial(
   // SAP data, so the caller hides the SAP strip entirely.
   if (rows.length === 0 && !reviewRow) return null;
 
-  // Defensive aggregation: collapse duplicate (SLoc) rows so each bucket
-  // and its quantity appear exactly once, whatever the table contains.
+  // Defensive dedupe: collapse duplicate (SLoc) rows so each bucket appears
+  // exactly once. Duplicates are copies of the same snapshot line (written
+  // by an older import), so the bucket keeps its quantity (min - identical
+  // for true copies) rather than being summed and inflating the total.
   const bySloc = new Map<string, number>();
   for (const row of rows) {
     const sloc = row.storage_location.trim().toUpperCase();
     if (!sloc) continue;
-    bySloc.set(sloc, (bySloc.get(sloc) ?? 0) + Number(row.quantity));
+    const qty = Number(row.quantity);
+    const prev = bySloc.get(sloc);
+    bySloc.set(sloc, prev === undefined ? qty : Math.min(prev, qty));
   }
 
   const locations = Array.from(bySloc.entries())
