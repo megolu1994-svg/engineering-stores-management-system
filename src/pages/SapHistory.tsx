@@ -226,24 +226,73 @@ interface ColumnDef {
   key: string;
   label: string;
   icon: React.ReactNode;
-  width: string;
   align?: "right";
 }
 
 const COLUMNS: ColumnDef[] = [
-  { key: "posting_date", label: "Posting Date", icon: <CalendarMonthOutlinedIcon fontSize="small" />, width: "6%" },
-  { key: "material_code", label: "Material Code", icon: <Inventory2OutlinedIcon fontSize="small" />, width: "8%" },
-  { key: "material_description", label: "Material Description", icon: <DescriptionOutlinedIcon fontSize="small" />, width: "16%" },
-  { key: "movement_type", label: "Movement Type", icon: <SwapHorizOutlinedIcon fontSize="small" />, width: "12%" },
-  { key: "sloc", label: "SLoc", icon: <LocationOnOutlinedIcon fontSize="small" />, width: "4%" },
-  { key: "qty", label: "Qty", icon: <BalanceOutlinedIcon fontSize="small" />, width: "6%", align: "right" },
-  { key: "doc", label: "Doc", icon: <InsertDriveFileOutlinedIcon fontSize="small" />, width: "10%" },
-  { key: "doc_header_text", label: "Doc Header Text", icon: <SubjectOutlinedIcon fontSize="small" />, width: "12%" },
-  { key: "po", label: "PO", icon: <ShoppingCartOutlinedIcon fontSize="small" />, width: "7%" },
-  { key: "vendor", label: "Vendor", icon: <BusinessOutlinedIcon fontSize="small" />, width: "7%" },
-  { key: "invoice", label: "Invoice", icon: <ReceiptOutlinedIcon fontSize="small" />, width: "6%" },
-  { key: "user", label: "User", icon: <PersonOutlinedIcon fontSize="small" />, width: "6%" },
+  { key: "posting_date", label: "Posting Date", icon: <CalendarMonthOutlinedIcon fontSize="small" /> },
+  { key: "material_code", label: "Material Code", icon: <Inventory2OutlinedIcon fontSize="small" /> },
+  { key: "material_description", label: "Material Description", icon: <DescriptionOutlinedIcon fontSize="small" /> },
+  { key: "movement_type", label: "Movement Type", icon: <SwapHorizOutlinedIcon fontSize="small" /> },
+  { key: "sloc", label: "SLoc", icon: <LocationOnOutlinedIcon fontSize="small" /> },
+  { key: "qty", label: "Qty", icon: <BalanceOutlinedIcon fontSize="small" />, align: "right" },
+  { key: "doc", label: "Doc", icon: <InsertDriveFileOutlinedIcon fontSize="small" /> },
+  { key: "doc_header_text", label: "Doc Header Text", icon: <SubjectOutlinedIcon fontSize="small" /> },
+  { key: "po", label: "PO", icon: <ShoppingCartOutlinedIcon fontSize="small" /> },
+  { key: "vendor", label: "Vendor", icon: <BusinessOutlinedIcon fontSize="small" /> },
+  { key: "invoice", label: "Invoice", icon: <ReceiptOutlinedIcon fontSize="small" /> },
+  { key: "user", label: "User", icon: <PersonOutlinedIcon fontSize="small" /> },
 ];
+
+/* Draggable column widths (px). Drag the handle on any column header to
+   resize that column; widths are saved in localStorage so the layout
+   sticks between visits. The defaults approximate the old percentage
+   layout on a ~1600px-wide table. */
+const MIN_COLUMN_WIDTH = 60;
+const WIDTHS_STORAGE_KEY = "sap_history_column_widths_v1";
+
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  posting_date: 100,
+  material_code: 135,
+  material_description: 240,
+  movement_type: 185,
+  sloc: 70,
+  qty: 95,
+  doc: 155,
+  doc_header_text: 185,
+  po: 110,
+  vendor: 110,
+  invoice: 95,
+  user: 95,
+};
+
+/** Loads the user's saved column widths, validating every value. */
+function loadSavedWidths(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(WIDTHS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const valid: Record<string, number> = {};
+    for (const column of COLUMNS) {
+      const value = Number(parsed[column.key]);
+      if (Number.isFinite(value) && value >= MIN_COLUMN_WIDTH) {
+        valid[column.key] = Math.round(value);
+      }
+    }
+    return valid;
+  } catch {
+    return {};
+  }
+}
+
+/** Persists column widths (safe to call during a drag - tiny JSON). */
+function persistWidths(next: Record<string, number>): void {
+  try {
+    localStorage.setItem(WIDTHS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Storage unavailable - resizing still works for this session.
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Page                                                               */
@@ -280,6 +329,14 @@ export default function SapHistory() {
   const [slocs, setSlocs] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const [filtersAnchor, setFiltersAnchor] = useState<HTMLElement | null>(null);
+  // Draggable column widths (persisted in localStorage) + active drag.
+  const [columnWidths, setColumnWidths] =
+    useState<Record<string, number>>(loadSavedWidths);
+  const [drag, setDrag] = useState<{
+    key: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   // The filter combination whose data currently lives in `docs` - loading
   // is derived from it so the effect below only calls setState inside
   // async callbacks.
@@ -345,6 +402,59 @@ export default function SapHistory() {
       cancelled = true;
     };
   }, []);
+
+  const columnWidth = (key: string) =>
+    columnWidths[key] ?? DEFAULT_COLUMN_WIDTHS[key];
+  const totalWidth = COLUMNS.reduce(
+    (sum, column) => sum + columnWidth(column.key),
+    0
+  );
+
+  function startResize(key: string, event: React.PointerEvent) {
+    event.preventDefault();
+    setDrag({ key, startX: event.clientX, startWidth: columnWidth(key) });
+  }
+
+  function resetColumnWidth(key: string) {
+    setColumnWidths((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      persistWidths(next);
+      return next;
+    });
+  }
+
+  // Window-level pointer listeners while a column is being dragged, so the
+  // drag stays smooth even when the cursor leaves the handle.
+  useEffect(() => {
+    if (!drag) return;
+    const activeDrag = drag;
+
+    function onPointerMove(event: PointerEvent) {
+      const next = Math.max(
+        MIN_COLUMN_WIDTH,
+        activeDrag.startWidth + (event.clientX - activeDrag.startX)
+      );
+      setColumnWidths((prev) => {
+        const updated = { ...prev, [activeDrag.key]: Math.round(next) };
+        persistWidths(updated);
+        return updated;
+      });
+    }
+
+    function onPointerUp() {
+      setDrag(null);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [drag]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exportLabel = debouncedSearch.trim() || "SAP_History";
@@ -677,19 +787,26 @@ export default function SapHistory() {
       ) : (
         <Paper
           elevation={0}
-          sx={{ borderRadius: "10px", border: `1px solid ${C.border}`, overflow: "hidden" }}
+          sx={{
+            borderRadius: "10px",
+            border: `1px solid ${C.border}`,
+            overflow: "hidden",
+            userSelect: drag ? "none" : undefined,
+          }}
         >
-          <TableContainer sx={{ maxHeight: 620 }}>
+          <TableContainer sx={{ maxHeight: 620, overflowX: "auto" }}>
             <Table
               size="small"
               stickyHeader
               sx={{
-                // Desktop: fixed layout fills the viewport width with the
-                // proportional column widths below (no horizontal scroll).
-                // Small screens keep a horizontal scroll so columns stay
-                // readable instead of collapsing.
+                // Desktop: fixed layout at 100% width using the user's
+                // per-column pixel widths. When the combined widths fit
+                // the viewport the table fills it (leftover space is
+                // spread proportionally, so no gap); when they don't, the
+                // table overflows and the container scrolls horizontally.
+                // Small screens keep the old auto layout + scroll.
                 width: "100%",
-                minWidth: { xs: 900, md: 0 },
+                minWidth: { xs: 900, md: totalWidth },
                 tableLayout: { xs: "auto", md: "fixed" },
               }}
             >
@@ -700,7 +817,8 @@ export default function SapHistory() {
                       key={column.key}
                       align={column.align}
                       sx={{
-                        width: column.width,
+                        width: columnWidth(column.key),
+                        position: "relative",
                         bgcolor: C.headerBg,
                         color: C.headerText,
                         fontWeight: 600,
@@ -717,6 +835,7 @@ export default function SapHistory() {
                           alignItems: "center",
                           gap: 0.5,
                           justifyContent: column.align === "right" ? "flex-end" : "flex-start",
+                          pr: 0.5,
                         }}
                       >
                         <Box sx={{ display: "flex", alignItems: "center", fontSize: "17px" }}>
@@ -724,6 +843,40 @@ export default function SapHistory() {
                         </Box>
                         {column.label}
                       </Box>
+                      {/* Column width adjuster: drag to resize this column,
+                          double-click to restore its default width. */}
+                      <Box
+                        component="span"
+                        onPointerDown={(event) => startResize(column.key, event)}
+                        onDoubleClick={() => resetColumnWidth(column.key)}
+                        title="Drag to resize · double-click to reset"
+                        sx={{
+                          position: "absolute",
+                          top: 0,
+                          right: -5,
+                          width: 10,
+                          height: "100%",
+                          cursor: "col-resize",
+                          touchAction: "none",
+                          zIndex: 2,
+                          "&::after": {
+                            content: '""',
+                            position: "absolute",
+                            top: "22%",
+                            bottom: "22%",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            width: 2,
+                            borderRadius: 1,
+                            bgcolor:
+                              drag?.key === column.key
+                                ? C.primary
+                                : "transparent",
+                            transition: "background-color 0.15s ease",
+                          },
+                          "&:hover::after": { bgcolor: C.primary },
+                        }}
+                      />
                     </TableCell>
                   ))}
                 </TableRow>
