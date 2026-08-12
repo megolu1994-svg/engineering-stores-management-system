@@ -24,12 +24,14 @@ begin;
 --   locations  - jsonb array of {storage_location, quantity}, sorted
 --   total      - SAP total across storage locations
 --   review     - latest open reconciliation review (jsonb) or null
--- The distribution is first grouped per (material, storage location) and
--- summed, so each SLoc bucket appears exactly once and duplicate rows in
--- sap_stock_distribution can never inflate the bucket list or the total
--- (see 0012 for the data cleanup + unique index). The union guarantees a
--- material flagged with 0 SAP stock (review only, no distribution rows)
--- still appears.
+-- The distribution is first grouped per (material, storage location)
+-- keeping the minimum quantity, so each SLoc bucket appears exactly once
+-- and duplicate rows in sap_stock_distribution can never inflate the
+-- bucket list or the total (see 0012 for the data cleanup + unique
+-- index). Duplicates are copies of the same snapshot line, so min is the
+-- true bucket value - summing them would double-count. The union
+-- guarantees a material flagged with 0 SAP stock (review only, no
+-- distribution rows) still appears.
 create or replace view public.v_sap_stock as
 with codes as (
   select material_code
@@ -41,7 +43,7 @@ with codes as (
   where status = 'open' and user_id = auth.uid()
 ),
 dist as (
-  select material_code, storage_location, sum(quantity) as quantity
+  select material_code, storage_location, min(quantity) as quantity
   from public.sap_stock_distribution
   where user_id = auth.uid()
   group by material_code, storage_location
