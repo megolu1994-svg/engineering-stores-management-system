@@ -422,6 +422,11 @@ export default function SapHistory() {
       persistWidths(next);
       return next;
     });
+    const label = COLUMNS.find((column) => column.key === key)?.label ?? key;
+    showSnackbar(
+      `${label} column restored to default width.`,
+      "info"
+    );
   }
 
   // Window-level pointer listeners while a column is being dragged, so the
@@ -792,6 +797,9 @@ export default function SapHistory() {
             border: `1px solid ${C.border}`,
             overflow: "hidden",
             userSelect: drag ? "none" : undefined,
+            // Keep the resize cursor while a drag is in progress, even
+            // when the pointer briefly leaves the handle.
+            cursor: drag ? "col-resize" : undefined,
           }}
         >
           <TableContainer sx={{ maxHeight: 620, overflowX: "auto" }}>
@@ -844,17 +852,19 @@ export default function SapHistory() {
                         {column.label}
                       </Box>
                       {/* Column width adjuster: drag to resize this column,
-                          double-click to restore its default width. */}
+                          double-click to restore its default width. The
+                          vertical divider is always visible so the grab
+                          point is obvious; it turns blue on hover/drag. */}
                       <Box
                         component="span"
                         onPointerDown={(event) => startResize(column.key, event)}
                         onDoubleClick={() => resetColumnWidth(column.key)}
-                        title="Drag to resize · double-click to reset"
+                        title="Drag to resize · Double-click to restore default width"
                         sx={{
                           position: "absolute",
                           top: 0,
-                          right: -5,
-                          width: 10,
+                          right: -6,
+                          width: 12,
                           height: "100%",
                           cursor: "col-resize",
                           touchAction: "none",
@@ -862,8 +872,8 @@ export default function SapHistory() {
                           "&::after": {
                             content: '""',
                             position: "absolute",
-                            top: "22%",
-                            bottom: "22%",
+                            top: 0,
+                            bottom: 0,
                             left: "50%",
                             transform: "translateX(-50%)",
                             width: 2,
@@ -871,10 +881,11 @@ export default function SapHistory() {
                             bgcolor:
                               drag?.key === column.key
                                 ? C.primary
-                                : "transparent",
-                            transition: "background-color 0.15s ease",
+                                : "#CBD5E1",
+                            transition:
+                              "background-color 0.15s ease, width 0.15s ease",
                           },
-                          "&:hover::after": { bgcolor: C.primary },
+                          "&:hover::after": { bgcolor: C.primary, width: 3 },
                         }}
                       />
                     </TableCell>
