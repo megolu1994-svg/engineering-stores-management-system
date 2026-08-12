@@ -24,8 +24,12 @@ begin;
 --   locations  - jsonb array of {storage_location, quantity}, sorted
 --   total      - SAP total across storage locations
 --   review     - latest open reconciliation review (jsonb) or null
--- The union guarantees a material flagged with 0 SAP stock (review only,
--- no distribution rows) still appears.
+-- The distribution is first grouped per (material, storage location) and
+-- summed, so each SLoc bucket appears exactly once and duplicate rows in
+-- sap_stock_distribution can never inflate the bucket list or the total
+-- (see 0012 for the data cleanup + unique index). The union guarantees a
+-- material flagged with 0 SAP stock (review only, no distribution rows)
+-- still appears.
 create or replace view public.v_sap_stock as
 with codes as (
   select material_code
@@ -35,6 +39,12 @@ with codes as (
   select material_code
   from public.stock_reconciliation_reviews
   where status = 'open' and user_id = auth.uid()
+),
+dist as (
+  select material_code, storage_location, sum(quantity) as quantity
+  from public.sap_stock_distribution
+  where user_id = auth.uid()
+  group by material_code, storage_location
 )
 select
   c.material_code,
@@ -61,8 +71,8 @@ select
     limit 1
   ) as review
 from codes c
-left join public.sap_stock_distribution d
-  on d.material_code = c.material_code and d.user_id = auth.uid()
+left join dist d
+  on d.material_code = c.material_code
 left join public.material_master m
   on m.material_code = c.material_code
 group by c.material_code;

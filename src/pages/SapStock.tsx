@@ -124,7 +124,7 @@ function downloadExcel(rows: SapStockRow[], label: string): void {
     "Material",
     "Description",
     "UoM",
-    "Distribution (Buckets)",
+    "Storage Location (SLoc)",
     "Total Stock",
     "Status",
   ];
@@ -154,7 +154,7 @@ function downloadPdf(rows: SapStockRow[], label: string): void {
   autoTable(doc, {
     startY: 18,
     head: [
-      ["Material", "Description", "Distribution (Buckets)", "Total", "Status"],
+      ["Material", "Description", "Storage Location (SLoc)", "Total", "Status"],
     ],
     body: rows.map((row) => [
       row.material_code,
@@ -689,7 +689,7 @@ export default function SapStock() {
                   {[
                     { label: "Material", align: "left" as const },
                     { label: "Description", align: "left" as const },
-                    { label: "Distribution (Buckets)", align: "left" as const },
+                    { label: "Storage Location (SLoc)", align: "left" as const },
                     { label: "Total Stock", align: "right" as const },
                     { label: "Status", align: "left" as const },
                     { label: "Actions", align: "right" as const },
