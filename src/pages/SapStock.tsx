@@ -14,6 +14,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
@@ -23,14 +24,18 @@ import HistoryIcon from "@mui/icons-material/History";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 
 import {
-  getSapStockDistribution,
-  type SapStockRow,
+  getOpenSapReviewCount,
+  getSapStockPage,
+  getSapStorageLocations,
   type SapStockReview,
+  type SapStockRow,
 } from "../services/sapHistoryService";
 import SapReviewDialog from "../components/SapReviewDialog";
 import { useNavigate } from "react-router-dom";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
+
+const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 
 function StatusChip({ row }: { row: SapStockRow }) {
   if (!row.hasSapData && row.review) {
@@ -53,9 +58,16 @@ export default function SapStock() {
   const navigate = useNavigate();
 
   const [rows, setRows] = useState<SapStockRow[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [slocFilter, setSlocFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [allSlocs, setAllSlocs] = useState<string[]>([]);
+  const [openReviewCount, setOpenReviewCount] = useState(0);
   const [review, setReview] = useState<SapStockReview | null>(null);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -67,37 +79,69 @@ export default function SapStock() {
     setSnackbar({ open: true, message, severity });
   }
 
-  const load = useCallback(() => {
-    getSapStockDistribution().then(setRows).catch(() => setRows([]));
+  // Debounce the free-text search so we don't fire a request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    getSapStorageLocations().then(setAllSlocs).catch(() => setAllSlocs([]));
   }, []);
+
+  useEffect(() => {
+    getOpenSapReviewCount().then(setOpenReviewCount).catch(() => setOpenReviewCount(0));
+  }, []);
+
+  const load = useCallback(() => {
+    getSapStockPage({
+      query: debouncedQuery,
+      storageLocation: slocFilter || undefined,
+      status: statusFilter as "all" | "diff" | "match",
+      page,
+      pageSize,
+    })
+      .then((result) => {
+        setRows(result.rows);
+        setTotal(result.total);
+        setLoadError(result.error);
+      })
+      .catch(() => {
+        setRows([]);
+        setTotal(0);
+        setLoadError("Could not load SAP stock.");
+      });
+  }, [debouncedQuery, slocFilter, statusFilter, page, pageSize]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const allSlocs = Array.from(
-    new Set((rows ?? []).flatMap((r) => r.locations.map((l) => l.storage_location)))
-  ).sort();
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  const filtered = (rows ?? []).filter((row) => {
-    if (query) {
-      const q = query.trim().toLowerCase();
-      if (
-        !row.material_code.toLowerCase().includes(q) &&
-        !row.short_description.toLowerCase().includes(q)
-      ) {
-        return false;
-      }
-    }
-    if (slocFilter && !row.locations.some((l) => l.storage_location === slocFilter)) {
-      return false;
-    }
-    if (statusFilter === "diff" && !row.review) return false;
-    if (statusFilter === "match" && row.review) return false;
-    return true;
-  });
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    setPage(0);
+  }
 
-  const openReviews = (rows ?? []).filter((r) => r.review);
+  function handleSlocChange(value: string) {
+    setSlocFilter(value);
+    setPage(0);
+  }
+
+  function handleStatusChange(value: string) {
+    setStatusFilter(value);
+    setPage(0);
+  }
+
+  function handleRowsPerPageChange(next: number) {
+    setPageSize(next);
+    setPage(0);
+  }
+
+  function refreshReviews() {
+    getOpenSapReviewCount().then(setOpenReviewCount).catch(() => setOpenReviewCount(0));
+  }
 
   return (
     <Box sx={{ pb: 3 }}>
@@ -112,7 +156,7 @@ export default function SapStock() {
         stock lives in bins and is reconciled at the total level.
       </Typography>
 
-      {openReviews.length > 0 && (
+      {openReviewCount > 0 && (
         <Alert
           severity="warning"
           sx={{ mb: 1.5, borderRadius: 2, py: 0.5 }}
@@ -122,8 +166,18 @@ export default function SapStock() {
             </Button>
           }
         >
-          {openReviews.length} open reconciliation review(s) - SAP total
+          {openReviewCount} open reconciliation review(s) - SAP total
           differs from app stock. Resolve them under Inventory → Adjust.
+        </Alert>
+      )}
+
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 1.5, borderRadius: 2 }}>
+          Could not load SAP stock: {loadError}. If this just appeared, run
+          migration{" "}
+          <strong>0011_sap_read_views.sql</strong> in the Supabase SQL Editor
+          (the SAP screens now read from server-side views for fast
+          pagination).
         </Alert>
       )}
 
@@ -132,7 +186,7 @@ export default function SapStock() {
           label="Search material / description"
           size="small"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => handleQueryChange(e.target.value)}
           sx={{ flexGrow: 1, minWidth: 200, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
         />
         <TextField
@@ -140,7 +194,7 @@ export default function SapStock() {
           label="Storage location"
           size="small"
           value={slocFilter}
-          onChange={(e) => setSlocFilter(e.target.value)}
+          onChange={(e) => handleSlocChange(e.target.value)}
           sx={{ minWidth: 160, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
         >
           <MenuItem value="">All</MenuItem>
@@ -155,7 +209,7 @@ export default function SapStock() {
           label="Status"
           size="small"
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => handleStatusChange(e.target.value)}
           sx={{ minWidth: 160, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
         >
           <MenuItem value="all">All</MenuItem>
@@ -168,100 +222,143 @@ export default function SapStock() {
         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress size={28} />
         </Box>
-      ) : filtered.length === 0 ? (
+      ) : total === 0 ? (
         <Paper elevation={0} sx={{ p: 3, borderRadius: 2, textAlign: "center" }}>
           <Typography color="text.secondary">
-            {rows.length === 0
-              ? "No SAP stock yet. Import an MB52 snapshot from Inventory → Stock Update."
-              : "No materials match the filters."}
+            {!loadError
+              ? query.trim() || slocFilter || statusFilter !== "all"
+                ? "No materials match the filters."
+                : "No SAP stock yet. Import an MB52 snapshot from Inventory → Stock Update."
+              : "Nothing to show."}
           </Typography>
         </Paper>
       ) : (
-        <TableContainer
-          component={Paper}
+        <Paper
           elevation={0}
-          sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+          sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)", overflow: "hidden" }}
         >
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell>Material</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Distribution</TableCell>
-                <TableCell align="right">Total</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.map((row) => (
-                <TableRow
-                  key={row.material_code}
-                  hover
-                  sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                >
-                  <TableCell sx={{ fontWeight: 700 }}>{row.material_code}</TableCell>
-                  <TableCell sx={{ maxWidth: 220 }}>
-                    <Typography variant="body2" noWrap title={row.short_description}>
-                      {row.short_description || "—"}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                      {row.locations.length === 0 ? (
-                        <Typography variant="caption" color="text.secondary">
-                          No distribution
-                        </Typography>
-                      ) : (
-                        row.locations.map((l) => (
-                          <Chip
-                            key={l.storage_location}
+          <TableContainer>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Material</TableCell>
+                  <TableCell>Description</TableCell>
+                  <TableCell>Distribution</TableCell>
+                  <TableCell align="right">Total</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow
+                    key={row.material_code}
+                    hover
+                    sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+                  >
+                    <TableCell sx={{ fontWeight: 700 }}>{row.material_code}</TableCell>
+                    <TableCell sx={{ maxWidth: 220 }}>
+                      <Typography variant="body2" noWrap title={row.short_description}>
+                        {row.short_description || "—"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                        {row.locations.length === 0 ? (
+                          <Typography variant="caption" color="text.secondary">
+                            No distribution
+                          </Typography>
+                        ) : (
+                          row.locations.map((l) => (
+                            <Chip
+                              key={l.storage_location}
+                              size="small"
+                              variant="outlined"
+                              label={`${l.storage_location}: ${l.quantity}`}
+                            />
+                          ))
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 800 }}>
+                      {row.total}
+                      {row.uom ? ` ${row.uom}` : ""}
+                    </TableCell>
+                    <TableCell>
+                      <StatusChip row={row} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Box sx={{ display: "flex", gap: 0.5, justifyContent: "flex-end" }}>
+                        {row.review && (
+                          <Button
                             size="small"
-                            variant="outlined"
-                            label={`${l.storage_location}: ${l.quantity}`}
-                          />
-                        ))
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 800 }}>
-                    {row.total}
-                    {row.uom ? ` ${row.uom}` : ""}
-                  </TableCell>
-                  <TableCell>
-                    <StatusChip row={row} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Box sx={{ display: "flex", gap: 0.5, justifyContent: "flex-end" }}>
-                      {row.review && (
+                            variant="contained"
+                            startIcon={<FactCheckIcon fontSize="small" />}
+                            onClick={() => setReview(row.review)}
+                            sx={{ borderRadius: 2, fontWeight: 700 }}
+                          >
+                            Review
+                          </Button>
+                        )}
                         <Button
                           size="small"
-                          variant="contained"
-                          startIcon={<FactCheckIcon fontSize="small" />}
-                          onClick={() => setReview(row.review)}
-                          sx={{ borderRadius: 2, fontWeight: 700 }}
+                          variant="outlined"
+                          startIcon={<HistoryIcon fontSize="small" />}
+                          onClick={() =>
+                            navigate(`/sap-history?material=${row.material_code}`)
+                          }
+                          sx={{ borderRadius: 2, fontWeight: 600 }}
                         >
-                          Review
+                          History
                         </Button>
-                      )}
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<HistoryIcon fontSize="small" />}
-                        onClick={() =>
-                          navigate(`/sap-history?material=${row.material_code}`)
-                        }
-                        sx={{ borderRadius: 2, fontWeight: 600 }}
-                      >
-                        History
-                      </Button>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              flexWrap: "wrap",
+              gap: 1,
+              px: 1,
+            }}
+          >
+            <TextField
+              label="Page"
+              type="number"
+              size="small"
+              slotProps={{ htmlInput: { min: 1, max: pageCount } }}
+              defaultValue={1}
+              key={page}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const target = event.target as HTMLInputElement;
+                const value = Number(target.value);
+                if (!Number.isInteger(value)) return;
+                setPage(Math.min(pageCount, Math.max(1, value)) - 1);
+              }}
+              sx={{ width: 90, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              rowsPerPage={pageSize}
+              rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+              onPageChange={(_event, newPage) => setPage(newPage)}
+              onRowsPerPageChange={(event) =>
+                handleRowsPerPageChange(Number(event.target.value))
+              }
+              showFirstButton
+              showLastButton
+            />
+          </Box>
+        </Paper>
       )}
 
       <SapReviewDialog
@@ -270,6 +367,7 @@ export default function SapStock() {
         onResolved={() => {
           setReview(null);
           load();
+          refreshReviews();
           showSnackbar("Reconciliation updated.", "success");
         }}
         onError={(message) => showSnackbar(message, "error")}

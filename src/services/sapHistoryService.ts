@@ -1354,116 +1354,118 @@ export async function getSapReconciliationReviews(): Promise<SapStockReview[]> {
   return ((data ?? []) as Record<string, unknown>[]).map(toSapStockReview);
 }
 
-/**
- * Current SAP stock overview: every material with an MB52 distribution
- * (or an open review), with the per-SLoc split, total, and reconciliation
- * status. Built from the union of distribution rows and open reviews so a
- * material flagged with 0 SAP stock still shows up.
- */
-const DISTRIBUTION_PAGE_SIZE = 1000;
-
-async function fetchAllDistributionRows(): Promise<
-  { material_code: string; storage_location: string; quantity: number }[]
-> {
-  const rows: { material_code: string; storage_location: string; quantity: number }[] = [];
-  let from = 0;
-
-  for (;;) {
-    const to = from + DISTRIBUTION_PAGE_SIZE - 1;
-    const { data, error } = await supabase
-      .from("sap_stock_distribution")
-      .select("material_code, storage_location, quantity")
-      .order("material_code")
-      .order("storage_location")
-      .range(from, to);
-
-    if (error) {
-      console.error(error);
-      return rows;
-    }
-
-    const page = (data ?? []) as {
-      material_code: string;
-      storage_location: string;
-      quantity: number;
-    }[];
-    rows.push(...page);
-
-    if (page.length < DISTRIBUTION_PAGE_SIZE) break;
-    from += DISTRIBUTION_PAGE_SIZE;
-  }
-
-  return rows;
+export interface SapStockPageResult {
+  rows: SapStockRow[];
+  total: number;
+  error: string | null;
 }
 
-export async function getSapStockDistribution(): Promise<SapStockRow[]> {
-  const [distributionRows, reviews] = await Promise.all([
-    fetchAllDistributionRows(),
-    supabase
-      .from("stock_reconciliation_reviews")
-      .select(REVIEW_COLUMNS)
-      .eq("status", "open"),
-  ]);
+/**
+ * Paginated SAP stock overview from v_sap_stock (server-side aggregation
+ * of the distribution + open review + Material Master description). page
+ * is 0-based. The search term matches material code and description across
+ * ALL materials on the database - not just the current page.
+ */
+export async function getSapStockPage(params: {
+  query?: string;
+  storageLocation?: string;
+  status?: "all" | "diff" | "match";
+  page: number;
+  pageSize: number;
+}): Promise<SapStockPageResult> {
+  let query = supabase
+    .from("v_sap_stock")
+    .select("material_code, short_description, uom, locations, total, review", {
+      count: "exact",
+    });
 
-  if (reviews.error) {
-    console.error(reviews.error);
-    return [];
+  const search = params.query?.trim();
+  if (search) {
+    const pattern = `%${escapeLike(search)}%`;
+    query = query.or(
+      `material_code.ilike.${pattern},short_description.ilike.${pattern}`
+    );
+  }
+  if (params.storageLocation) {
+    query = query.contains("locations", [
+      { storage_location: params.storageLocation },
+    ]);
+  }
+  if (params.status === "diff") query = query.not("review", "is", null);
+  if (params.status === "match") query = query.is("review", null);
+
+  const from = params.page * params.pageSize;
+  const { data, error, count } = await query
+    .order("material_code")
+    .range(from, from + params.pageSize - 1);
+
+  if (error) {
+    console.error(error);
+    return { rows: [], total: 0, error: error.message };
   }
 
-  const distByMaterial = new Map<string, Map<string, number>>();
-  distributionRows.forEach((row) => {
-    let slocs = distByMaterial.get(row.material_code);
-    if (!slocs) {
-      slocs = new Map();
-      distByMaterial.set(row.material_code, slocs);
-    }
-    slocs.set(
-      row.storage_location,
-      (slocs.get(row.storage_location) ?? 0) + Number(row.quantity)
-    );
-  });
-
-  const openReviews = new Map<string, SapStockReview>();
-  ((reviews.data ?? []) as Record<string, unknown>[]).forEach((row) => {
-    openReviews.set(row.material_code as string, toSapStockReview(row));
-  });
-
-  const codes = Array.from(
-    new Set([...distByMaterial.keys(), ...openReviews.keys()])
-  );
-
-  if (codes.length === 0) return [];
-
-  const masterInfo = await fetchMaterialMasterInfo(codes).catch(
-    () => new Map<string, MaterialMasterInfo>()
-  );
-
-  return codes
-    .map((code) => {
-      const slocs = distByMaterial.get(code) ?? new Map<string, number>();
-      const locations = Array.from(slocs.entries())
-        .map(([storage_location, quantity]) => ({ storage_location, quantity }))
-        .sort((a, b) => a.storage_location.localeCompare(b.storage_location));
-      const total = locations.reduce((sum, l) => sum + l.quantity, 0);
-      const review = openReviews.get(code) ?? null;
+  const rows: SapStockRow[] = ((data ?? []) as Record<string, unknown>[]).map(
+    (row) => {
+      const reviewRow = row.review as Record<string, unknown> | null;
+      const locations = (
+        (row.locations ?? []) as { storage_location: string; quantity: number }[]
+      ).map((l) => ({
+        storage_location: l.storage_location,
+        quantity: Number(l.quantity),
+      }));
+      const code = row.material_code as string;
+      const review = reviewRow ? toSapStockReview(reviewRow) : null;
 
       return {
         material_code: code,
-        short_description: masterInfo.get(code)?.short_description ?? "",
-        uom: masterInfo.get(code)?.uom ?? "",
+        short_description: (row.short_description as string) ?? "",
+        uom: (row.uom as string) ?? "",
         locations,
-        total,
+        total: Number(row.total),
         review: review ? { ...review, material_code: code } : null,
-        hasSapData: distByMaterial.has(code),
+        hasSapData: locations.length > 0,
       };
-    })
-    .sort((a, b) => a.material_code.localeCompare(b.material_code));
+    }
+  );
+
+  return { rows, total: count ?? 0, error: null };
+}
+
+/** All distinct storage locations for the filter dropdown. */
+export async function getSapStorageLocations(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("sap_stock_distribution")
+    .select("storage_location");
+
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return Array.from(
+    new Set((data ?? []).map((row) => row.storage_location as string))
+  ).sort();
+}
+
+/** Count of open reconciliation reviews (for the banner). */
+export async function getOpenSapReviewCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from("stock_reconciliation_reviews")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "open");
+
+  if (error) {
+    console.error(error);
+    return 0;
+  }
+
+  return count ?? 0;
 }
 
 /**
  * SAP status for ONE material (total across its storage locations, the
  * per-SLoc split, and the open reconciliation review, if any). Scoped
- * query - unlike getSapStockDistribution() it never scans the whole
+ * query - it never scans the whole
  * distribution table, so the material details box opens instantly even
  * with a large MB52 snapshot imported. Returns null when the material
  * has no SAP data at all (no distribution rows and no review).
@@ -1549,6 +1551,8 @@ export interface SapDocument {
   vendor: string | null;
   document_header_text: string | null;
   imported_at: string;
+  /** Per-SLoc running balance at this row (computed by v_sap_history). */
+  running_balance: number;
 }
 
 function toSapDocument(row: Record<string, unknown>): SapDocument {
@@ -1571,57 +1575,105 @@ function toSapDocument(row: Record<string, unknown>): SapDocument {
     vendor: (row.vendor as string | null) ?? null,
     document_header_text: (row.document_header_text as string | null) ?? null,
     imported_at: row.imported_at as string,
+    running_balance: Number(row.running_balance ?? 0),
   };
 }
 
-/** Latest MB51 movements across all materials (newest first). */
-export async function getRecentSapMovements(limit = 100): Promise<SapDocument[]> {
-  const { data, error } = await supabase
-    .from("sap_material_documents")
-    .select(DOCUMENT_COLUMNS)
-    .order("posting_date", { ascending: false, nullsFirst: false })
-    .order("imported_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    console.error(error);
-    return [];
-  }
-
-  return ((data ?? []) as Record<string, unknown>[]).map(toSapDocument);
+/**
+ * Escapes LIKE/ILIKE wildcards in a user-provided search term so a literal
+ * % or _ in the query never acts as a wildcard.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-/** MB51 history for one material, with optional filters. */
-export async function getSapMaterialHistory(
-  materialCode: string,
-  filters: SapHistoryFilters = {},
-  limit = 500
-): Promise<SapDocument[]> {
+export interface SapHistoryPageResult {
+  docs: SapDocument[];
+  total: number;
+  error: string | null;
+}
+
+/**
+ * Paginated MB51 history from v_sap_history (server-side aggregation +
+ * running balance). page is 0-based. `search` matches against the
+ * material code, description, document, header text, PO, vendor, invoice,
+ * user and storage location - the whole dataset is searched on the
+ * database, not just the current page.
+ */
+export async function getSapHistoryPage(params: {
+  materialCode?: string | null;
+  filters?: SapHistoryFilters;
+  search?: string;
+  page: number;
+  pageSize: number;
+}): Promise<SapHistoryPageResult> {
   let query = supabase
-    .from("sap_material_documents")
-    .select(DOCUMENT_COLUMNS)
-    .eq("material_code", materialCode);
+    .from("v_sap_history")
+    .select(`${DOCUMENT_COLUMNS}, running_balance`, { count: "exact" });
 
-  if (filters.from) query = query.gte("posting_date", filters.from);
-  if (filters.to) query = query.lte("posting_date", filters.to);
-  if (filters.movementType) {
-    query = query.eq("movement_type", filters.movementType);
-  }
-  if (filters.storageLocation) {
-    query = query.eq("storage_location", filters.storageLocation);
+  if (params.materialCode) {
+    query = query.eq("material_code", params.materialCode);
   }
 
-  const { data, error } = await query
+  const filters = params.filters;
+  if (filters?.from) query = query.gte("posting_date", filters.from);
+  if (filters?.to) query = query.lte("posting_date", filters.to);
+  if (filters?.movementType) query = query.eq("movement_type", filters.movementType);
+  if (filters?.storageLocation) query = query.eq("storage_location", filters.storageLocation);
+
+  const search = params.search?.trim();
+  if (search) {
+    const pattern = `%${escapeLike(search)}%`;
+    query = query.or(
+      `material_code.ilike.${pattern},material_description.ilike.${pattern},` +
+        `material_document.ilike.${pattern},document_header_text.ilike.${pattern},` +
+        `purchase_order.ilike.${pattern},vendor.ilike.${pattern},invoice_number.ilike.${pattern},` +
+        `user_name.ilike.${pattern},movement_type.ilike.${pattern},storage_location.ilike.${pattern}`
+    );
+  }
+
+  const from = params.page * params.pageSize;
+  const { data, error, count } = await query
     .order("posting_date", { ascending: false, nullsFirst: false })
     .order("imported_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    .range(from, from + params.pageSize - 1);
 
+  if (error) {
+    console.error(error);
+    return { docs: [], total: 0, error: error.message };
+  }
+
+  return {
+    docs: ((data ?? []) as Record<string, unknown>[]).map(toSapDocument),
+    total: count ?? 0,
+    error: null,
+  };
+}
+
+/** Distinct movement types / storage locations for the filter dropdowns. */
+export async function getSapDistinctValues(
+  column: "movement_type" | "storage_location",
+  materialCode: string | null
+): Promise<string[]> {
+  let query = supabase
+    .from("sap_material_documents")
+    .select(column)
+    .not(column, "is", null);
+
+  if (materialCode) query = query.eq("material_code", materialCode);
+
+  const { data, error } = await query;
   if (error) {
     console.error(error);
     return [];
   }
 
-  return ((data ?? []) as Record<string, unknown>[]).map(toSapDocument);
+  return Array.from(
+    new Set(
+      ((data ?? []) as Record<string, string>[]).map((row) => row[column])
+    )
+  ).sort();
 }
 
 /* -------------------------------------------------------------------------
