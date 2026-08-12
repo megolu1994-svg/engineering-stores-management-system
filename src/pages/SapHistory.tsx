@@ -9,6 +9,8 @@ import {
   Button,
   Chip,
   CircularProgress,
+  IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
   Snackbar,
@@ -26,17 +28,16 @@ import {
 import DownloadIcon from "@mui/icons-material/Download";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
 
 import { useSearchParams } from "react-router-dom";
 
-import MaterialSearch from "../components/MaterialSearch";
 import {
   getSapDistinctValues,
   getSapHistoryPage,
   type SapDocument,
 } from "../services/sapHistoryService";
 import { getMovementTypeDescription } from "../utils/sapMovementTypes";
-import type { Material } from "../types/material";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -52,10 +53,11 @@ function movementLabel(row: SapDocument): string {
     : `Mvt ${row.movement_type}`;
 }
 
-function downloadExcel(
-  docs: SapDocument[],
-  materialLabel: string
-): void {
+function safeFileName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_") || "SAP_History";
+}
+
+function downloadExcel(docs: SapDocument[], label: string): void {
   const header = [
     "Posting Date",
     "Movement Type",
@@ -94,15 +96,14 @@ function downloadExcel(
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "SAP History");
 
-  const safeName = materialLabel.replace(/[^a-zA-Z0-9_-]/g, "_") || "SAP_History";
-  XLSX.writeFile(wb, `${safeName}_SAP_History.xlsx`);
+  XLSX.writeFile(wb, `${safeFileName(label)}_SAP_History.xlsx`);
 }
 
-function downloadPdf(docs: SapDocument[], materialLabel: string): void {
+function downloadPdf(docs: SapDocument[], label: string): void {
   const doc = new jsPDF({ orientation: "landscape" });
 
   doc.setFontSize(12);
-  doc.text(`SAP Material History - ${materialLabel}`, 14, 12);
+  doc.text(`SAP Material History - ${label}`, 14, 12);
 
   autoTable(doc, {
     startY: 18,
@@ -140,8 +141,7 @@ function downloadPdf(docs: SapDocument[], materialLabel: string): void {
     headStyles: { fillColor: [108, 43, 217] },
   });
 
-  const safeName = materialLabel.replace(/[^a-zA-Z0-9_-]/g, "_") || "SAP_History";
-  doc.save(`${safeName}_SAP_History.pdf`);
+  doc.save(`${safeFileName(label)}_SAP_History.pdf`);
 }
 
 export default function SapHistory() {
@@ -158,19 +158,14 @@ export default function SapHistory() {
   }
 
   // Support ?material=<code> deep links (e.g. from SAP Stock) by seeding
-  // the material picker from the URL on first mount.
-  const initialCode = searchParams.get("material");
-  const [material, setMaterial] = useState<Material | null>(() =>
-    initialCode
-      ? ({ material_code: initialCode, short_description: "", uom: "" } as Material)
-      : null
-  );
+  // the search box from the URL on first mount.
+  const initialCode = searchParams.get("material") ?? "";
+  const [search, setSearch] = useState(initialCode);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialCode);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [movementType, setMovementType] = useState("");
   const [sloc, setSloc] = useState("");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [docs, setDocs] = useState<SapDocument[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -184,11 +179,10 @@ export default function SapHistory() {
   // async callbacks.
   const [loadedForKey, setLoadedForKey] = useState<string | null>(null);
 
-  const materialCode = material?.material_code ?? null;
-  const filterKey = `${materialCode ?? ""}|${from}|${to}|${movementType}|${sloc}|${debouncedSearch}|${page}|${pageSize}`;
+  const filterKey = `${from}|${to}|${movementType}|${sloc}|${debouncedSearch}|${page}|${pageSize}`;
   const loading = docs === null || loadedForKey !== filterKey;
 
-  // Debounce the free-text search so we don't fire a request per keystroke.
+  // Debounce the search so we don't fire a request per keystroke.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timer);
@@ -196,7 +190,6 @@ export default function SapHistory() {
 
   const load = useCallback(async () => {
     return getSapHistoryPage({
-      materialCode,
       filters: {
         from: from || null,
         to: to || null,
@@ -207,7 +200,7 @@ export default function SapHistory() {
       page,
       pageSize,
     });
-  }, [materialCode, from, to, movementType, sloc, debouncedSearch, page, pageSize]);
+  }, [from, to, movementType, sloc, debouncedSearch, page, pageSize]);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,35 +226,29 @@ export default function SapHistory() {
     };
   }, [load, filterKey]);
 
-  // Dropdown lists for the movement-type / storage-location filters -
-  // scoped to the selected material (or all materials in browse mode).
+  // Dropdown lists for the movement-type / storage-location filters.
   useEffect(() => {
     let cancelled = false;
-    getSapDistinctValues("movement_type", materialCode).then((values) => {
+    getSapDistinctValues("movement_type", null).then((values) => {
       if (!cancelled) setMovementTypes(values);
     });
-    getSapDistinctValues("storage_location", materialCode).then((values) => {
+    getSapDistinctValues("storage_location", null).then((values) => {
       if (!cancelled) setSlocs(values);
     });
     return () => {
       cancelled = true;
     };
-  }, [materialCode]);
+  }, []);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const exportLabel = debouncedSearch.trim() || "SAP_History";
 
-  function resetFilters(next: Partial<{ page: number }> = {}) {
-    setPage(next.page ?? 0);
-  }
-
-  function handleMaterialChange(next: Material | null) {
-    setMaterial(next);
-    resetFilters();
+  function resetToFirstPage() {
+    setPage(0);
   }
 
   async function fetchFullResultSet(): Promise<SapDocument[]> {
     const result = await getSapHistoryPage({
-      materialCode,
       filters: {
         from: from || null,
         to: to || null,
@@ -284,7 +271,7 @@ export default function SapHistory() {
         showSnackbar("Nothing to export.", "warning");
         return;
       }
-      downloadExcel(all, materialCode ?? "Recent");
+      downloadExcel(all, exportLabel);
       showSnackbar(`${all.length} movements exported.`, "success");
     } catch {
       showSnackbar("Excel export failed.", "error");
@@ -302,7 +289,7 @@ export default function SapHistory() {
         showSnackbar("Nothing to export.", "warning");
         return;
       }
-      downloadPdf(all, materialCode ?? "Recent");
+      downloadPdf(all, exportLabel);
       showSnackbar(`${all.length} movements exported.`, "success");
     } catch {
       showSnackbar("PDF export failed.", "error");
@@ -319,10 +306,9 @@ export default function SapHistory() {
         SAP Material History
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        MB51 movements imported from SAP. Pick a material to see its full
-        timeline, or browse the most recent movements across all materials.
-        Search looks through the whole dataset - material code, document,
-        description, PO, vendor and more.
+        MB51 movements imported from SAP. One search box finds movements
+        across the whole dataset - material code, document, description,
+        PO, vendor, invoice, user and storage location.
       </Typography>
 
       <Paper
@@ -330,21 +316,42 @@ export default function SapHistory() {
         sx={{ p: 1.5, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)", mb: 1.5 }}
       >
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <MaterialSearch value={material} onChange={handleMaterialChange} />
+          <TextField
+            fullWidth
+            label="Search material, document, PO, vendor…"
+            size="small"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              resetToFirstPage();
+            }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                  </InputAdornment>
+                ),
+                endAdornment: search ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      aria-label="Clear search"
+                      onClick={() => {
+                        setSearch("");
+                        resetToFirstPage();
+                      }}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              },
+            }}
+            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          />
 
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-            <TextField
-              label="Search all data"
-              size="small"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                resetFilters();
-              }}
-              placeholder="Material, document, PO, vendor…"
-              slotProps={{ input: { startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.5, color: "text.secondary" }} /> } }}
-              sx={{ flexGrow: 1, minWidth: 220, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            />
             <TextField
               label="From"
               type="date"
@@ -352,7 +359,7 @@ export default function SapHistory() {
               value={from}
               onChange={(e) => {
                 setFrom(e.target.value);
-                resetFilters();
+                resetToFirstPage();
               }}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
@@ -364,7 +371,7 @@ export default function SapHistory() {
               value={to}
               onChange={(e) => {
                 setTo(e.target.value);
-                resetFilters();
+                resetToFirstPage();
               }}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
@@ -376,7 +383,7 @@ export default function SapHistory() {
               value={movementType}
               onChange={(e) => {
                 setMovementType(e.target.value);
-                resetFilters();
+                resetToFirstPage();
               }}
               sx={{ minWidth: 180, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             >
@@ -394,7 +401,7 @@ export default function SapHistory() {
               value={sloc}
               onChange={(e) => {
                 setSloc(e.target.value);
-                resetFilters();
+                resetToFirstPage();
               }}
               sx={{ minWidth: 140, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
             >
@@ -447,10 +454,8 @@ export default function SapHistory() {
           <Typography color="text.secondary">
             {!loadError
               ? debouncedSearch.trim() || from || to || movementType || sloc
-                ? "No movements match the filters."
-                : materialCode
-                  ? "No SAP history for this material yet. Import the MB51 sheet from Inventory → Stock Update."
-                  : "No SAP movements yet. Import the MB51 sheet from Inventory → Stock Update."
+                ? "No movements match the search or filters."
+                : "No SAP movements yet. Import the MB51 sheet from Inventory → Stock Update."
               : "Nothing to show."}
           </Typography>
         </Paper>
