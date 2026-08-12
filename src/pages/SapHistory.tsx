@@ -7,28 +7,47 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
+  Divider,
   IconButton,
   InputAdornment,
   MenuItem,
   Paper,
+  Popover,
+  Select,
   Snackbar,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
   TextField,
   Typography,
 } from "@mui/material";
 
-import DownloadIcon from "@mui/icons-material/Download";
-import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
+import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
+import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
+import BalanceOutlinedIcon from "@mui/icons-material/BalanceOutlined";
+import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import SubjectOutlinedIcon from "@mui/icons-material/SubjectOutlined";
+import ShoppingCartOutlinedIcon from "@mui/icons-material/ShoppingCartOutlined";
+import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
+import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
+import PersonOutlinedIcon from "@mui/icons-material/PersonOutlined";
+import GridOnOutlinedIcon from "@mui/icons-material/GridOnOutlined";
+import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
+import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SearchIcon from "@mui/icons-material/Search";
-import ClearIcon from "@mui/icons-material/Clear";
+import ReplayOutlinedIcon from "@mui/icons-material/ReplayOutlined";
+import FirstPageIcon from "@mui/icons-material/FirstPage";
+import KeyboardArrowLeftIcon from "@mui/icons-material/KeyboardArrowLeft";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
+import LastPageIcon from "@mui/icons-material/LastPage";
 
 import { useSearchParams } from "react-router-dom";
 
@@ -45,6 +64,34 @@ const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 /** Rows fetched at once when the user exports Excel / PDF. */
 const EXPORT_LIMIT = 50000;
 
+/* ------------------------------------------------------------------ */
+/* Palette (per spec)                                                  */
+/* ------------------------------------------------------------------ */
+
+const C = {
+  primary: "#2563EB",
+  navy: "#172554",
+  slate: "#64748B",
+  border: "#E2E8F0",
+  headerBg: "#F8FAFC",
+  headerText: "#1D4ED8",
+  green: "#15803D",
+  orange: "#EA580C",
+  red: "#DC2626",
+};
+
+/* ------------------------------------------------------------------ */
+/* Presentation helpers                                                */
+/* ------------------------------------------------------------------ */
+
+/** ISO "2026-08-11" -> "11-08-2026" for display. */
+function formatPostingDate(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}-${m}-${y}`;
+}
+
 function movementLabel(row: SapDocument): string {
   if (!row.movement_type) return "Movement";
   const description = getMovementTypeDescription(row.movement_type);
@@ -53,9 +100,36 @@ function movementLabel(row: SapDocument): string {
     : `Mvt ${row.movement_type}`;
 }
 
+/** Badge colors by movement type: receipts green, issues orange, transfers blue. */
+function movementBadgeColors(mvt: string | null): { bg: string; fg: string } {
+  const t = (mvt ?? "").trim();
+  if (/^[15]/.test(t)) return { bg: "#DCFCE7", fg: C.green };
+  if (/^[2789]/.test(t)) return { bg: "#FFEDD5", fg: C.orange };
+  return { bg: "#DBEAFE", fg: C.headerText };
+}
+
 function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_") || "SAP_History";
 }
+
+/** Pages to render in the footer, with ellipses for large ranges. */
+function visiblePages(current: number, pageCount: number): (number | "…")[] {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, i) => i + 1);
+  }
+  const pages: (number | "…")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(pageCount - 1, current + 1);
+  if (start > 2) pages.push("…");
+  for (let p = start; p <= end; p += 1) pages.push(p);
+  if (end < pageCount - 1) pages.push("…");
+  pages.push(pageCount);
+  return pages;
+}
+
+/* ------------------------------------------------------------------ */
+/* Exports (logic unchanged)                                           */
+/* ------------------------------------------------------------------ */
 
 function downloadExcel(docs: SapDocument[], label: string): void {
   const header = [
@@ -144,6 +218,37 @@ function downloadPdf(docs: SapDocument[], label: string): void {
   doc.save(`${safeFileName(label)}_SAP_History.pdf`);
 }
 
+/* ------------------------------------------------------------------ */
+/* Column definitions (exact 12-column sequence from the spec)         */
+/* ------------------------------------------------------------------ */
+
+interface ColumnDef {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  minWidth: number;
+  align?: "right";
+}
+
+const COLUMNS: ColumnDef[] = [
+  { key: "posting_date", label: "Posting Date", icon: <CalendarMonthOutlinedIcon fontSize="small" />, minWidth: 110 },
+  { key: "material_code", label: "Material Code", icon: <Inventory2OutlinedIcon fontSize="small" />, minWidth: 105 },
+  { key: "material_description", label: "Material Description", icon: <DescriptionOutlinedIcon fontSize="small" />, minWidth: 230 },
+  { key: "movement_type", label: "Movement Type", icon: <SwapHorizOutlinedIcon fontSize="small" />, minWidth: 180 },
+  { key: "sloc", label: "SLoc", icon: <LocationOnOutlinedIcon fontSize="small" />, minWidth: 60 },
+  { key: "qty", label: "Qty", icon: <BalanceOutlinedIcon fontSize="small" />, minWidth: 70, align: "right" },
+  { key: "doc", label: "Doc", icon: <InsertDriveFileOutlinedIcon fontSize="small" />, minWidth: 130 },
+  { key: "doc_header_text", label: "Doc Header Text", icon: <SubjectOutlinedIcon fontSize="small" />, minWidth: 190 },
+  { key: "po", label: "PO", icon: <ShoppingCartOutlinedIcon fontSize="small" />, minWidth: 105 },
+  { key: "vendor", label: "Vendor", icon: <BusinessOutlinedIcon fontSize="small" />, minWidth: 105 },
+  { key: "invoice", label: "Invoice", icon: <ReceiptOutlinedIcon fontSize="small" />, minWidth: 105 },
+  { key: "user", label: "User", icon: <PersonOutlinedIcon fontSize="small" />, minWidth: 100 },
+];
+
+/* ------------------------------------------------------------------ */
+/* Page                                                               */
+/* ------------------------------------------------------------------ */
+
 export default function SapHistory() {
   const [searchParams] = useSearchParams();
 
@@ -174,6 +279,7 @@ export default function SapHistory() {
   const [movementTypes, setMovementTypes] = useState<string[]>([]);
   const [slocs, setSlocs] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [filtersAnchor, setFiltersAnchor] = useState<HTMLElement | null>(null);
   // The filter combination whose data currently lives in `docs` - loading
   // is derived from it so the effect below only calls setState inside
   // async callbacks.
@@ -242,9 +348,27 @@ export default function SapHistory() {
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exportLabel = debouncedSearch.trim() || "SAP_History";
+  const rangeStart = total === 0 ? 0 : page * pageSize + 1;
+  const rangeEnd = Math.min((page + 1) * pageSize, total);
 
   function resetToFirstPage() {
     setPage(0);
+  }
+
+  function handleSearchNow() {
+    // Flush the debounce immediately when the Search button is pressed.
+    setDebouncedSearch(search);
+    resetToFirstPage();
+  }
+
+  function handleReset() {
+    setSearch("");
+    setDebouncedSearch("");
+    setFrom("");
+    setTo("");
+    setMovementType("");
+    setSloc("");
+    resetToFirstPage();
   }
 
   async function fetchFullResultSet(): Promise<SapDocument[]> {
@@ -298,144 +422,231 @@ export default function SapHistory() {
     }
   }
 
+  const toolbarFieldSx = {
+    "& .MuiOutlinedInput-root": { height: 56, borderRadius: "10px" },
+    "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
+  };
+
+  const actionButtonSx = {
+    height: 48,
+    borderRadius: "10px",
+    border: `1px solid ${C.border}`,
+    bgcolor: "#FFFFFF",
+    color: C.navy,
+    textTransform: "none",
+    fontWeight: 600,
+    px: 2.5,
+    boxShadow: "none",
+    "&:hover": { bgcolor: C.headerBg },
+  };
+
   return (
-    <Box sx={{ pb: 3 }}>
-      <Typography
-        sx={{ mb: 0.5, fontWeight: 700, fontSize: { xs: "1.05rem", sm: "1.25rem" } }}
+    <Box sx={{ bgcolor: "#FFFFFF", px: { xs: 1.5, sm: 3 }, py: 2.5, pb: 4 }}>
+      {/* A. Header */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 1.5,
+        }}
       >
-        SAP Material History
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        MB51 movements imported from SAP. One search box finds movements
-        across the whole dataset - material code, document, description,
-        PO, vendor, invoice, user and storage location.
-      </Typography>
-
-      <Paper
-        elevation={0}
-        sx={{ p: 1.5, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)", mb: 1.5 }}
-      >
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <TextField
-            fullWidth
-            label="Search material, document, PO, vendor…"
-            size="small"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              resetToFirstPage();
-            }}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
-                  </InputAdornment>
-                ),
-                endAdornment: search ? (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      aria-label="Clear search"
-                      onClick={() => {
-                        setSearch("");
-                        resetToFirstPage();
-                      }}
-                    >
-                      <ClearIcon fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ) : null,
-              },
-            }}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-          />
-
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-            <TextField
-              label="From"
-              type="date"
-              size="small"
-              value={from}
-              onChange={(e) => {
-                setFrom(e.target.value);
-                resetToFirstPage();
-              }}
-              slotProps={{ inputLabel: { shrink: true } }}
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            />
-            <TextField
-              label="To"
-              type="date"
-              size="small"
-              value={to}
-              onChange={(e) => {
-                setTo(e.target.value);
-                resetToFirstPage();
-              }}
-              slotProps={{ inputLabel: { shrink: true } }}
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            />
-            <TextField
-              select
-              label="Movement type"
-              size="small"
-              value={movementType}
-              onChange={(e) => {
-                setMovementType(e.target.value);
-                resetToFirstPage();
-              }}
-              sx={{ minWidth: 180, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            >
-              <MenuItem value="">All</MenuItem>
-              {movementTypes.map((m) => (
-                <MenuItem key={m} value={m}>
-                  {m} - {getMovementTypeDescription(m)}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Storage location"
-              size="small"
-              value={sloc}
-              onChange={(e) => {
-                setSloc(e.target.value);
-                resetToFirstPage();
-              }}
-              sx={{ minWidth: 140, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            >
-              <MenuItem value="">All</MenuItem>
-              {slocs.map((s) => (
-                <MenuItem key={s} value={s}>
-                  {s}
-                </MenuItem>
-              ))}
-            </TextField>
-            <Box sx={{ flexGrow: 1 }} />
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon fontSize="small" />}
-              onClick={handleExportExcel}
-              disabled={exporting || !docs || docs.length === 0}
-              sx={{ borderRadius: 2, fontWeight: 600 }}
-            >
-              Excel
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<PictureAsPdfIcon fontSize="small" />}
-              onClick={handleExportPdf}
-              disabled={exporting || !docs || docs.length === 0}
-              sx={{ borderRadius: 2, fontWeight: 600 }}
-            >
-              PDF
-            </Button>
-          </Box>
+        <Box>
+          <Typography sx={{ fontSize: "30px", fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>
+            SAP Material History
+          </Typography>
+          <Typography sx={{ fontSize: "15px", color: C.slate, mt: 0.25 }}>
+            MB51 movements imported from SAP
+          </Typography>
         </Box>
-      </Paper>
+
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+          <Button
+            onClick={handleExportExcel}
+            disabled={exporting || !docs || docs.length === 0}
+            startIcon={<GridOnOutlinedIcon sx={{ color: C.green }} />}
+            sx={{ ...actionButtonSx, color: C.green }}
+          >
+            Export Excel
+          </Button>
+          <Button
+            onClick={handleExportPdf}
+            disabled={exporting || !docs || docs.length === 0}
+            startIcon={<PictureAsPdfOutlinedIcon sx={{ color: C.red }} />}
+            sx={{ ...actionButtonSx, color: C.red }}
+          >
+            Export PDF
+          </Button>
+          <Button
+            onClick={(event) => setFiltersAnchor(event.currentTarget)}
+            startIcon={<FilterAltOutlinedIcon sx={{ color: C.primary }} />}
+            endIcon={<ExpandMoreIcon />}
+            sx={actionButtonSx}
+          >
+            Filters
+          </Button>
+        </Box>
+      </Box>
+
+      {/* B. Divider */}
+      <Divider sx={{ borderColor: C.border, my: 2 }} />
+
+      {/* C. Search / filter toolbar */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 1.25,
+          mb: 1.5,
+        }}
+      >
+        <TextField
+          size="small"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            resetToFirstPage();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") handleSearchNow();
+          }}
+          placeholder="Search material code, description, doc, PO, vendor, invoice, user..."
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: C.primary }} />
+                </InputAdornment>
+              ),
+            },
+            htmlInput: { sx: { fontSize: 14.5, "&::placeholder": { color: C.slate, opacity: 1 } } },
+          }}
+          sx={{
+            flexGrow: 1,
+            flexBasis: 380,
+            minWidth: 240,
+            "& .MuiOutlinedInput-root": { height: 56, borderRadius: "10px" },
+            "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
+          }}
+        />
+        <TextField
+          label="From Date"
+          type="date"
+          size="small"
+          value={from}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            resetToFirstPage();
+          }}
+          slotProps={{ inputLabel: { shrink: true } }}
+          sx={{
+            flexBasis: "19%",
+            minWidth: 170,
+            ...toolbarFieldSx,
+          }}
+        />
+        <TextField
+          label="To Date"
+          type="date"
+          size="small"
+          value={to}
+          onChange={(e) => {
+            setTo(e.target.value);
+            resetToFirstPage();
+          }}
+          slotProps={{ inputLabel: { shrink: true } }}
+          sx={{
+            flexBasis: "19%",
+            minWidth: 170,
+            ...toolbarFieldSx,
+          }}
+        />
+        <Button
+          onClick={handleSearchNow}
+          startIcon={<SearchIcon />}
+          sx={{
+            height: 56,
+            width: 135,
+            borderRadius: "10px",
+            bgcolor: C.primary,
+            color: "#FFFFFF",
+            textTransform: "none",
+            fontWeight: 600,
+            boxShadow: "none",
+            "&:hover": { bgcolor: "#1D4ED8" },
+          }}
+        >
+          Search
+        </Button>
+        <Button
+          onClick={handleReset}
+          startIcon={<ReplayOutlinedIcon sx={{ color: C.primary }} />}
+          sx={{
+            height: 56,
+            borderRadius: "10px",
+            border: `1px solid ${C.border}`,
+            bgcolor: "#FFFFFF",
+            color: C.navy,
+            textTransform: "none",
+            fontWeight: 600,
+            px: 2.5,
+            boxShadow: "none",
+            "&:hover": { bgcolor: C.headerBg },
+          }}
+        >
+          Reset
+        </Button>
+      </Box>
+
+      {/* Filters popover (movement type / storage location) */}
+      <Popover
+        open={Boolean(filtersAnchor)}
+        anchorEl={filtersAnchor}
+        onClose={() => setFiltersAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        slotProps={{ paper: { sx: { p: 1.5, mt: 0.5, borderRadius: "10px", minWidth: 220 } } }}
+      >
+        <TextField
+          select
+          label="Movement type"
+          size="small"
+          fullWidth
+          value={movementType}
+          onChange={(e) => {
+            setMovementType(e.target.value);
+            resetToFirstPage();
+          }}
+          sx={{ mb: 1.5 }}
+        >
+          <MenuItem value="">All</MenuItem>
+          {movementTypes.map((m) => (
+            <MenuItem key={m} value={m}>
+              {m} - {getMovementTypeDescription(m)}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label="Storage location"
+          size="small"
+          fullWidth
+          value={sloc}
+          onChange={(e) => {
+            setSloc(e.target.value);
+            resetToFirstPage();
+          }}
+        >
+          <MenuItem value="">All</MenuItem>
+          {slocs.map((s) => (
+            <MenuItem key={s} value={s}>
+              {s}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Popover>
 
       {loadError && (
         <Alert severity="error" sx={{ mb: 1.5, borderRadius: 2 }}>
@@ -445,12 +656,16 @@ export default function SapHistory() {
         </Alert>
       )}
 
+      {/* D. Data table */}
       {loading ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress size={28} />
         </Box>
       ) : total === 0 ? (
-        <Paper elevation={0} sx={{ p: 3, borderRadius: 2, textAlign: "center" }}>
+        <Paper
+          elevation={0}
+          sx={{ p: 3, borderRadius: "10px", border: `1px solid ${C.border}`, textAlign: "center" }}
+        >
           <Typography color="text.secondary">
             {!loadError
               ? debouncedSearch.trim() || from || to || movementType || sloc
@@ -462,117 +677,270 @@ export default function SapHistory() {
       ) : (
         <Paper
           elevation={0}
-          sx={{ borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)", overflow: "hidden" }}
+          sx={{ borderRadius: "10px", border: `1px solid ${C.border}`, overflow: "hidden" }}
         >
-          <TableContainer sx={{ maxHeight: 560 }}>
-            <Table size="small" stickyHeader>
+          <TableContainer sx={{ maxHeight: 620 }}>
+            <Table size="small" stickyHeader sx={{ minWidth: 1490 }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Posting Date</TableCell>
-                  <TableCell>Movement</TableCell>
-                  <TableCell>Material</TableCell>
-                  <TableCell>SLoc</TableCell>
-                  <TableCell align="right">Qty</TableCell>
-                  <TableCell align="right">Balance</TableCell>
-                  <TableCell>Doc</TableCell>
-                  <TableCell>Doc Header Text</TableCell>
-                  <TableCell>PO</TableCell>
-                  <TableCell>Vendor / Invoice / User</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {docs.map((row) => (
-                  <TableRow key={row.id} hover>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      {row.posting_date ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={movementLabel(row)}
-                        title={movementLabel(row)}
-                        sx={{ maxWidth: 200 }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{row.material_code}</TableCell>
-                    <TableCell>{row.storage_location || "—"}</TableCell>
+                  {COLUMNS.map((column) => (
                     <TableCell
-                      align="right"
+                      key={column.key}
+                      align={column.align}
                       sx={{
-                        fontWeight: 800,
-                        color: row.quantity < 0 ? "error.main" : "success.main",
+                        minWidth: column.minWidth,
+                        bgcolor: C.headerBg,
+                        color: C.headerText,
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        borderBottom: `1px solid ${C.border}`,
+                        py: 1.25,
+                        px: 1.5,
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.quantity > 0 ? "+" : ""}
-                      {row.quantity}
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          justifyContent: column.align === "right" ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        <Box sx={{ display: "flex", alignItems: "center", fontSize: "17px" }}>
+                          {column.icon}
+                        </Box>
+                        {column.label}
+                      </Box>
                     </TableCell>
-                    <TableCell align="right">{row.running_balance}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      {row.material_document ?? "—"}
-                      {row.material_doc_item ? ` / ${row.material_doc_item}` : ""}
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 160 }}>
-                      <Typography variant="body2" noWrap title={row.document_header_text ?? ""}>
-                        {row.document_header_text || "—"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      {row.purchase_order || "—"}
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 180 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }} noWrap>
-                        {[row.vendor, row.invoice_number, row.user_name]
-                          .filter(Boolean)
-                          .join(" · ") || "—"}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {docs.map((row) => {
+                  const badge = movementBadgeColors(row.movement_type);
+                  const label = movementLabel(row);
+                  return (
+                    <TableRow
+                      key={row.id}
+                      hover
+                      sx={{
+                        height: 46,
+                        "& td": {
+                          borderBottom: `1px solid ${C.border}`,
+                          fontSize: "13px",
+                          py: 0.5,
+                          px: 1.5,
+                        },
+                        "&:last-child td": { borderBottom: "none" },
+                      }}
+                    >
+                      <TableCell sx={{ whiteSpace: "nowrap", color: C.navy }}>
+                        {formatPostingDate(row.posting_date)}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: C.primary, fontWeight: 600 }}>
+                        {row.material_code}
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 230 }}>
+                        <Typography
+                          variant="body2"
+                          noWrap
+                          title={row.material_description ?? ""}
+                          sx={{ fontSize: "13px", color: C.navy }}
+                        >
+                          {row.material_description || "—"}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        <Box
+                          sx={{
+                            display: "inline-block",
+                            bgcolor: badge.bg,
+                            color: badge.fg,
+                            borderRadius: "8px",
+                            px: 1,
+                            py: 0.5,
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            maxWidth: 190,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            verticalAlign: "middle",
+                          }}
+                          title={label}
+                        >
+                          {label}
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: row.storage_location ? C.navy : C.slate }}>
+                        {row.storage_location || "—"}
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          whiteSpace: "nowrap",
+                          fontWeight: 600,
+                          color: row.quantity < 0 ? C.red : C.green,
+                        }}
+                      >
+                        {row.quantity > 0 ? "+" : ""}
+                        {row.quantity}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: C.navy }}>
+                        {row.material_document ?? "—"}
+                        {row.material_doc_item ? ` / ${row.material_doc_item}` : ""}
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 190 }}>
+                        <Typography
+                          variant="body2"
+                          noWrap
+                          title={row.document_header_text ?? ""}
+                          sx={{ fontSize: "13px", color: row.document_header_text ? C.navy : C.slate }}
+                        >
+                          {row.document_header_text || "—"}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: row.purchase_order ? C.navy : C.slate }}>
+                        {row.purchase_order || "—"}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: row.vendor ? C.navy : C.slate }}>
+                        {row.vendor || "—"}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: row.invoice_number ? C.navy : C.slate }}>
+                        {row.invoice_number || "—"}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap", color: C.navy }}>
+                        {row.user_name || "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* E. Pagination footer */}
           <Box
             sx={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "flex-end",
+              justifyContent: "space-between",
               flexWrap: "wrap",
               gap: 1,
-              px: 1,
+              px: 2,
+              py: 1,
+              borderTop: `1px solid ${C.border}`,
             }}
           >
-            <TextField
-              label="Page"
-              type="number"
-              size="small"
-              slotProps={{ htmlInput: { min: 1, max: pageCount } }}
-              defaultValue={1}
-              key={page}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                const target = event.target as HTMLInputElement;
-                const value = Number(target.value);
-                if (!Number.isInteger(value)) return;
-                setPage(Math.min(pageCount, Math.max(1, value)) - 1);
-              }}
-              sx={{ width: 90, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            />
-            <TablePagination
-              component="div"
-              count={total}
-              page={page}
-              rowsPerPage={pageSize}
-              rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
-              onPageChange={(_event, newPage) => setPage(newPage)}
-              onRowsPerPageChange={(event) => {
-                setPageSize(Number(event.target.value));
-                setPage(0);
-              }}
-              showFirstButton
-              showLastButton
-            />
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
+              <Typography sx={{ fontSize: "13px", color: C.slate }}>Total Records:</Typography>
+              <Typography sx={{ fontSize: "13px", fontWeight: 600, color: C.navy }}>
+                {total.toLocaleString("en-US")}
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+              <Typography sx={{ fontSize: "13px", color: C.slate }}>Rows per page:</Typography>
+              <Select
+                size="small"
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(0);
+                }}
+                sx={{
+                  height: 32,
+                  fontSize: "13px",
+                  borderRadius: "8px",
+                  "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
+                }}
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+              <Typography sx={{ fontSize: "13px", color: C.slate, whiteSpace: "nowrap" }}>
+                {rangeStart}–{rangeEnd.toLocaleString("en-US")} of{" "}
+                {total.toLocaleString("en-US")}
+              </Typography>
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                <IconButton
+                  size="small"
+                  aria-label="First page"
+                  disabled={page === 0}
+                  onClick={() => setPage(0)}
+                  sx={{ color: C.slate }}
+                >
+                  <FirstPageIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label="Previous page"
+                  disabled={page === 0}
+                  onClick={() => setPage(Math.max(0, page - 1))}
+                  sx={{ color: C.slate }}
+                >
+                  <KeyboardArrowLeftIcon fontSize="small" />
+                </IconButton>
+
+                {visiblePages(page + 1, pageCount).map((entry, index) =>
+                  entry === "…" ? (
+                    <Typography key={`gap-${index}`} sx={{ px: 0.5, color: C.slate, fontSize: "13px" }}>
+                      …
+                    </Typography>
+                  ) : (
+                    <Box
+                      key={entry}
+                      component="button"
+                      type="button"
+                      onClick={() => setPage(entry - 1)}
+                      aria-label={`Go to page ${entry}`}
+                      sx={{
+                        minWidth: 32,
+                        height: 32,
+                        px: 0.5,
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        fontFamily: "inherit",
+                        bgcolor: entry === page + 1 ? C.primary : "transparent",
+                        color: entry === page + 1 ? "#FFFFFF" : C.navy,
+                        "&:hover": {
+                          bgcolor: entry === page + 1 ? C.primary : C.headerBg,
+                        },
+                      }}
+                    >
+                      {entry}
+                    </Box>
+                  )
+                )}
+
+                <IconButton
+                  size="small"
+                  aria-label="Next page"
+                  disabled={page >= pageCount - 1}
+                  onClick={() => setPage(Math.min(pageCount - 1, page + 1))}
+                  sx={{ color: C.slate }}
+                >
+                  <KeyboardArrowRightIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label="Last page"
+                  disabled={page >= pageCount - 1}
+                  onClick={() => setPage(pageCount - 1)}
+                  sx={{ color: C.slate }}
+                >
+                  <LastPageIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
           </Box>
         </Paper>
       )}
