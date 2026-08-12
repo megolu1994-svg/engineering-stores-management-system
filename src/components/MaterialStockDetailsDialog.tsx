@@ -13,7 +13,6 @@ import Grid from "@mui/material/Grid";
 import IconButton from "@mui/material/IconButton";
 import LinearProgress from "@mui/material/LinearProgress";
 import Slide from "@mui/material/Slide";
-import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -40,10 +39,6 @@ import { useNavigate } from "react-router-dom";
 
 import { searchMaterials } from "../services/materialService";
 import { getAllocations } from "../services/materialAllocationService";
-import {
-  getMaterialAppMovements,
-  type MaterialMovementRow,
-} from "../services/inventoryTransactionService";
 import { getSapStockForMaterial } from "../services/sapHistoryService";
 import { getLocations } from "../services/locationService";
 import type { Material } from "../types/material";
@@ -51,7 +46,6 @@ import type { MaterialAllocation } from "../types/materialAllocation";
 import type { Location } from "../types/location";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
-const HISTORY_LIMIT = 15;
 
 /* Enterprise palette (blue/navy/green/orange - no purple) */
 const NAVY = "#172554";
@@ -66,10 +60,6 @@ const ORANGE = "#EA580C";
 function safeNumber(value: number | null | undefined): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-function movementLabel(row: MaterialMovementRow): string {
-  return row.transaction_type.replace(/_/g, " ");
 }
 
 /** Signed difference for display: 0, +7 or -3. */
@@ -107,7 +97,6 @@ export default function MaterialStockDetailsDialog({
   const [data, setData] = useState<{
     material: Material | null;
     allocations: MaterialAllocation[];
-    history: MaterialMovementRow[];
     sapTotal: number | null;
     sapDiff: number | null;
     sapAppTotal: number | null;
@@ -129,10 +118,9 @@ export default function MaterialStockDetailsDialog({
     Promise.all([
       searchMaterials(materialCode, 0, 1),
       getAllocations(materialCode),
-      getMaterialAppMovements(materialCode, HISTORY_LIMIT),
       getSapStockForMaterial(materialCode),
     ])
-      .then(([materials, allocations, history, sapInfo]) => {
+      .then(([materials, allocations, sapInfo]) => {
         if (cancelled) return;
         const exact =
           materials.find((m) => m.material_code === materialCode) ??
@@ -141,7 +129,6 @@ export default function MaterialStockDetailsDialog({
         setData({
           material: exact,
           allocations,
-          history,
           sapTotal: sapInfo ? sapInfo.total : null,
           sapDiff: sapInfo?.review ? sapInfo.review.difference : null,
           sapAppTotal: sapInfo?.review ? sapInfo.review.app_total : null,
@@ -156,7 +143,6 @@ export default function MaterialStockDetailsDialog({
         setData({
           material: null,
           allocations: [],
-          history: [],
           sapTotal: null,
           sapDiff: null,
           sapAppTotal: null,
@@ -194,7 +180,6 @@ export default function MaterialStockDetailsDialog({
   }, []);
 
   const allocations = data?.allocations ?? [];
-  const history = data?.history ?? [];
   const material = data?.material ?? null;
   const uom = material?.uom ?? "";
 
@@ -1068,96 +1053,6 @@ export default function MaterialStockDetailsDialog({
               )}
             </Box>
 
-            {/* ---------------- Recent Movements (App) ---------------- */}
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                mb: 1,
-              }}
-            >
-              <Typography sx={{ fontSize: 14, fontWeight: 700, color: NAVY }}>
-                Recent Movements (App)
-              </Typography>
-              <Typography sx={{ fontSize: 12, color: SLATE }}>
-                Latest {Math.min(history.length, HISTORY_LIMIT)}
-              </Typography>
-            </Box>
-
-            {history.length === 0 ? (
-              <Typography sx={{ fontSize: 13.5, color: SLATE, py: 1 }}>
-                No movements recorded yet.
-              </Typography>
-            ) : (
-              <Stack spacing={0.75} sx={{ maxHeight: 320, overflowY: "auto", pr: 0.5, pb: 1 }}>
-                {history.map((row) => {
-                  const negative = row.movement === "OUT";
-                  return (
-                    <Box
-                      key={row.id}
-                      sx={{
-                        border: `1px solid ${BORDER}`,
-                        borderRadius: 2,
-                        px: 1.5,
-                        py: 1,
-                        bgcolor: "#FFFFFF",
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 1,
-                        }}
-                      >
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography
-                            sx={{
-                              display: "block",
-                              fontWeight: 600,
-                              fontSize: 11.5,
-                              color: SLATE,
-                            }}
-                          >
-                            {(row.created_at ?? "").slice(0, 10)} ·{" "}
-                            {row.location_code}
-                          </Typography>
-                          <Typography
-                            sx={{
-                              fontSize: 13,
-                              fontWeight: 600,
-                              color: NAVY,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                            title={movementLabel(row)}
-                          >
-                            {movementLabel(row)}
-                            {row.reference_number
-                              ? ` · ${row.reference_number}`
-                              : ""}
-                          </Typography>
-                        </Box>
-                        <Typography
-                          sx={{
-                            fontWeight: 800,
-                            color: negative ? "#DC2626" : GREEN,
-                            whiteSpace: "nowrap",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {negative ? "-" : "+"}
-                          {safeNumber(row.quantity)}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Stack>
-            )}
           </>
         )}
       </DialogContent>
