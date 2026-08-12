@@ -453,9 +453,10 @@ function Mb52Tab({
         compares each material's SAP total against the app's physical
         stock: totals that match are marked matched, differences create
         reconciliation reviews for you to review in the Adjust tab.
-        Materials not yet in Material Master are created automatically
-        (numeric codes only). Re-importing replaces the snapshot; the app's
-        stock is never changed automatically.
+        Materials not yet in Material Master are created automatically and
+        their stock is posted to Unallocated (numeric codes only).
+        Re-importing replaces the snapshot; existing physical allocations
+        are never changed automatically.
       </Alert>
 
       <Button
@@ -604,8 +605,9 @@ function Mb52Tab({
             <span>
               Distribution rows: {summary.distributionRowsWritten}, Materials:{" "}
               {summary.materialsProcessed}, Matched: {summary.matched},
-              Reviews created: {summary.reviewsCreated}, Materials created:{" "}
-              {summary.materialsCreated}, Failed: {summary.failed}
+              Reviews created: {summary.reviewsCreated}, New materials created{" "}
+              &amp; posted to Unallocated: {summary.newMaterialsPosted},
+              Failed: {summary.failed}
             </span>
           </Box>
           {summary.reviewsCreated > 0 && (

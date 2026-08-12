@@ -3,7 +3,10 @@ import { supabase } from "../config/supabase";
 import { normalizeMaterialCode } from "../utils/materialCode";
 import { getMovementTypeDescription } from "../utils/sapMovementTypes";
 
-import { applyAdjustment } from "./materialAllocationService";
+import {
+  applyAdjustment,
+  applyOpeningStock,
+} from "./materialAllocationService";
 import { dismissPendingStockUpdate } from "./stockUpdateService";
 import {
   type BulkImportReportRow,
@@ -26,9 +29,13 @@ import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
  *                                SAP and the app, for a person to apply
  *                                (one audited ADJUSTMENT) or dismiss.
  *
- * Nothing here ever writes to material_allocation, inventory_transactions
- * or location_master. Reconciliation is at material-total level only;
- * the SAP storage-location split is always read-only reference.
+ * The MB52 import is the app's single bulk stock-update path: it
+ * replaces the distribution snapshot, posts BRAND-NEW materials'
+ * quantities to UNALLOCATED (opening stock, one audited transaction),
+ * and creates reviews only for existing materials whose app total
+ * differs from SAP. Existing material_allocation rows are never modified
+ * automatically - reconciliation is at material-total level only and the
+ * SAP storage-location split is always read-only reference.
  *
  * All bulk uploads follow the numeric material-code rule
  * (src/utils/materialCode.ts): codes are normalized to their digits and
@@ -38,6 +45,7 @@ import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
  * ========================================================================= */
 
 const BATCH_SIZE = 500;
+const UNALLOCATED_LOCATION = "UNALLOCATED";
 
 /* -------------------------------------------------------------------------
  * Shared parsing helpers
@@ -1071,17 +1079,30 @@ export interface Mb52ImportSummary {
   matched: number;
   reviewsCreated: number;
   materialsCreated: number;
+  /** Newly created materials whose quantity was posted to UNALLOCATED. */
+  newMaterialsPosted: number;
   failed: number;
   outcomes: Mb52Outcome[];
 }
 
 /**
- * Imports a parsed MB52 snapshot. The distribution table is replaced by
- * the file (it is a point-in-time snapshot), open reconciliation reviews
- * are recreated from the file's totals, and applied/dismissed reviews are
- * preserved as history. Reconciliation compares SAP total per material
- * against the app's physical total; differences become open reviews,
- * matches clear them. Never writes to material_allocation.
+ * Imports a parsed MB52 snapshot - the app's SINGLE bulk stock-update
+ * path. The distribution table is replaced by the file (it is a
+ * point-in-time snapshot), and open reconciliation reviews are recreated
+ * from the file's totals (applied/dismissed reviews are preserved as
+ * history). Reconciliation compares SAP total per material against the
+ * app's physical total:
+ *
+ *   - totals match -> marked matched, no action.
+ *   - material not in Material Master -> created in the master and its
+ *     full quantity posted to UNALLOCATED (opening stock), so new
+ *     materials have their stock in the app without any manual step.
+ *   - existing material, totals differ -> one open review (the SAP SLoc
+ *     split stays as read-only reference; a person applies or dismisses
+ *     it, one audited ADJUSTMENT per changed bin).
+ *
+ * Existing material_allocation rows are NEVER modified automatically -
+ * the import only ever writes opening stock for brand-new materials.
  */
 export async function bulkImportMb52(
   rows: SapDistributionRow[],
@@ -1095,6 +1116,7 @@ export async function bulkImportMb52(
     matched: 0,
     reviewsCreated: 0,
     materialsCreated: 0,
+    newMaterialsPosted: 0,
     failed: 0,
     outcomes: [],
   };
@@ -1146,6 +1168,47 @@ export async function bulkImportMb52(
       }
     }
     summary.materialsCreated = await createMissingMaterials(missingCodes, meta);
+  }
+
+  // Post brand-new materials' quantities to UNALLOCATED (opening stock) -
+  // this is the merged Stock-Update behavior: a material the app has never
+  // seen gets its stock in the app without a manual step. The SAP SLoc
+  // split is recorded in the distribution as read-only reference; the
+  // physical quantity lives in Unallocated until the storekeeper allocates
+  // it to bins. Because these materials now have app stock equal to the
+  // SAP total, they are skipped in the review pass below.
+  const newMaterialCodes = new Set(missingCodes);
+  const openingReason = fileName
+    ? `SAP MB52 snapshot (new material, from ${fileName})`
+    : "SAP MB52 snapshot (new material)";
+
+  for (const code of missingCodes) {
+    const slocs = byMaterial.get(code);
+    const quantity = slocs
+      ? Array.from(slocs.values()).reduce((sum, q) => sum + q, 0)
+      : 0;
+
+    try {
+      await applyOpeningStock(
+        code,
+        UNALLOCATED_LOCATION,
+        quantity,
+        openingReason
+      );
+      summary.newMaterialsPosted += 1;
+    } catch (err) {
+      summary.failed += 1;
+      summary.outcomes.push({
+        rowNumber: 0,
+        material_code: code,
+        storage_location: "",
+        quantity,
+        status: "failed",
+        message: `Could not post new material to Unallocated: ${
+          err instanceof Error ? err.message : "Unknown error."
+        }`,
+      });
+    }
   }
 
   reportProgress(0.25);
@@ -1232,6 +1295,10 @@ export async function bulkImportMb52(
   }[] = [];
 
   for (const [materialCode, slocs] of byMaterial) {
+    // Brand-new materials were just posted to Unallocated above - their
+    // app total now equals the SAP total, so they are never flagged.
+    if (newMaterialCodes.has(materialCode)) continue;
+
     const sapTotal = Array.from(slocs.values()).reduce((sum, q) => sum + q, 0);
     const appTotal = appTotalMap.get(materialCode) ?? 0;
 

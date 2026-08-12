@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
-  Alert,
   Box,
   Button,
   Card,
   CardActionArea,
   Chip,
   CircularProgress,
-  Collapse,
-  IconButton,
   InputAdornment,
   MenuItem,
-  Snackbar,
   TextField,
   Typography,
 } from "@mui/material";
@@ -20,9 +16,6 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import HistoryIcon from "@mui/icons-material/History";
 import PlaceIcon from "@mui/icons-material/Place";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 
 import {
   getRecentActivity,
@@ -32,15 +25,6 @@ import {
 } from "../services/inventoryOverviewService";
 import { DEFAULT_PAGE_SIZE_OPTIONS } from "../constants/pagination";
 import type { InventoryTransactionType } from "../services/inventoryTransactionService";
-import { getAllocations } from "../services/materialAllocationService";
-import {
-  applyPendingDecreaseFromUnallocated,
-  applyPendingIncreaseToUnallocated,
-  dismissPendingStockUpdate,
-  getPendingStockUpdates,
-  type PendingStockUpdate,
-} from "../services/stockUpdateService";
-import StockReconcileDialog from "./StockReconcileDialog";
 
 interface Props {
   /** Called when the user taps a material card, so the parent (Inventory
@@ -49,7 +33,6 @@ interface Props {
   onSelectMaterial: (materialCode: string) => void;
 }
 
-const UNALLOCATED_LOCATION = "UNALLOCATED";
 const SEARCH_DEBOUNCE_MS = 300;
 
 const TRANSACTION_BADGE: Record<
@@ -76,147 +59,6 @@ function formatDateTime(value: string): string {
   });
 }
 
-/** Compact variant used inline on reconciliation cards, where the sentence
- * form previously wrapped across lines and dominated the card's height. */
-function formatDateTimeShort(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-interface PendingRow extends PendingStockUpdate {
-  unallocatedQty: number;
-}
-
-type SnackbarSeverity = "success" | "error" | "warning" | "info";
-
-/** Shared mismatch summary + resolution actions for a single flagged
- * material, used both in the standing "Needs Review" panel and inline on a
- * search/recent-activity card that happens to match a flagged material. */
-function ReconcileActions({
-  row,
-  busy,
-  onApply,
-  onDismiss,
-  onAdjust,
-}: {
-  row: PendingRow;
-  busy: boolean;
-  onApply: (row: PendingRow) => void;
-  onDismiss: (row: PendingRow) => void;
-  onAdjust: (row: PendingRow) => void;
-}) {
-  const isIncrease = row.difference > 0;
-  const shortfall = Math.abs(row.difference);
-  const canAutoDecrease = !isIncrease && shortfall <= row.unallocatedQty;
-  const diffColor = isIncrease ? "success.main" : "error.main";
-
-  return (
-    <Box
-      sx={{
-        mt: 0.75,
-        p: 0.75,
-        px: 1,
-        borderRadius: 1.5,
-        bgcolor: "warning.50",
-        border: "1px solid",
-        borderColor: "warning.light",
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 1,
-        }}
-      >
-        <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap>
-          Found {row.uploaded_qty} · System {row.system_qty_at_upload}
-        </Typography>
-        <Chip
-          size="small"
-          label={`${isIncrease ? "+" : ""}${row.difference}`}
-          sx={{
-            height: 20,
-            fontWeight: 700,
-            bgcolor: "transparent",
-            color: diffColor,
-            border: "1px solid",
-            borderColor: diffColor,
-          }}
-        />
-      </Box>
-
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ display: "block", mt: 0.25 }}
-      >
-        Bulk upload · {formatDateTimeShort(row.uploaded_at)}
-      </Typography>
-
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.75 }}>
-        {isIncrease && (
-          <Button
-            size="small"
-            variant="contained"
-            color="warning"
-            disabled={busy}
-            onClick={() => onApply(row)}
-            sx={{ borderRadius: 2, fontWeight: 700 }}
-          >
-            {busy ? <CircularProgress size={16} color="inherit" /> : "Apply to Unallocated"}
-          </Button>
-        )}
-
-        {!isIncrease && canAutoDecrease && (
-          <Button
-            size="small"
-            variant="contained"
-            color="warning"
-            disabled={busy}
-            onClick={() => onApply(row)}
-            sx={{ borderRadius: 2, fontWeight: 700 }}
-          >
-            {busy ? <CircularProgress size={16} color="inherit" /> : "Apply (Reduce Unallocated)"}
-          </Button>
-        )}
-
-        {!isIncrease && !canAutoDecrease && (
-          <Button
-            size="small"
-            variant="contained"
-            color="warning"
-            disabled={busy}
-            onClick={() => onAdjust(row)}
-            sx={{ borderRadius: 2, fontWeight: 700 }}
-          >
-            Adjust Allocation
-          </Button>
-        )}
-
-        <Button
-          size="small"
-          variant="text"
-          color="inherit"
-          disabled={busy}
-          onClick={() => onDismiss(row)}
-          sx={{ borderRadius: 2, fontWeight: 600 }}
-        >
-          Dismiss
-        </Button>
-      </Box>
-    </Box>
-  );
-}
-
 export default function CurrentStockTab({ onSelectMaterial }: Props) {
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
@@ -232,46 +74,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
   const [recentCursor, setRecentCursor] = useState<string | null>(null);
   const [recentHasMore, setRecentHasMore] = useState(false);
   const [recentPageSize, setRecentPageSize] = useState(25);
-
-  const [pendingRows, setPendingRows] = useState<PendingRow[]>([]);
-  const [loadingPending, setLoadingPending] = useState(false);
-  const [pendingCollapsed, setPendingCollapsed] = useState(false);
-  const [busyMaterial, setBusyMaterial] = useState<string | null>(null);
-  const [reconcileTarget, setReconcileTarget] = useState<PendingRow | null>(
-    null
-  );
-
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: SnackbarSeverity;
-  }>({ open: false, message: "", severity: "info" });
-
-  function showSnackbar(message: string, severity: SnackbarSeverity) {
-    setSnackbar({ open: true, message, severity });
-  }
-
-  const loadPending = useCallback(async () => {
-    setLoadingPending(true);
-
-    try {
-      const pending = await getPendingStockUpdates();
-
-      const withUnallocated = await Promise.all(
-        pending.map(async (p) => {
-          const allocations = await getAllocations(p.material_code);
-          const unallocatedRow = allocations.find(
-            (a) => a.location_code === UNALLOCATED_LOCATION
-          );
-          return { ...p, unallocatedQty: unallocatedRow?.quantity ?? 0 };
-        })
-      );
-
-      setPendingRows(withUnallocated);
-    } finally {
-      setLoadingPending(false);
-    }
-  }, []);
 
   // Reloads from the most recent activity whenever the batch size changes,
   // resetting the cursor/accumulated list rather than appending to it.
@@ -295,10 +97,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
       cancelled = true;
     };
   }, [recentPageSize]);
-
-  useEffect(() => {
-    loadPending();
-  }, [loadPending]);
 
   async function handleLoadMoreRecent() {
     setLoadingMoreRecent(true);
@@ -338,59 +136,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
   }, [search]);
 
   const isSearchMode = search.trim().length >= 2;
-  const pendingByMaterial = new Map(pendingRows.map((p) => [p.material_code, p]));
-
-  // Removes just the resolved row from the in-memory list rather than
-  // re-running loadPending(), which would flip loadingPending back to true
-  // and briefly unmount the whole reconciliation panel (the section is
-  // gated on `!loadingPending`) - that unmount was what made applying a
-  // single item look like the entire screen had refreshed.
-  function removePendingRow(materialCode: string) {
-    setPendingRows((prev) => prev.filter((r) => r.material_code !== materialCode));
-  }
-
-  async function handleApply(row: PendingRow) {
-    setBusyMaterial(row.material_code);
-
-    try {
-      if (row.difference > 0) {
-        await applyPendingIncreaseToUnallocated(row);
-      } else {
-        await applyPendingDecreaseFromUnallocated(row);
-      }
-
-      showSnackbar(`Stock reconciled for ${row.material_code}.`, "success");
-      removePendingRow(row.material_code);
-    } catch (err) {
-      showSnackbar(
-        err instanceof Error ? err.message : "Something went wrong.",
-        "error"
-      );
-    } finally {
-      setBusyMaterial(null);
-    }
-  }
-
-  async function handleDismiss(row: PendingRow) {
-    setBusyMaterial(row.material_code);
-
-    try {
-      await dismissPendingStockUpdate(row.material_code);
-      showSnackbar(`Dismissed for ${row.material_code}.`, "info");
-      removePendingRow(row.material_code);
-    } catch {
-      showSnackbar("Failed to dismiss.", "error");
-    } finally {
-      setBusyMaterial(null);
-    }
-  }
-
-  function handleReconciled() {
-    if (!reconcileTarget) return;
-    showSnackbar(`Stock reconciled for ${reconcileTarget.material_code}.`, "success");
-    removePendingRow(reconcileTarget.material_code);
-    setReconcileTarget(null);
-  }
 
   return (
     <Box sx={{ mt: 1.5 }}>
@@ -418,66 +163,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
         }}
       />
 
-      {!loadingPending && pendingRows.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Box
-            onClick={() => setPendingCollapsed((prev) => !prev)}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 0.75,
-              mb: pendingCollapsed ? 0 : 1,
-              cursor: "pointer",
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <WarningAmberIcon fontSize="small" color="warning" />
-              <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>
-                Stock Reconciliation Needed ({pendingRows.length})
-              </Typography>
-            </Box>
-            <IconButton size="small">
-              {pendingCollapsed ? (
-                <ExpandMoreIcon fontSize="small" />
-              ) : (
-                <ExpandLessIcon fontSize="small" />
-              )}
-            </IconButton>
-          </Box>
-
-          <Collapse in={!pendingCollapsed} timeout="auto" unmountOnExit>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
-              {pendingRows.map((row) => (
-                <Card key={row.material_code} variant="outlined" sx={{ borderRadius: 2 }}>
-                  <CardActionArea
-                    onClick={() => onSelectMaterial(row.material_code)}
-                    sx={{ p: 1, pb: 0.5 }}
-                  >
-                    <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }} noWrap>
-                      {row.material_code}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                      {row.short_description}
-                    </Typography>
-                  </CardActionArea>
-
-                  <Box sx={{ px: 1, pb: 1 }}>
-                    <ReconcileActions
-                      row={row}
-                      busy={busyMaterial === row.material_code}
-                      onApply={handleApply}
-                      onDismiss={handleDismiss}
-                      onAdjust={setReconcileTarget}
-                    />
-                  </Box>
-                </Card>
-              ))}
-            </Box>
-          </Collapse>
-        </Box>
-      )}
-
       {isSearchMode ? (
         searching ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
@@ -492,8 +177,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
         ) : (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {searchResults.map((row) => {
-              const pending = pendingByMaterial.get(row.material_code);
-
               return (
                 <Card
                   key={row.material_code}
@@ -524,17 +207,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
                     </Box>
                   </CardActionArea>
 
-                  {pending && (
-                    <Box sx={{ px: 1.25, pb: 1.25 }}>
-                      <ReconcileActions
-                        row={pending}
-                        busy={busyMaterial === pending.material_code}
-                        onApply={handleApply}
-                        onDismiss={handleDismiss}
-                        onAdjust={setReconcileTarget}
-                      />
-                    </Box>
-                  )}
                 </Card>
               );
             })}
@@ -590,7 +262,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
                 const badge =
                   TRANSACTION_BADGE[row.lastTransactionType] ??
                   TRANSACTION_BADGE.OPENING_STOCK;
-                const pending = pendingByMaterial.get(row.material_code);
 
                 return (
                   <Card
@@ -657,17 +328,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
                       )}
                     </CardActionArea>
 
-                    {pending && (
-                      <Box sx={{ px: 1.25, pb: 1.25 }}>
-                        <ReconcileActions
-                          row={pending}
-                          busy={busyMaterial === pending.material_code}
-                          onApply={handleApply}
-                          onDismiss={handleDismiss}
-                          onAdjust={setReconcileTarget}
-                        />
-                      </Box>
-                    )}
                   </Card>
                 );
               })}
@@ -691,27 +351,6 @@ export default function CurrentStockTab({ onSelectMaterial }: Props) {
         </>
       )}
 
-      <StockReconcileDialog
-        pending={reconcileTarget}
-        onClose={() => setReconcileTarget(null)}
-        onResolved={handleReconciled}
-        onError={(message) => showSnackbar(message, "error")}
-      />
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity={snackbar.severity}
-          variant="filled"
-          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 }
