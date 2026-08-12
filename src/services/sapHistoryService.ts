@@ -1506,11 +1506,17 @@ export async function getSapStockForMaterial(
   // SAP data, so the caller hides the SAP strip entirely.
   if (rows.length === 0 && !reviewRow) return null;
 
-  const locations = rows
-    .map((r) => ({
-      storage_location: r.storage_location,
-      quantity: Number(r.quantity),
-    }))
+  // Defensive aggregation: collapse duplicate (SLoc) rows so each bucket
+  // and its quantity appear exactly once, whatever the table contains.
+  const bySloc = new Map<string, number>();
+  for (const row of rows) {
+    const sloc = row.storage_location.trim().toUpperCase();
+    if (!sloc) continue;
+    bySloc.set(sloc, (bySloc.get(sloc) ?? 0) + Number(row.quantity));
+  }
+
+  const locations = Array.from(bySloc.entries())
+    .map(([storage_location, quantity]) => ({ storage_location, quantity }))
     .sort((a, b) => a.storage_location.localeCompare(b.storage_location));
   const total = locations.reduce((sum, l) => sum + l.quantity, 0);
   const parsed = reviewRow ? toSapStockReview(reviewRow) : null;
