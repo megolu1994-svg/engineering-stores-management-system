@@ -15,6 +15,9 @@ import {
   useTheme,
 } from "@mui/material";
 
+import HistoryIcon from "@mui/icons-material/History";
+import { useNavigate } from "react-router-dom";
+
 import { getAllocations } from "../services/materialAllocationService";
 import {
   applySapReconciliation,
@@ -55,6 +58,7 @@ export default function SapReviewDialog({
 }: Props) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
+  const navigate = useNavigate();
 
   const [loadedForReview, setLoadedForReview] = useState<number | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
@@ -211,7 +215,30 @@ export default function SapReviewDialog({
       maxWidth="xs"
       fullScreen={fullScreen}
     >
-      <DialogTitle>Apply SAP Reconciliation</DialogTitle>
+      <DialogTitle
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+          pr: 1.5,
+          py: 1.5,
+        }}
+      >
+        Apply SAP Reconciliation
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<HistoryIcon />}
+          disabled={!review || saving || dismissing}
+          onClick={() =>
+            review && navigate(`/sap-history?material=${review.material_code}`)
+          }
+          sx={{ borderRadius: 2, fontWeight: 600 }}
+        >
+          SAP History
+        </Button>
+      </DialogTitle>
 
       <DialogContent>
         {review && (
