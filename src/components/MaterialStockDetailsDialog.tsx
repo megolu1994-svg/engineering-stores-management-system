@@ -55,6 +55,7 @@ const BORDER = "#E2E8F0";
 const BLUE = "#2563EB";
 const GREEN = "#15803D";
 const GREEN_BG = "#DCFCE7";
+const GREEN_LIGHT_BORDER = "#BBF7D0";
 const ORANGE = "#EA580C";
 
 function safeNumber(value: number | null | undefined): number {
@@ -568,8 +569,8 @@ export default function MaterialStockDetailsDialog({
               sx={{
                 border: `1px solid ${BORDER}`,
                 borderRadius: 2,
-                p: { xs: 1.5, sm: 1.75 },
-                mb: { xs: 1.5, sm: 2 },
+                p: { xs: 1.5, sm: 2 },
+                mb: { xs: 1.5, sm: 2.5 },
               }}
             >
               <Box
@@ -610,284 +611,503 @@ export default function MaterialStockDetailsDialog({
             </Box>
 
             {/* ---------------- Stock Comparison (SAP vs App) ---------------- */}
-            {sapComparison && (
-              <Box
-                sx={{
-                  border: `1px solid ${BORDER}`,
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  mb: { xs: 1.5, sm: 2 },
-                }}
-              >
+            {sapComparison &&
+              (isMobile ? (
+                /* ---- Mobile: compact single card (keeps the optimized
+                       layout so Allocated Locations stays in view). ---- */
                 <Box
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 1,
-                    px: { xs: 1.5, sm: 2 },
-                    py: { xs: 0.9, sm: 1.1 },
-                    borderBottom: `1px solid ${BORDER}`,
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    mb: 1.5,
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <CompareArrowsIcon sx={{ color: BLUE, fontSize: 19 }} />
-                    <Box>
-                      <Typography
-                        sx={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                      px: 1.5,
+                      py: 0.9,
+                      borderBottom: `1px solid ${BORDER}`,
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <CompareArrowsIcon sx={{ color: BLUE, fontSize: 19 }} />
+                      <Box>
+                        <Typography
+                          sx={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}
+                        >
+                          Stock Comparison
+                        </Typography>
+                        <Typography
+                          sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE, lineHeight: 1.2 }}
+                        >
+                          SAP vs App
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<HistoryIcon sx={{ fontSize: 15 }} />}
+                      onClick={openSapHistory}
+                      sx={{
+                        textTransform: "none",
+                        color: BLUE,
+                        borderColor: "#BFDBFE",
+                        bgcolor: "#EFF6FF",
+                        borderRadius: 2,
+                        fontWeight: 600,
+                        px: 1,
+                        py: 0.4,
+                        "&:hover": {
+                          bgcolor: "#DBEAFE",
+                          borderColor: "#93C5FD",
+                        },
+                      }}
+                    >
+                      SAP History
+                    </Button>
+                  </Box>
+
+                  <Box sx={{ display: "flex", flexDirection: "column" }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        px: 1.5,
+                        py: 0.75,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 1.5,
+                          bgcolor: GREEN_BG,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
                       >
+                        <StorageIcon sx={{ color: GREEN, fontSize: 15 }} />
+                      </Box>
+                      <Typography
+                        sx={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: SLATE,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        SAP Stock
+                      </Typography>
+                      <Typography
+                        sx={{
+                          ml: "auto",
+                          flexShrink: 0,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: NAVY,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stockValue(sapComparison.sap)}
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        px: 1.5,
+                        py: 0.75,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 1.5,
+                          bgcolor: "#DBEAFE",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <MonitorIcon sx={{ color: BLUE, fontSize: 15 }} />
+                      </Box>
+                      <Typography
+                        sx={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: SLATE,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        App Stock
+                      </Typography>
+                      <Typography
+                        sx={{
+                          ml: "auto",
+                          flexShrink: 0,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: NAVY,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stockValue(sapComparison.app)}
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        px: 1.5,
+                        py: 0.75,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 1.5,
+                          bgcolor: sapComparison.diff === 0 ? GREEN_BG : "#FFEDD5",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {sapComparison.diff === 0 ? (
+                          <CheckCircleIcon sx={{ color: GREEN, fontSize: 15 }} />
+                        ) : (
+                          <WarningAmberIcon sx={{ color: ORANGE, fontSize: 15 }} />
+                        )}
+                      </Box>
+                      <Typography
+                        sx={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: SLATE,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Difference
+                      </Typography>
+                      <Typography
+                        sx={{
+                          ml: "auto",
+                          flexShrink: 0,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: sapComparison.diff === 0 ? GREEN : ORANGE,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stockValue(signedDiff(sapComparison.diff))}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Compact single-line status (green when matching, orange
+                      when a variance exists). */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      borderTop: `1px solid ${BORDER}`,
+                      bgcolor: sapComparison.diff === 0 ? "#F0FDF4" : "#FFF7ED",
+                      px: 1.5,
+                      py: 0.75,
+                    }}
+                  >
+                    {sapComparison.diff === 0 ? (
+                      <CheckCircleIcon sx={{ color: "#16A34A", fontSize: 18, flexShrink: 0 }} />
+                    ) : (
+                      <WarningAmberIcon sx={{ color: ORANGE, fontSize: 18, flexShrink: 0 }} />
+                    )}
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: sapComparison.diff === 0 ? "#166534" : "#9A3412",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {sapComparison.diff === 0
+                        ? "Stock is matching · Your app stock is in sync with SAP."
+                        : `Stock variance detected · ${
+                            sapComparison.diff > 0
+                              ? "SAP stock is higher than app stock"
+                              : "App stock is higher than SAP"
+                          } by ${Math.abs(sapComparison.diff)} ${uom}.`}
+                    </Typography>
+                  </Box>
+                </Box>
+              ) : (
+                /* ---- Desktop: original layout, unchanged. ---- */
+                <Box
+                  sx={{
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 2,
+                    p: 2,
+                    mb: 2.5,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 1,
+                      mb: 1.5,
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontSize: 14, fontWeight: 700, color: NAVY }}>
                         Stock Comparison
                       </Typography>
                       <Typography
-                        sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE, lineHeight: 1.2 }}
+                        sx={{ fontSize: 12, fontWeight: 600, color: SLATE, mt: 0.25 }}
                       >
                         SAP vs App
                       </Typography>
                     </Box>
-                  </Box>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<HistoryIcon sx={{ fontSize: 15 }} />}
-                    onClick={openSapHistory}
-                    sx={{
-                      textTransform: "none",
-                      color: BLUE,
-                      borderColor: "#BFDBFE",
-                      bgcolor: "#EFF6FF",
-                      borderRadius: 2,
-                      fontWeight: 600,
-                      px: { xs: 1, sm: 1.25 },
-                      py: 0.4,
-                      "&:hover": {
-                        bgcolor: "#DBEAFE",
-                        borderColor: "#93C5FD",
-                      },
-                    }}
-                  >
-                    SAP History
-                  </Button>
-                </Box>
-
-                {/* One compact row of the three values (icon + label +
-                    right-aligned value). Desktop: three columns separated
-                    by thin dividers. Mobile: three slim stacked rows. */}
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: { xs: "column", sm: "row" },
-                    alignItems: { xs: "stretch", sm: "center" },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                      flex: 1,
-                      minWidth: 0,
-                      px: { xs: 1.5, sm: 2 },
-                      py: { xs: 0.75, sm: 0.9 },
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: { xs: 26, sm: 30 },
-                        height: { xs: 26, sm: 30 },
-                        borderRadius: 1.5,
-                        bgcolor: GREEN_BG,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <StorageIcon sx={{ color: GREEN, fontSize: { xs: 15, sm: 17 } }} />
-                    </Box>
-                    <Typography
-                      sx={{
-                        fontSize: { xs: 12.5, sm: 12.5 },
-                        fontWeight: 600,
-                        color: SLATE,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      SAP Stock
-                    </Typography>
-                    <Typography
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<HistoryIcon sx={{ fontSize: 16 }} />}
+                      onClick={openSapHistory}
                       sx={{
                         ml: "auto",
-                        flexShrink: 0,
-                        fontSize: { xs: 14, sm: 15 },
-                        fontWeight: 700,
-                        color: NAVY,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {stockValue(sapComparison.sap)}
-                    </Typography>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      display: { xs: "none", sm: "block" },
-                      alignSelf: "stretch",
-                      width: 1,
-                      bgcolor: BORDER,
-                      flexShrink: 0,
-                    }}
-                  />
-
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                      flex: 1,
-                      minWidth: 0,
-                      px: { xs: 1.5, sm: 2 },
-                      py: { xs: 0.75, sm: 0.9 },
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: { xs: 26, sm: 30 },
-                        height: { xs: 26, sm: 30 },
-                        borderRadius: 1.5,
-                        bgcolor: "#DBEAFE",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <MonitorIcon sx={{ color: BLUE, fontSize: { xs: 15, sm: 17 } }} />
-                    </Box>
-                    <Typography
-                      sx={{
-                        fontSize: { xs: 12.5, sm: 12.5 },
+                        textTransform: "none",
+                        color: BLUE,
+                        borderColor: "#BFDBFE",
+                        bgcolor: "#EFF6FF",
+                        borderRadius: 2,
                         fontWeight: 600,
-                        color: SLATE,
-                        whiteSpace: "nowrap",
+                        px: 1.5,
+                        py: 0.5,
+                        "&:hover": {
+                          bgcolor: "#DBEAFE",
+                          borderColor: "#93C5FD",
+                        },
                       }}
                     >
-                      App Stock
-                    </Typography>
-                    <Typography
-                      sx={{
-                        ml: "auto",
-                        flexShrink: 0,
-                        fontSize: { xs: 14, sm: 15 },
-                        fontWeight: 700,
-                        color: NAVY,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {stockValue(sapComparison.app)}
-                    </Typography>
+                      SAP History
+                    </Button>
                   </Box>
 
-                  <Box
-                    sx={{
-                      display: { xs: "none", sm: "block" },
-                      alignSelf: "stretch",
-                      width: 1,
-                      bgcolor: BORDER,
-                      flexShrink: 0,
-                    }}
-                  />
+                  <Grid container spacing={1.5}>
+                    <Grid size={4}>
+                      <Box
+                        sx={{
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 2,
+                          bgcolor: "#F8FAFC",
+                          p: 1.5,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1.25,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 1.5,
+                            bgcolor: GREEN_BG,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <StorageIcon sx={{ color: GREEN, fontSize: 20 }} />
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE }}
+                          >
+                            SAP Stock
+                          </Typography>
+                          <Typography
+                            sx={{ fontSize: 16, fontWeight: 700, color: NAVY }}
+                            noWrap
+                          >
+                            {stockValue(sapComparison.sap)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
 
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                      flex: 1,
-                      minWidth: 0,
-                      px: { xs: 1.5, sm: 2 },
-                      py: { xs: 0.75, sm: 0.9 },
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: { xs: 26, sm: 30 },
-                        height: { xs: 26, sm: 30 },
-                        borderRadius: 1.5,
-                        bgcolor: sapComparison.diff === 0 ? GREEN_BG : "#FFEDD5",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {sapComparison.diff === 0 ? (
-                        <CheckCircleIcon sx={{ color: GREEN, fontSize: { xs: 15, sm: 17 } }} />
-                      ) : (
-                        <WarningAmberIcon sx={{ color: ORANGE, fontSize: { xs: 15, sm: 17 } }} />
-                      )}
-                    </Box>
-                    <Typography
-                      sx={{
-                        fontSize: { xs: 12.5, sm: 12.5 },
-                        fontWeight: 600,
-                        color: SLATE,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Difference
-                    </Typography>
-                    <Typography
-                      sx={{
-                        ml: "auto",
-                        flexShrink: 0,
-                        fontSize: { xs: 14, sm: 15 },
-                        fontWeight: 700,
-                        color: sapComparison.diff === 0 ? GREEN : ORANGE,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {stockValue(signedDiff(sapComparison.diff))}
-                    </Typography>
-                  </Box>
-                </Box>
+                    <Grid size={4}>
+                      <Box
+                        sx={{
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 2,
+                          bgcolor: "#F8FAFC",
+                          p: 1.5,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1.25,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 1.5,
+                            bgcolor: "#DBEAFE",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <MonitorIcon sx={{ color: BLUE, fontSize: 20 }} />
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE }}
+                          >
+                            App Stock
+                          </Typography>
+                          <Typography
+                            sx={{ fontSize: 16, fontWeight: 700, color: NAVY }}
+                            noWrap
+                          >
+                            {stockValue(sapComparison.app)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
 
-                {/* Compact single-line status (green when matching, orange
-                    when a variance exists). */}
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    borderTop: `1px solid ${BORDER}`,
-                    bgcolor: sapComparison.diff === 0 ? "#F0FDF4" : "#FFF7ED",
-                    px: { xs: 1.5, sm: 2 },
-                    py: { xs: 0.75, sm: 1 },
-                  }}
-                >
+                    <Grid size={4}>
+                      <Box
+                        sx={{
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 2,
+                          bgcolor: "#F8FAFC",
+                          p: 1.5,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1.25,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 1.5,
+                            bgcolor: sapComparison.diff === 0 ? GREEN_BG : "#FFEDD5",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {sapComparison.diff === 0 ? (
+                            <CheckCircleIcon sx={{ color: GREEN, fontSize: 20 }} />
+                          ) : (
+                            <WarningAmberIcon sx={{ color: ORANGE, fontSize: 20 }} />
+                          )}
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            sx={{ fontSize: 11.5, fontWeight: 600, color: SLATE }}
+                          >
+                            Difference
+                          </Typography>
+                          <Typography
+                            sx={{
+                              fontSize: 16,
+                              fontWeight: 700,
+                              color: sapComparison.diff === 0 ? GREEN : ORANGE,
+                            }}
+                            noWrap
+                          >
+                            {stockValue(signedDiff(sapComparison.diff))}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  </Grid>
+
                   {sapComparison.diff === 0 ? (
-                    <CheckCircleIcon sx={{ color: "#16A34A", fontSize: 18, flexShrink: 0 }} />
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.25,
+                        bgcolor: "#F0FDF4",
+                        border: `1px solid ${GREEN_LIGHT_BORDER}`,
+                        borderRadius: 2,
+                        px: 1.5,
+                        py: 1.25,
+                        mt: 1.5,
+                      }}
+                    >
+                      <CheckCircleIcon
+                        sx={{ color: "#16A34A", fontSize: 20, flexShrink: 0 }}
+                      />
+                      <Box>
+                        <Typography
+                          sx={{ fontSize: 13, fontWeight: 700, color: GREEN }}
+                        >
+                          Stock is matching
+                        </Typography>
+                        <Typography sx={{ fontSize: 12, color: "#166534" }}>
+                          Your app stock is in sync with SAP.
+                        </Typography>
+                      </Box>
+                    </Box>
                   ) : (
-                    <WarningAmberIcon sx={{ color: ORANGE, fontSize: 18, flexShrink: 0 }} />
-                  )}
-                  <Typography
-                    sx={{
-                      fontSize: { xs: 12, sm: 12.5 },
-                      fontWeight: 600,
-                      color: sapComparison.diff === 0 ? "#166534" : "#9A3412",
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {sapComparison.diff === 0
-                      ? "Stock is matching · Your app stock is in sync with SAP."
-                      : `Stock variance detected · ${
-                          sapComparison.diff > 0
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.25,
+                        bgcolor: "#FFF7ED",
+                        border: "1px solid #FED7AA",
+                        borderRadius: 2,
+                        px: 1.5,
+                        py: 1.25,
+                        mt: 1.5,
+                      }}
+                    >
+                      <WarningAmberIcon
+                        sx={{ color: ORANGE, fontSize: 20, flexShrink: 0 }}
+                      />
+                      <Box>
+                        <Typography
+                          sx={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}
+                        >
+                          Stock variance detected
+                        </Typography>
+                        <Typography sx={{ fontSize: 12, color: "#9A3412" }}>
+                          {sapComparison.diff > 0
                             ? "SAP stock is higher than app stock"
-                            : "App stock is higher than SAP"
-                        } by ${Math.abs(sapComparison.diff)} ${uom}.`}
-                  </Typography>
+                            : "App stock is higher than SAP"}{" "}
+                          by {Math.abs(sapComparison.diff)} {uom}.
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
-              </Box>
-            )}
+              ))}
 
             {/* ---------------- Allocated Locations ---------------- */}
             <Box
