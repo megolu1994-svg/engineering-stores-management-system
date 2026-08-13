@@ -207,6 +207,19 @@ export default function SapReviewDialog({
 
   const breakdown = review?.sloc_breakdown ?? [];
 
+  const openSapHistory = () => {
+    if (!review) return;
+    const url = `/sap-history?material=${review.material_code}`;
+    if (fullScreen) {
+      // Mobile: keep the existing in-app navigation.
+      navigate(url);
+    } else {
+      // Desktop: open SAP History in a new browser tab so the apply
+      // task stays open.
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
+
   return (
     <Dialog
       open={!!review}
@@ -231,9 +244,7 @@ export default function SapReviewDialog({
           size="small"
           startIcon={<HistoryIcon />}
           disabled={!review || saving || dismissing}
-          onClick={() =>
-            review && navigate(`/sap-history?material=${review.material_code}`)
-          }
+          onClick={openSapHistory}
           sx={{ borderRadius: 2, fontWeight: 600 }}
         >
           SAP History

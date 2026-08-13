@@ -25,6 +25,8 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 
 import GridOnOutlinedIcon from "@mui/icons-material/GridOnOutlined";
@@ -250,6 +252,18 @@ function StatusBadge({ row }: { row: SapStockRow }) {
 
 export default function SapStock() {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
+  /** SAP History: open in a new tab on desktop, keep in-app nav on mobile. */
+  const openSapHistory = (code: string) => {
+    const url = `/sap-history?material=${code}`;
+    if (isMobile) {
+      navigate(url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
 
   const [rows, setRows] = useState<SapStockRow[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -852,9 +866,7 @@ export default function SapStock() {
                           size="small"
                           variant="outlined"
                           startIcon={<HistoryIcon sx={{ fontSize: 16 }} />}
-                          onClick={() =>
-                            navigate(`/sap-history?material=${row.material_code}`)
-                          }
+                          onClick={() => openSapHistory(row.material_code)}
                           sx={{
                             textTransform: "none",
                             color: C.navy,
@@ -906,7 +918,7 @@ export default function SapStock() {
             )}
             <MenuItem
               onClick={() => {
-                navigate(`/sap-history?material=${menuAnchor?.row.material_code}`);
+                if (menuAnchor) openSapHistory(menuAnchor.row.material_code);
                 setMenuAnchor(null);
               }}
             >
