@@ -215,8 +215,16 @@ export default function MaterialStockDetailsDialog({
       : null;
 
   const openSapHistory = () => {
-    onClose();
-    navigate(`/sap-history?material=${materialCode}`);
+    const url = `/sap-history?material=${materialCode}`;
+    if (isMobile) {
+      // Mobile: keep the existing in-app navigation.
+      onClose();
+      navigate(url);
+    } else {
+      // Desktop: open SAP History in a new browser tab so the current
+      // popup and task stay intact.
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   };
 
   /** Value + UoM shown in the Stock Comparison cells (same on both layouts). */
