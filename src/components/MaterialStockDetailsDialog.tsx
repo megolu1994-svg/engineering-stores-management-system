@@ -325,13 +325,13 @@ export default function MaterialStockDetailsDialog({
                 display: "flex",
                 alignItems: "center",
                 gap: { xs: 1.5, sm: 2 },
-                mb: { xs: 1.5, sm: 2.5 },
+                mb: { xs: 1.25, sm: 2.5 },
               }}
             >
               <Box
                 sx={{
-                  width: { xs: 46, sm: 56 },
-                  height: { xs: 46, sm: 56 },
+                  width: { xs: 42, sm: 56 },
+                  height: { xs: 42, sm: 56 },
                   borderRadius: 2.5,
                   bgcolor: GREEN_BG,
                   display: "flex",
@@ -344,7 +344,7 @@ export default function MaterialStockDetailsDialog({
               </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
-                  sx={{ fontSize: { xs: 20, sm: 19 }, fontWeight: 700, color: NAVY }}
+                  sx={{ fontSize: { xs: 18, sm: 19 }, fontWeight: 700, color: NAVY }}
                   noWrap
                 >
                   {material?.material_code ?? materialCode}
@@ -384,14 +384,14 @@ export default function MaterialStockDetailsDialog({
             {/* ---------------- Stock Summary ---------------- */}
             {/* Mobile: three equal compact cards in a single row (never
                 three stacked full-width cards). Desktop: unchanged. */}
-            <Grid container spacing={{ xs: 1, sm: 1.5 }} sx={{ mb: { xs: 1.5, sm: 2.5 } }}>
+            <Grid container spacing={{ xs: 1, sm: 1.5 }} sx={{ mb: { xs: 1.25, sm: 2.5 } }}>
               <Grid size={4}>
                 <Box
                   sx={{
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     bgcolor: "#F8FAFC",
-                    p: { xs: 1.25, sm: 1.75 },
+                    p: { xs: 1, sm: 1.75 },
                     height: "100%",
                   }}
                 >
@@ -406,8 +406,8 @@ export default function MaterialStockDetailsDialog({
                   >
                     <Box
                       sx={{
-                        width: { xs: 28, sm: 34 },
-                        height: { xs: 28, sm: 34 },
+                        width: { xs: 24, sm: 34 },
+                        height: { xs: 24, sm: 34 },
                         borderRadius: 1.5,
                         bgcolor: GREEN_BG,
                         display: "flex",
@@ -415,11 +415,11 @@ export default function MaterialStockDetailsDialog({
                         justifyContent: "center",
                       }}
                     >
-                      <Inventory2Icon sx={{ color: GREEN, fontSize: { xs: 16, sm: 19 } }} />
+                      <Inventory2Icon sx={{ color: GREEN, fontSize: { xs: 15, sm: 19 } }} />
                     </Box>
                     <Typography
                       sx={{
-                        fontSize: { xs: 12, sm: 12.5 },
+                        fontSize: { xs: 11.5, sm: 12.5 },
                         fontWeight: 600,
                         color: SLATE,
                         lineHeight: 1.25,
@@ -430,7 +430,7 @@ export default function MaterialStockDetailsDialog({
                   </Box>
                   <Typography
                     sx={{
-                      fontSize: { xs: 20, sm: 22 },
+                      fontSize: { xs: 18, sm: 22 },
                       fontWeight: 700,
                       color: NAVY,
                       lineHeight: 1.2,
@@ -453,7 +453,7 @@ export default function MaterialStockDetailsDialog({
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     bgcolor: "#F8FAFC",
-                    p: { xs: 1.25, sm: 1.75 },
+                    p: { xs: 1, sm: 1.75 },
                     height: "100%",
                   }}
                 >
@@ -468,8 +468,8 @@ export default function MaterialStockDetailsDialog({
                   >
                     <Box
                       sx={{
-                        width: { xs: 28, sm: 34 },
-                        height: { xs: 28, sm: 34 },
+                        width: { xs: 24, sm: 34 },
+                        height: { xs: 24, sm: 34 },
                         borderRadius: 1.5,
                         bgcolor: "#DBEAFE",
                         display: "flex",
@@ -477,11 +477,11 @@ export default function MaterialStockDetailsDialog({
                         justifyContent: "center",
                       }}
                     >
-                      <AssignmentTurnedInIcon sx={{ color: BLUE, fontSize: { xs: 16, sm: 19 } }} />
+                      <AssignmentTurnedInIcon sx={{ color: BLUE, fontSize: { xs: 15, sm: 19 } }} />
                     </Box>
                     <Typography
                       sx={{
-                        fontSize: { xs: 12, sm: 12.5 },
+                        fontSize: { xs: 11.5, sm: 12.5 },
                         fontWeight: 600,
                         color: SLATE,
                         lineHeight: 1.25,
@@ -492,7 +492,7 @@ export default function MaterialStockDetailsDialog({
                   </Box>
                   <Typography
                     sx={{
-                      fontSize: { xs: 20, sm: 22 },
+                      fontSize: { xs: 18, sm: 22 },
                       fontWeight: 700,
                       color: NAVY,
                       lineHeight: 1.2,
@@ -515,7 +515,7 @@ export default function MaterialStockDetailsDialog({
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     bgcolor: "#F8FAFC",
-                    p: { xs: 1.25, sm: 1.75 },
+                    p: { xs: 1, sm: 1.75 },
                     height: "100%",
                   }}
                 >
@@ -530,8 +530,8 @@ export default function MaterialStockDetailsDialog({
                   >
                     <Box
                       sx={{
-                        width: { xs: 28, sm: 34 },
-                        height: { xs: 28, sm: 34 },
+                        width: { xs: 24, sm: 34 },
+                        height: { xs: 24, sm: 34 },
                         borderRadius: 1.5,
                         bgcolor: "#FFEDD5",
                         display: "flex",
@@ -539,11 +539,11 @@ export default function MaterialStockDetailsDialog({
                         justifyContent: "center",
                       }}
                     >
-                      <PendingActionsIcon sx={{ color: ORANGE, fontSize: { xs: 16, sm: 19 } }} />
+                      <PendingActionsIcon sx={{ color: ORANGE, fontSize: { xs: 15, sm: 19 } }} />
                     </Box>
                     <Typography
                       sx={{
-                        fontSize: { xs: 12, sm: 12.5 },
+                        fontSize: { xs: 11.5, sm: 12.5 },
                         fontWeight: 600,
                         color: SLATE,
                         lineHeight: 1.25,
@@ -554,7 +554,7 @@ export default function MaterialStockDetailsDialog({
                   </Box>
                   <Typography
                     sx={{
-                      fontSize: { xs: 20, sm: 22 },
+                      fontSize: { xs: 18, sm: 22 },
                       fontWeight: 700,
                       color: NAVY,
                       lineHeight: 1.2,
@@ -577,8 +577,8 @@ export default function MaterialStockDetailsDialog({
               sx={{
                 border: `1px solid ${BORDER}`,
                 borderRadius: 2,
-                p: { xs: 1.5, sm: 2 },
-                mb: { xs: 1.5, sm: 2.5 },
+                p: { xs: 1.25, sm: 2 },
+                mb: { xs: 1.25, sm: 2.5 },
               }}
             >
               <Box
@@ -591,7 +591,7 @@ export default function MaterialStockDetailsDialog({
                   flexWrap: "wrap",
                 }}
               >
-                <Typography sx={{ fontSize: 14, fontWeight: 700, color: NAVY }}>
+                <Typography sx={{ fontSize: { xs: 13.5, sm: 14 }, fontWeight: 700, color: NAVY }}>
                   Allocation Summary
                 </Typography>
                 <Typography
@@ -608,7 +608,7 @@ export default function MaterialStockDetailsDialog({
                 variant="determinate"
                 value={allocatedPercent}
                 sx={{
-                  height: { xs: 9, sm: 8 },
+                  height: { xs: 7, sm: 8 },
                   borderRadius: 4,
                   bgcolor: BORDER,
                   "& .MuiLinearProgress-bar": {
@@ -628,7 +628,7 @@ export default function MaterialStockDetailsDialog({
                     border: `1px solid ${BORDER}`,
                     borderRadius: 2,
                     overflow: "hidden",
-                    mb: 1.5,
+                    mb: 1.25,
                   }}
                 >
                   <Box
@@ -681,143 +681,148 @@ export default function MaterialStockDetailsDialog({
                     </Button>
                   </Box>
 
-                  <Box sx={{ display: "flex", flexDirection: "column" }}>
+                  {/* One compact row with the three values side by side so
+                      the section stays short and Allocated Locations is
+                      visible without scrolling. */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "stretch",
+                      borderTop: `1px solid ${BORDER}`,
+                    }}
+                  >
                     <Box
                       sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        px: 1.5,
-                        py: 0.75,
+                        flex: 1,
+                        minWidth: 0,
+                        textAlign: "center",
+                        px: 0.75,
+                        py: 0.9,
                       }}
                     >
                       <Box
                         sx={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 1.5,
-                          bgcolor: GREEN_BG,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          flexShrink: 0,
+                          gap: 0.5,
+                          mb: 0.25,
                         }}
                       >
-                        <StorageIcon sx={{ color: GREEN, fontSize: 15 }} />
+                        <Box
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 1,
+                            bgcolor: GREEN_BG,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <StorageIcon sx={{ color: GREEN, fontSize: 12 }} />
+                        </Box>
+                        <Typography
+                          sx={{ fontSize: 11, fontWeight: 600, color: SLATE, whiteSpace: "nowrap" }}
+                        >
+                          SAP Stock
+                        </Typography>
                       </Box>
                       <Typography
-                        sx={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          color: SLATE,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        SAP Stock
-                      </Typography>
-                      <Typography
-                        sx={{
-                          ml: "auto",
-                          flexShrink: 0,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: NAVY,
-                          whiteSpace: "nowrap",
-                        }}
+                        sx={{ fontSize: 15, fontWeight: 700, color: NAVY, whiteSpace: "nowrap" }}
                       >
                         {stockValue(sapComparison.sap)}
                       </Typography>
                     </Box>
-
                     <Box
                       sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        px: 1.5,
-                        py: 0.75,
+                        flex: 1,
+                        minWidth: 0,
+                        textAlign: "center",
+                        px: 0.75,
+                        py: 0.9,
+                        borderLeft: `1px solid ${BORDER}`,
                       }}
                     >
                       <Box
                         sx={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 1.5,
-                          bgcolor: "#DBEAFE",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          flexShrink: 0,
+                          gap: 0.5,
+                          mb: 0.25,
                         }}
                       >
-                        <MonitorIcon sx={{ color: BLUE, fontSize: 15 }} />
+                        <Box
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 1,
+                            bgcolor: "#DBEAFE",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <MonitorIcon sx={{ color: BLUE, fontSize: 12 }} />
+                        </Box>
+                        <Typography
+                          sx={{ fontSize: 11, fontWeight: 600, color: SLATE, whiteSpace: "nowrap" }}
+                        >
+                          App Stock
+                        </Typography>
                       </Box>
                       <Typography
-                        sx={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          color: SLATE,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        App Stock
-                      </Typography>
-                      <Typography
-                        sx={{
-                          ml: "auto",
-                          flexShrink: 0,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: NAVY,
-                          whiteSpace: "nowrap",
-                        }}
+                        sx={{ fontSize: 15, fontWeight: 700, color: NAVY, whiteSpace: "nowrap" }}
                       >
                         {stockValue(sapComparison.app)}
                       </Typography>
                     </Box>
-
                     <Box
                       sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        px: 1.5,
-                        py: 0.75,
+                        flex: 1,
+                        minWidth: 0,
+                        textAlign: "center",
+                        px: 0.75,
+                        py: 0.9,
+                        borderLeft: `1px solid ${BORDER}`,
                       }}
                     >
                       <Box
                         sx={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: 1.5,
-                          bgcolor: sapComparison.diff === 0 ? GREEN_BG : "#FFEDD5",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          flexShrink: 0,
+                          gap: 0.5,
+                          mb: 0.25,
                         }}
                       >
-                        {sapComparison.diff === 0 ? (
-                          <CheckCircleIcon sx={{ color: GREEN, fontSize: 15 }} />
-                        ) : (
-                          <WarningAmberIcon sx={{ color: ORANGE, fontSize: 15 }} />
-                        )}
+                        <Box
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 1,
+                            bgcolor: sapComparison.diff === 0 ? GREEN_BG : "#FFEDD5",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {sapComparison.diff === 0 ? (
+                            <CheckCircleIcon sx={{ color: GREEN, fontSize: 12 }} />
+                          ) : (
+                            <WarningAmberIcon sx={{ color: ORANGE, fontSize: 12 }} />
+                          )}
+                        </Box>
+                        <Typography
+                          sx={{ fontSize: 11, fontWeight: 600, color: SLATE, whiteSpace: "nowrap" }}
+                        >
+                          Difference
+                        </Typography>
                       </Box>
                       <Typography
                         sx={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          color: SLATE,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Difference
-                      </Typography>
-                      <Typography
-                        sx={{
-                          ml: "auto",
-                          flexShrink: 0,
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: 700,
                           color: sapComparison.diff === 0 ? GREEN : ORANGE,
                           whiteSpace: "nowrap",
@@ -838,7 +843,7 @@ export default function MaterialStockDetailsDialog({
                       borderTop: `1px solid ${BORDER}`,
                       bgcolor: sapComparison.diff === 0 ? "#F0FDF4" : "#FFF7ED",
                       px: 1.5,
-                      py: 0.75,
+                      py: 0.65,
                     }}
                   >
                     {sapComparison.diff === 0 ? (
@@ -848,7 +853,7 @@ export default function MaterialStockDetailsDialog({
                     )}
                     <Typography
                       sx={{
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: 600,
                         color: sapComparison.diff === 0 ? "#166534" : "#9A3412",
                         lineHeight: 1.35,
@@ -1122,7 +1127,7 @@ export default function MaterialStockDetailsDialog({
               sx={{
                 border: `1px solid ${BORDER}`,
                 borderRadius: 2,
-                mb: { xs: 1.5, sm: 2.5 },
+                mb: { xs: 1.25, sm: 2.5 },
                 overflow: "hidden",
               }}
             >
@@ -1132,7 +1137,7 @@ export default function MaterialStockDetailsDialog({
                   alignItems: "center",
                   gap: 1,
                   px: 2,
-                  py: { xs: 1.25, sm: 1.5 },
+                  py: { xs: 1, sm: 1.5 },
                   bgcolor: "#F8FAFC",
                   borderBottom: `1px solid ${BORDER}`,
                 }}
@@ -1153,7 +1158,7 @@ export default function MaterialStockDetailsDialog({
                   </Typography>
                 </Box>
               ) : (
-                <TableContainer>
+                <TableContainer sx={{ maxHeight: { xs: "38dvh", sm: "none" } }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ bgcolor: "#F8FAFC" }}>
