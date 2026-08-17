@@ -24,6 +24,8 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
@@ -125,6 +127,270 @@ function visiblePages(current: number, pageCount: number): (number | "…")[] {
   if (end < pageCount - 1) pages.push("…");
   pages.push(pageCount);
   return pages;
+}
+
+/** ISO "2026-05-29" -> "29-May-2026" for the mobile cards. */
+function formatCardDate(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[Number(m) - 1] ?? m;
+  return `${Number(d)}-${month}-${y}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile history card (below the `sm` breakpoint only)                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One MB51 movement rendered as an expandable card. Collapsed shows the
+ * high-frequency fields (date, material, description, movement badge,
+ * SLoc, quantity, vendor, invoice, user); tapping reveals every
+ * remaining field of the record in grouped label/value rows. All values
+ * come from the existing SapDocument row - no invented fields.
+ */
+function MobileHistoryCard({
+  row,
+  expanded,
+  onToggle,
+}: {
+  row: SapDocument;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const badge = movementBadgeColors(row.movement_type);
+  const label = movementLabel(row);
+  const qtyPositive = row.quantity >= 0;
+  const unit = row.unit_of_entry ? ` ${row.unit_of_entry}` : "";
+
+  const groups: { title: string; rows: { label: string; value: string }[] }[] = [
+    {
+      title: "Material",
+      rows: [
+        { label: "Material Code", value: row.material_code },
+        { label: "Description", value: row.material_description ?? "" },
+        { label: "Item", value: row.item ?? "" },
+      ],
+    },
+    {
+      title: "Document",
+      rows: [
+        {
+          label: "Doc",
+          value: row.material_document
+            ? row.material_doc_item
+              ? `${row.material_document} / ${row.material_doc_item}`
+              : row.material_document
+            : "",
+        },
+        { label: "Doc Header Text", value: row.document_header_text ?? "" },
+        { label: "PO", value: row.purchase_order ?? "" },
+        { label: "Invoice", value: row.invoice_number ?? "" },
+      ],
+    },
+    {
+      title: "Organizational",
+      rows: [
+        { label: "Storage Location", value: row.storage_location },
+        { label: "User", value: row.user_name ?? "" },
+        { label: "Special Stock", value: row.special_stock ?? "" },
+      ],
+    },
+    {
+      title: "Movement",
+      rows: [
+        { label: "Movement Type", value: movementLabel(row) },
+        { label: "Quantity", value: `${qtyPositive ? "+" : ""}${row.quantity}${unit}` },
+        { label: "Running Balance", value: `${row.running_balance}${unit}` },
+        { label: "Posting Date", value: formatCardDate(row.posting_date) },
+        {
+          label: "Imported At",
+          value: row.imported_at ? new Date(row.imported_at).toLocaleString() : "",
+        },
+      ],
+    },
+  ];
+
+  return (
+    <Paper
+      elevation={0}
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onToggle();
+        }
+      }}
+      sx={{
+        borderRadius: "10px",
+        border: `1px solid ${C.border}`,
+        p: 1.25,
+        cursor: "pointer",
+        width: "100%",
+        "&:active": { bgcolor: C.headerBg },
+      }}
+    >
+      {/* Date + expand chevron */}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+        <Typography sx={{ fontSize: "13.5px", fontWeight: 700, color: C.navy }}>
+          {formatCardDate(row.posting_date)}
+        </Typography>
+        <ExpandMoreIcon
+          sx={{
+            color: C.slate,
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.15s ease",
+          }}
+        />
+      </Box>
+
+      {/* Material code */}
+      <Typography
+        sx={{ fontSize: "15px", fontWeight: 700, color: C.primary, mt: 0.5, wordBreak: "break-word" }}
+      >
+        {row.material_code}
+      </Typography>
+
+      {/* Description (2-line clamp) */}
+      {row.material_description ? (
+        <Typography
+          sx={{
+            fontSize: "13px",
+            color: C.navy,
+            mt: 0.25,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {row.material_description}
+        </Typography>
+      ) : null}
+
+      {/* Movement badge + storage location + quantity */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+          mt: 0.75,
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap", minWidth: 0 }}>
+          <Box
+            sx={{
+              display: "inline-block",
+              bgcolor: badge.bg,
+              color: badge.fg,
+              borderRadius: "8px",
+              px: 1,
+              py: 0.4,
+              fontSize: "11.5px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {label}
+          </Box>
+          {row.storage_location ? (
+            <Box
+              sx={{
+                display: "inline-block",
+                bgcolor: C.headerBg,
+                color: C.slate,
+                borderRadius: "8px",
+                px: 1,
+                py: 0.4,
+                fontSize: "11.5px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {row.storage_location}
+            </Box>
+          ) : null}
+        </Box>
+        <Typography
+          sx={{ fontSize: "14px", fontWeight: 700, color: qtyPositive ? C.green : C.red, whiteSpace: "nowrap" }}
+        >
+          {qtyPositive ? "+" : ""}
+          {row.quantity}
+          {unit}
+        </Typography>
+      </Box>
+
+      {/* Vendor / Invoice / User */}
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", mt: 0.75 }}>
+        <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, minWidth: 0 }}>
+          <Typography sx={{ color: C.slate, fontSize: "12px", flexShrink: 0 }}>Vendor:</Typography>
+          <Typography noWrap title={row.vendor ?? undefined} sx={{ color: C.navy, fontSize: "12.5px", minWidth: 0 }}>
+            {row.vendor || "—"}
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, minWidth: 0 }}>
+          <Typography sx={{ color: C.slate, fontSize: "12px", flexShrink: 0 }}>Invoice:</Typography>
+          <Typography noWrap title={row.invoice_number ?? undefined} sx={{ color: C.navy, fontSize: "12.5px", minWidth: 0 }}>
+            {row.invoice_number || "—"}
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, minWidth: 0, gridColumn: "1 / -1" }}>
+          <Typography sx={{ color: C.slate, fontSize: "12px", flexShrink: 0 }}>User:</Typography>
+          <Typography noWrap title={row.user_name ?? undefined} sx={{ color: C.navy, fontSize: "12.5px", minWidth: 0 }}>
+            {row.user_name || "—"}
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Expanded: all remaining fields, grouped */}
+      {expanded ? (
+        <Box sx={{ mt: 1.25, pt: 1, borderTop: `1px solid ${C.border}` }}>
+          {groups.map((group) => {
+            const rows = group.rows.filter((entry) => entry.value !== "");
+            if (rows.length === 0) return null;
+            return (
+              <Box key={group.title} sx={{ mb: 1 }}>
+                <Typography
+                  sx={{
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: C.slate,
+                    mb: 0.5,
+                  }}
+                >
+                  {group.title}
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {rows.map((entry) => (
+                    <Box
+                      key={entry.label}
+                      sx={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 1.5 }}
+                    >
+                      <Typography sx={{ color: C.slate, fontSize: "12.5px", whiteSpace: "nowrap" }}>
+                        {entry.label}
+                      </Typography>
+                      <Typography
+                        sx={{ color: C.navy, fontSize: "12.5px", textAlign: "right", wordBreak: "break-word" }}
+                      >
+                        {entry.value}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
+    </Paper>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -299,6 +565,8 @@ function persistWidths(next: Record<string, number>): void {
 /* ------------------------------------------------------------------ */
 
 export default function SapHistory() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [searchParams] = useSearchParams();
 
   const [snackbar, setSnackbar] = useState<{
@@ -337,6 +605,8 @@ export default function SapHistory() {
     startX: number;
     startWidth: number;
   } | null>(null);
+  // Mobile card list: which card is expanded (one at a time).
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   // The filter combination whose data currently lives in `docs` - loading
   // is derived from it so the effect below only calls setState inside
   // async callbacks.
@@ -556,15 +826,14 @@ export default function SapHistory() {
   };
 
   return (
-    <Box sx={{ bgcolor: "#FFFFFF", px: { xs: 1.5, sm: 3 }, py: 2.5, pb: 4 }}>
-      {/* A. Header */}
-      <Box
+    <Box sx={{ bgcolor: "#FFFFFF", px: { xs: 1.5, sm: 3 }, py: { xs: 1.5, sm: 2.5 }, pb: 4 }}>
+      {/* A. Header */}        <Box
         sx={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           flexWrap: "wrap",
-          gap: 1.5,
+          gap: { xs: 1, sm: 1.5 },
         }}
       >
         <Box>
@@ -576,12 +845,12 @@ export default function SapHistory() {
           </Typography>
         </Box>
 
-        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, width: { xs: "100%", sm: "auto" } }}>
           <Button
             onClick={handleExportExcel}
             disabled={exporting || !docs || docs.length === 0}
             startIcon={<GridOnOutlinedIcon sx={{ color: C.green }} />}
-            sx={{ ...actionButtonSx, color: C.green }}
+            sx={{ ...actionButtonSx, color: C.green, flex: { xs: "1 1 0", sm: "0 0 auto" }, minWidth: 0 }}
           >
             Export Excel
           </Button>
@@ -589,7 +858,7 @@ export default function SapHistory() {
             onClick={handleExportPdf}
             disabled={exporting || !docs || docs.length === 0}
             startIcon={<PictureAsPdfOutlinedIcon sx={{ color: C.red }} />}
-            sx={{ ...actionButtonSx, color: C.red }}
+            sx={{ ...actionButtonSx, color: C.red, flex: { xs: "1 1 0", sm: "0 0 auto" }, minWidth: 0 }}
           >
             Export PDF
           </Button>
@@ -597,7 +866,7 @@ export default function SapHistory() {
             onClick={(event) => setFiltersAnchor(event.currentTarget)}
             startIcon={<FilterAltOutlinedIcon sx={{ color: C.primary }} />}
             endIcon={<ExpandMoreIcon />}
-            sx={actionButtonSx}
+            sx={{ ...actionButtonSx, flexBasis: { xs: "100%", sm: "auto" } }}
           >
             Filters
           </Button>
@@ -605,7 +874,7 @@ export default function SapHistory() {
       </Box>
 
       {/* B. Divider */}
-      <Divider sx={{ borderColor: C.border, my: 2 }} />
+      <Divider sx={{ borderColor: C.border, my: { xs: 1.5, sm: 2 } }} />
 
       {/* C. Search / filter toolbar */}
       <Box
@@ -613,8 +882,8 @@ export default function SapHistory() {
           display: "flex",
           alignItems: "center",
           flexWrap: "wrap",
-          gap: 1.25,
-          mb: 1.5,
+          gap: { xs: 1, sm: 1.25 },
+          mb: { xs: 1, sm: 1.5 },
         }}
       >
         <TextField
@@ -640,8 +909,8 @@ export default function SapHistory() {
           }}
           sx={{
             flexGrow: 1,
-            flexBasis: 380,
-            minWidth: 240,
+            flexBasis: { xs: "100%", sm: 380 },
+            minWidth: { xs: 0, sm: 240 },
             "& .MuiOutlinedInput-root": { height: 56, borderRadius: "10px" },
             "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
           }}
@@ -657,8 +926,9 @@ export default function SapHistory() {
           }}
           slotProps={{ inputLabel: { shrink: true } }}
           sx={{
-            flexBasis: "19%",
-            minWidth: 170,
+            flexBasis: { xs: "calc(50% - 5px)", sm: "19%" },
+            minWidth: { xs: 0, sm: 170 },
+            flexGrow: { xs: 1, sm: 0 },
             ...toolbarFieldSx,
           }}
         />
@@ -673,8 +943,9 @@ export default function SapHistory() {
           }}
           slotProps={{ inputLabel: { shrink: true } }}
           sx={{
-            flexBasis: "19%",
-            minWidth: 170,
+            flexBasis: { xs: "calc(50% - 5px)", sm: "19%" },
+            minWidth: { xs: 0, sm: 170 },
+            flexGrow: { xs: 1, sm: 0 },
             ...toolbarFieldSx,
           }}
         />
@@ -683,7 +954,9 @@ export default function SapHistory() {
           startIcon={<SearchIcon />}
           sx={{
             height: 56,
-            width: 135,
+            width: { xs: "auto", sm: 135 },
+            flex: { xs: "1 1 0", sm: "0 0 auto" },
+            minWidth: 0,
             borderRadius: "10px",
             bgcolor: C.primary,
             color: "#FFFFFF",
@@ -700,6 +973,8 @@ export default function SapHistory() {
           startIcon={<ReplayOutlinedIcon sx={{ color: C.primary }} />}
           sx={{
             height: 56,
+            flex: { xs: "1 1 0", sm: "0 0 auto" },
+            minWidth: 0,
             borderRadius: "10px",
             border: `1px solid ${C.border}`,
             bgcolor: "#FFFFFF",
@@ -771,7 +1046,7 @@ export default function SapHistory() {
         </Alert>
       )}
 
-      {/* D. Data table */}
+      {/* D. Results - desktop table / mobile cards */}
       {loading ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress size={28} />
@@ -789,6 +1064,128 @@ export default function SapHistory() {
               : "Nothing to show."}
           </Typography>
         </Paper>
+      ) : isMobile ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {/* Mobile: Total records + rows per page */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 1,
+              flexWrap: "wrap",
+            }}
+          >
+            <Typography sx={{ fontSize: "13px", color: C.slate }}>
+              Total Records:{" "}
+              <Box component="span" sx={{ fontWeight: 600, color: C.navy }}>
+                {total.toLocaleString("en-US")}
+              </Box>
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography sx={{ fontSize: "12.5px", color: C.slate }}>Rows per page:</Typography>
+              <Select
+                size="small"
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setPage(0);
+                }}
+                sx={{
+                  height: 32,
+                  fontSize: "13px",
+                  borderRadius: "8px",
+                  "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
+                }}
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+          </Box>
+
+          {/* Mobile: card list */}
+          {docs.map((row) => (
+            <MobileHistoryCard
+              key={row.id}
+              row={row}
+              expanded={expandedId === row.id}
+              onToggle={() => setExpandedId((prev) => (prev === row.id ? null : row.id))}
+            />
+          ))}
+
+          {/* Mobile: pagination (first / prev / current / next / last) */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 0.25,
+              pt: 1,
+              pb: 1,
+            }}
+          >
+            <IconButton
+              size="small"
+              aria-label="First page"
+              disabled={page === 0}
+              onClick={() => setPage(0)}
+              sx={{ color: C.slate }}
+            >
+              <FirstPageIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              aria-label="Previous page"
+              disabled={page === 0}
+              onClick={() => setPage(Math.max(0, page - 1))}
+              sx={{ color: C.slate }}
+            >
+              <KeyboardArrowLeftIcon fontSize="small" />
+            </IconButton>
+            <Box
+              sx={{
+                minWidth: 32,
+                height: 32,
+                px: 0.5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "8px",
+                bgcolor: C.primary,
+                color: "#FFFFFF",
+                fontSize: "13px",
+                fontWeight: 600,
+              }}
+            >
+              {page + 1}
+            </Box>
+            <Typography sx={{ px: 0.5, color: C.slate, fontSize: "13px" }}>
+              of {pageCount.toLocaleString("en-US")}
+            </Typography>
+            <IconButton
+              size="small"
+              aria-label="Next page"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage(Math.min(pageCount - 1, page + 1))}
+              sx={{ color: C.slate }}
+            >
+              <KeyboardArrowRightIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              aria-label="Last page"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage(pageCount - 1)}
+              sx={{ color: C.slate }}
+            >
+              <LastPageIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Box>
       ) : (
         <Paper
           elevation={0}
