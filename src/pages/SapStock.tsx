@@ -57,6 +57,7 @@ import {
   type SapStockRow,
 } from "../services/sapHistoryService";
 import SapReviewDialog from "../components/SapReviewDialog";
+import SapMaterialHistoryPopup from "../components/SapMaterialHistoryPopup";
 
 type SnackbarSeverity = "success" | "error" | "warning" | "info";
 
@@ -417,13 +418,16 @@ export default function SapStock() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  /** SAP History: open in a new tab on desktop, keep in-app nav on mobile. */
+  /** SAP History: open in a popup on mobile, new tab on desktop. */
+  const [sapHistoryOpen, setSapHistoryOpen] = useState(false);
+  const [sapHistoryMaterial, setSapHistoryMaterial] = useState("");
+
   const openSapHistory = (code: string) => {
-    const url = `/sap-history?material=${code}`;
     if (isMobile) {
-      navigate(url);
+      setSapHistoryMaterial(code);
+      setSapHistoryOpen(true);
     } else {
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.open(`/sap-history?material=${code}`, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -1388,6 +1392,13 @@ export default function SapStock() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Mobile-only SAP History popup */}
+      <SapMaterialHistoryPopup
+        open={sapHistoryOpen}
+        onClose={() => setSapHistoryOpen(false)}
+        materialCode={sapHistoryMaterial}
+      />
     </Box>
   );
 }
