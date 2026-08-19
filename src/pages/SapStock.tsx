@@ -45,6 +45,7 @@ import FirstPageIcon from "@mui/icons-material/FirstPage";
 import KeyboardArrowLeftIcon from "@mui/icons-material/KeyboardArrowLeft";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import LastPageIcon from "@mui/icons-material/LastPage";
+import LocationOnOutlinedIcon from "@mui/icons-material/LocationOnOutlined";
 
 import { useNavigate } from "react-router-dom";
 
@@ -93,6 +94,167 @@ const C = {
 function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_") || "SAP_Stock";
 }
+
+/* ------------------------------------------------------------------ */
+/* Mobile stock card (below the `sm` breakpoint only)                  */
+/* ------------------------------------------------------------------ */
+
+function MobileStockCard({
+  row,
+  onReview,
+  onHistory,
+}: {
+  row: SapStockRow;
+  onReview: () => void;
+  onHistory: () => void;
+}) {
+  const hasReview = Boolean(row.review);
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        borderRadius: "12px",
+        border: `1px solid ${C.border}`,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        overflow: "hidden",
+        width: "100%",
+      }}
+    >
+      <Box sx={{ p: 1.25 }}>
+        {/* Row 1: Material code + Total Stock */}
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 0.25 }}>
+          <Typography
+            sx={{ fontSize: "16px", fontWeight: 700, color: C.teal, wordBreak: "break-word" }}
+          >
+            {row.material_code}
+          </Typography>
+          <Box
+            sx={{
+              flexShrink: 0,
+              bgcolor: C.headerBg,
+              border: `1px solid ${C.border}`,
+              borderRadius: "8px",
+              px: 1,
+              py: 0.35,
+              textAlign: "center",
+            }}
+          >
+            <Typography sx={{ fontSize: "15px", fontWeight: 800, color: C.navy, lineHeight: 1.2 }}>
+              {row.total}
+            </Typography>
+            {row.uom ? (
+              <Typography sx={{ fontSize: "10px", color: C.slate, fontWeight: 500, lineHeight: 1.2 }}>
+                {row.uom}
+              </Typography>
+            ) : null}
+          </Box>
+        </Box>
+
+        {/* Row 2: Description (2-line clamp) */}
+        {row.short_description ? (
+          <Typography
+            sx={{
+              fontSize: "13px",
+              color: C.navy,
+              lineHeight: 1.35,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              mb: 0.75,
+            }}
+          >
+            {row.short_description}
+          </Typography>
+        ) : null}
+
+        {/* Row 3: SLoc pills */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap", mb: 0.75 }}>
+          {row.locations.length === 0 ? (
+            <Typography sx={{ fontSize: "12px", color: C.slate }}>No SLoc data</Typography>
+          ) : (
+            row.locations.map((loc) => (
+              <Box
+                key={loc.storage_location}
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.4,
+                  bgcolor: C.tealBg,
+                  color: C.tealDark,
+                  border: `1px solid ${C.tealBorder}`,
+                  borderRadius: "6px",
+                  px: 0.85,
+                  py: 0.3,
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <LocationOnOutlinedIcon sx={{ fontSize: 12 }} />
+                {loc.storage_location}: {loc.quantity}
+              </Box>
+            ))
+          )}
+        </Box>
+
+        {/* Row 4: Status badge */}
+        <Box sx={{ mb: 0.75 }}>
+          <StatusBadge row={row} />
+        </Box>
+
+        {/* Row 5: Action buttons */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          {hasReview ? (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<VisibilityOutlinedIcon sx={{ fontSize: 16 }} />}
+              onClick={onReview}
+              sx={{
+                flex: 1,
+                textTransform: "none",
+                color: C.tealDark,
+                borderColor: C.tealBorder,
+                bgcolor: C.tealBg,
+                borderRadius: "8px",
+                fontWeight: 600,
+                py: 0.75,
+                "&:hover": { bgcolor: "#CCFBF1", borderColor: "#2DD4BF" },
+              }}
+            >
+              Review
+            </Button>
+          ) : null}
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<HistoryIcon sx={{ fontSize: 16 }} />}
+            onClick={onHistory}
+            sx={{
+              flex: 1,
+              textTransform: "none",
+              color: C.navy,
+              borderColor: C.border,
+              bgcolor: "#FFFFFF",
+              borderRadius: "8px",
+              fontWeight: 600,
+              py: 0.75,
+              "&:hover": { bgcolor: C.headerBg },
+            }}
+          >
+            History
+          </Button>
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Status badge                                                        */
+/* ------------------------------------------------------------------ */
 
 /** Compact status text for a row (exports + status badge). */
 function statusText(row: SapStockRow): string {
@@ -465,12 +627,12 @@ export default function SapStock() {
           </Typography>
         </Box>
 
-        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, width: { xs: "100%", sm: "auto" } }}>
           <Button
             onClick={handleExportExcel}
             disabled={exporting || !rows || rows.length === 0}
             startIcon={<GridOnOutlinedIcon sx={{ color: C.green }} />}
-            sx={{ ...actionButtonSx, color: C.green }}
+            sx={{ ...actionButtonSx, color: C.green, flex: { xs: "1 1 0", sm: "0 0 auto" }, minWidth: 0 }}
           >
             Export Excel
           </Button>
@@ -478,7 +640,7 @@ export default function SapStock() {
             onClick={handleExportPdf}
             disabled={exporting || !rows || rows.length === 0}
             startIcon={<PictureAsPdfOutlinedIcon sx={{ color: C.red }} />}
-            sx={{ ...actionButtonSx, color: C.red }}
+            sx={{ ...actionButtonSx, color: C.red, flex: { xs: "1 1 0", sm: "0 0 auto" }, minWidth: 0 }}
           >
             Export PDF
           </Button>
@@ -486,7 +648,7 @@ export default function SapStock() {
             onClick={(event) => setFiltersAnchor(event.currentTarget)}
             startIcon={<FilterAltOutlinedIcon sx={{ color: C.blue }} />}
             endIcon={<ExpandMoreIcon />}
-            sx={actionButtonSx}
+            sx={{ ...actionButtonSx, flexBasis: { xs: "100%", sm: "auto" } }}
           >
             Filters
           </Button>
@@ -547,14 +709,14 @@ export default function SapStock() {
       {/* Search / filter bar */}
       <Paper
         variant="outlined"
-        sx={{ p: 1.5, borderRadius: 2, borderColor: C.border, mb: 2 }}
+        sx={{ p: { xs: 1.25, sm: 1.5 }, borderRadius: 2, borderColor: C.border, mb: 2 }}
       >
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
             flexWrap: "wrap",
-            gap: 1.25,
+            gap: { xs: 1, sm: 1.25 },
           }}
         >
           <TextField
@@ -577,8 +739,8 @@ export default function SapStock() {
             }}
             sx={{
               flexGrow: 1,
-              flexBasis: 280,
-              minWidth: 220,
+              flexBasis: { xs: "100%", sm: 280 },
+              minWidth: { xs: 0, sm: 220 },
               "& .MuiOutlinedInput-root": { height: 52, borderRadius: "10px" },
               "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
             }}
@@ -595,8 +757,9 @@ export default function SapStock() {
               },
             }}
             sx={{
-              flexBasis: 170,
-              minWidth: 150,
+              flexBasis: { xs: "calc(50% - 5px)", sm: 170 },
+              minWidth: { xs: 0, sm: 150 },
+              flexGrow: { xs: 1, sm: 0 },
               "& .MuiOutlinedInput-root": { height: 52, borderRadius: "10px" },
               "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
             }}
@@ -610,7 +773,9 @@ export default function SapStock() {
             startIcon={<SearchIcon />}
             sx={{
               height: 52,
-              px: 3,
+              width: { xs: "auto", sm: 135 },
+              flex: { xs: "1 1 0", sm: "0 0 auto" },
+              minWidth: 0,
               borderRadius: "10px",
               bgcolor: C.teal,
               color: "#FFFFFF",
@@ -627,6 +792,8 @@ export default function SapStock() {
             startIcon={<ReplayOutlinedIcon sx={{ color: C.teal }} />}
             sx={{
               height: 52,
+              flex: { xs: "1 1 0", sm: "0 0 auto" },
+              minWidth: 0,
               borderRadius: "10px",
               border: `1px solid ${C.border}`,
               bgcolor: "#FFFFFF",
@@ -691,6 +858,125 @@ export default function SapStock() {
               : "Nothing to show."}
           </Typography>
         </Paper>
+      ) : isMobile ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {/* Mobile: Total records + rows per page */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 1,
+              flexWrap: "wrap",
+            }}
+          >
+            <Typography sx={{ fontSize: "13px", color: C.slate }}>
+              Total Records:{" "}
+              <Box component="span" sx={{ fontWeight: 600, color: C.navy }}>
+                {total.toLocaleString("en-US")}
+              </Box>
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography sx={{ fontSize: "12.5px", color: C.slate }}>Rows per page:</Typography>
+              <Select
+                size="small"
+                value={pageSize}
+                onChange={(event) => handleRowsPerPageChange(Number(event.target.value))}
+                sx={{
+                  height: 32,
+                  fontSize: "13px",
+                  borderRadius: "8px",
+                  "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
+                }}
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+          </Box>
+
+          {/* Mobile: card list */}
+          {rows.map((row) => (
+            <MobileStockCard
+              key={row.material_code}
+              row={row}
+              onReview={() => row.review && setReview(row.review)}
+              onHistory={() => openSapHistory(row.material_code)}
+            />
+          ))}
+
+          {/* Mobile: compact pagination */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 0.25,
+              pt: 1,
+              pb: 1,
+            }}
+          >
+            <IconButton
+              size="small"
+              aria-label="First page"
+              disabled={page === 0}
+              onClick={() => setPage(0)}
+              sx={{ color: C.slate }}
+            >
+              <FirstPageIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              aria-label="Previous page"
+              disabled={page === 0}
+              onClick={() => setPage(Math.max(0, page - 1))}
+              sx={{ color: C.slate }}
+            >
+              <KeyboardArrowLeftIcon fontSize="small" />
+            </IconButton>
+            <Box
+              sx={{
+                minWidth: 32,
+                height: 32,
+                px: 0.5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "8px",
+                bgcolor: C.teal,
+                color: "#FFFFFF",
+                fontSize: "13px",
+                fontWeight: 600,
+              }}
+            >
+              {page + 1}
+            </Box>
+            <Typography sx={{ px: 0.5, color: C.slate, fontSize: "13px" }}>
+              of {pageCount.toLocaleString("en-US")}
+            </Typography>
+            <IconButton
+              size="small"
+              aria-label="Next page"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage(Math.min(pageCount - 1, page + 1))}
+              sx={{ color: C.slate }}
+            >
+              <KeyboardArrowRightIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              aria-label="Last page"
+              disabled={page >= pageCount - 1}
+              onClick={() => setPage(pageCount - 1)}
+              sx={{ color: C.slate }}
+            >
+              <LastPageIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Box>
       ) : (
         <Paper
           elevation={0}
