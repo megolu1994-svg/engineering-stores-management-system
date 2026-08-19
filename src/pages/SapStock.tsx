@@ -757,9 +757,9 @@ export default function SapStock() {
               },
             }}
             sx={{
-              flexBasis: { xs: "calc(50% - 5px)", sm: 170 },
+              flexBasis: { xs: "100%", sm: 170 },
               minWidth: { xs: 0, sm: 150 },
-              flexGrow: { xs: 1, sm: 0 },
+              flexGrow: { xs: 0, sm: 0 },
               "& .MuiOutlinedInput-root": { height: 52, borderRadius: "10px" },
               "& .MuiOutlinedInput-notchedOutline": { borderColor: C.border },
             }}
@@ -782,6 +782,7 @@ export default function SapStock() {
               textTransform: "none",
               fontWeight: 600,
               boxShadow: "none",
+              whiteSpace: "nowrap",
               "&:hover": { bgcolor: C.tealDark },
             }}
           >
@@ -802,6 +803,7 @@ export default function SapStock() {
               fontWeight: 600,
               px: 2.5,
               boxShadow: "none",
+              whiteSpace: "nowrap",
               "&:hover": { bgcolor: C.headerBg },
             }}
           >
