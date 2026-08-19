@@ -455,11 +455,12 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
       fullScreen={isMobile}
       maxWidth="md"
       fullWidth
+      sx={isMobile ? { '& .MuiDialog-paper': { height: '100%', maxHeight: '100%' } } : {}}
       slotProps={{
         paper: {
           sx: isMobile
-            ? { borderRadius: 0, height: "100%" }
-            : { borderRadius: "16px", maxHeight: "85vh" },
+            ? { borderRadius: 0, height: "100%", maxHeight: "100%", display: "flex", flexDirection: "column" }
+            : { borderRadius: "16px", maxHeight: "85vh", display: "flex", flexDirection: "column" },
         },
       }}
     >
@@ -488,7 +489,17 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ px: 0, py: 0 }}>
+      <DialogContent
+        sx={{
+          px: 0,
+          py: 0,
+          flex: 1,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+        }}
+      >
         {loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
             <CircularProgress size={32} sx={{ color: C.primary }} />
@@ -510,8 +521,9 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
               flexDirection: "column",
               gap: 1,
               p: 1.5,
-              maxHeight: isMobile ? "calc(100vh - 80px)" : "60vh",
+              flex: 1,
               overflowY: "auto",
+              minHeight: 0,
             }}
           >
             {docs.map((doc) => (
