@@ -40,6 +40,7 @@ import ShoppingCartOutlinedIcon from "@mui/icons-material/ShoppingCartOutlined";
 import BusinessOutlinedIcon from "@mui/icons-material/BusinessOutlined";
 import ReceiptOutlinedIcon from "@mui/icons-material/ReceiptOutlined";
 import PersonOutlinedIcon from "@mui/icons-material/PersonOutlined";
+import AccessTimeOutlinedIcon from "@mui/icons-material/AccessTimeOutlined";
 import GridOnOutlinedIcon from "@mui/icons-material/GridOnOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
@@ -150,6 +151,84 @@ function formatCardDate(iso: string | null): string {
  * remaining field of the record in grouped label/value rows. All values
  * come from the existing SapDocument row - no invented fields.
  */
+/* -- Section color tokens for expanded card sections -- */
+const SEC = {
+  material: { bg: "#F5F3FF", fg: "#7C3AED", border: "#EDE9FE" },
+  document: { bg: "#EFF6FF", fg: "#2563EB", border: "#DBEAFE" },
+  org: { bg: "#F0FDF4", fg: "#16A34A", border: "#DCFCE7" },
+  movement: { bg: "#FFF7ED", fg: "#EA580C", border: "#FFEDD5" },
+};
+
+/** Compact label/value row inside an expanded section. */
+function FieldRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  if (!value) return null;
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.5, py: 0.35 }}>
+      <Typography sx={{ fontSize: "11.5px", color: C.slate, fontWeight: 500 }}>
+        {label}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: "12px",
+          color: valueColor ?? C.navy,
+          fontWeight: 600,
+          wordBreak: "break-word",
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+/** One section inside the expanded card (Material / Document / Org / Movement). */
+function SectionCard({
+  title,
+  icon,
+  color,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  color: { bg: string; fg: string; border: string };
+  children: React.ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        bgcolor: color.bg,
+        border: `1px solid ${color.border}`,
+        borderRadius: "8px",
+        p: 1.25,
+        minWidth: 0,
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 0.75 }}>
+        <Box sx={{ color: color.fg, fontSize: "14px", display: "flex" }}>{icon}</Box>
+        <Typography sx={{ fontSize: "10.5px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: color.fg }}>
+          {title}
+        </Typography>
+      </Box>
+      {children}
+    </Box>
+  );
+}
+
+/**
+ * Redesigned mobile transaction card for SAP Material History.
+ * Collapsed: date + material code + quantity badge + description + chips + vendor/invoice/user.
+ * Expanded: two-column grid of colored info sections + footer strip.
+ * Desktop is untouched — this component renders only below the `sm` breakpoint.
+ */
 function MobileHistoryCard({
   row,
   expanded,
@@ -163,54 +242,14 @@ function MobileHistoryCard({
   const label = movementLabel(row);
   const qtyPositive = row.quantity >= 0;
   const unit = row.unit_of_entry ? ` ${row.unit_of_entry}` : "";
+  const importedAt = row.imported_at ? new Date(row.imported_at).toLocaleString() : "";
 
-  const groups: { title: string; rows: { label: string; value: string }[] }[] = [
-    {
-      title: "Material",
-      rows: [
-        { label: "Material Code", value: row.material_code },
-        { label: "Description", value: row.material_description ?? "" },
-        { label: "Item", value: row.item ?? "" },
-      ],
-    },
-    {
-      title: "Document",
-      rows: [
-        {
-          label: "Doc",
-          value: row.material_document
-            ? row.material_doc_item
-              ? `${row.material_document} / ${row.material_doc_item}`
-              : row.material_document
-            : "",
-        },
-        { label: "Doc Header Text", value: row.document_header_text ?? "" },
-        { label: "PO", value: row.purchase_order ?? "" },
-        { label: "Invoice", value: row.invoice_number ?? "" },
-      ],
-    },
-    {
-      title: "Organizational",
-      rows: [
-        { label: "Storage Location", value: row.storage_location },
-        { label: "User", value: row.user_name ?? "" },
-        { label: "Special Stock", value: row.special_stock ?? "" },
-      ],
-    },
-    {
-      title: "Movement",
-      rows: [
-        { label: "Movement Type", value: movementLabel(row) },
-        { label: "Quantity", value: `${qtyPositive ? "+" : ""}${row.quantity}${unit}` },
-        { label: "Running Balance", value: `${row.running_balance}${unit}` },
-        { label: "Posting Date", value: formatCardDate(row.posting_date) },
-        {
-          label: "Imported At",
-          value: row.imported_at ? new Date(row.imported_at).toLocaleString() : "",
-        },
-      ],
-    },
-  ];
+  /* -- Doc string (Doc / Doc Item) -- */
+  const docStr = row.material_document
+    ? row.material_doc_item
+      ? `${row.material_document} / ${row.material_doc_item}`
+      : row.material_document
+    : "";
 
   return (
     <Paper
@@ -226,167 +265,263 @@ function MobileHistoryCard({
         }
       }}
       sx={{
-        borderRadius: "10px",
+        borderRadius: "12px",
         border: `1px solid ${C.border}`,
-        p: 1.25,
+        boxShadow: expanded ? "0 2px 8px rgba(0,0,0,0.06)" : "0 1px 3px rgba(0,0,0,0.04)",
         cursor: "pointer",
         width: "100%",
+        overflow: "hidden",
+        transition: "box-shadow 0.15s ease",
         "&:active": { bgcolor: C.headerBg },
       }}
     >
-      {/* Date + expand chevron */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-        <Typography sx={{ fontSize: "13.5px", fontWeight: 700, color: C.navy }}>
-          {formatCardDate(row.posting_date)}
-        </Typography>
-        <ExpandMoreIcon
-          sx={{
-            color: C.slate,
-            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 0.15s ease",
-          }}
-        />
-      </Box>
+      {/* ===== COLLAPSED HEADER (always visible) ===== */}
+      <Box sx={{ p: 1.25, pb: expanded ? 1.25 : 1.5 }}>
+        {/* Row 1: date header + quantity badge */}
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <CalendarMonthOutlinedIcon sx={{ fontSize: 15, color: C.slate }} />
+            <Typography sx={{ fontSize: "12.5px", fontWeight: 600, color: C.slate }}>
+              {formatCardDate(row.posting_date)}
+            </Typography>
+          </Box>
+          <ExpandMoreIcon
+            sx={{
+              color: C.slate,
+              fontSize: 20,
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.15s ease",
+            }}
+          />
+        </Box>
 
-      {/* Material code */}
-      <Typography
-        sx={{ fontSize: "15px", fontWeight: 700, color: C.primary, mt: 0.5, wordBreak: "break-word" }}
-      >
-        {row.material_code}
-      </Typography>
-
-      {/* Description (2-line clamp) */}
-      {row.material_description ? (
-        <Typography
-          sx={{
-            fontSize: "13px",
-            color: C.navy,
-            mt: 0.25,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {row.material_description}
-        </Typography>
-      ) : null}
-
-      {/* Movement badge + storage location + quantity */}
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 1,
-          mt: 0.75,
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap", minWidth: 0 }}>
+        {/* Row 2: material code + quantity badge */}
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 0.25 }}>
+          <Typography
+            sx={{ fontSize: "16px", fontWeight: 700, color: C.primary, wordBreak: "break-word" }}
+          >
+            {row.material_code}
+          </Typography>
           <Box
             sx={{
-              display: "inline-block",
+              flexShrink: 0,
+              bgcolor: qtyPositive ? "#DCFCE7" : "#FEE2E2",
+              color: qtyPositive ? C.green : C.red,
+              borderRadius: "8px",
+              px: 1.25,
+              py: 0.4,
+              fontSize: "13px",
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {qtyPositive ? "+" : ""}{row.quantity}{unit}
+          </Box>
+        </Box>
+
+        {/* Row 3: description (2-line clamp) */}
+        {row.material_description ? (
+          <Typography
+            sx={{
+              fontSize: "13px",
+              color: C.navy,
+              lineHeight: 1.35,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              mb: 0.75,
+            }}
+          >
+            {row.material_description}
+          </Typography>
+        ) : null}
+
+        {/* Row 4: movement type chip + storage location chip */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap", mb: 0.75 }}>
+          <Box
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.4,
               bgcolor: badge.bg,
               color: badge.fg,
-              borderRadius: "8px",
-              px: 1,
-              py: 0.4,
-              fontSize: "11.5px",
+              borderRadius: "6px",
+              px: 0.85,
+              py: 0.3,
+              fontSize: "11px",
               fontWeight: 600,
               whiteSpace: "nowrap",
             }}
           >
+            <SwapHorizOutlinedIcon sx={{ fontSize: 13 }} />
             {label}
           </Box>
           {row.storage_location ? (
             <Box
               sx={{
-                display: "inline-block",
-                bgcolor: C.headerBg,
-                color: C.slate,
-                borderRadius: "8px",
-                px: 1,
-                py: 0.4,
-                fontSize: "11.5px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.4,
+                bgcolor: "#EDE9FE",
+                color: "#7C3AED",
+                borderRadius: "6px",
+                px: 0.85,
+                py: 0.3,
+                fontSize: "11px",
                 fontWeight: 600,
                 whiteSpace: "nowrap",
               }}
             >
+              <LocationOnOutlinedIcon sx={{ fontSize: 13 }} />
               {row.storage_location}
             </Box>
           ) : null}
         </Box>
-        <Typography
-          sx={{ fontSize: "14px", fontWeight: 700, color: qtyPositive ? C.green : C.red, whiteSpace: "nowrap" }}
+
+        {/* Row 5: vendor / invoice / user compact strip */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 0.5,
+            bgcolor: "#F8FAFC",
+            borderRadius: "8px",
+            px: 1,
+            py: 0.75,
+          }}
         >
-          {qtyPositive ? "+" : ""}
-          {row.quantity}
-          {unit}
-        </Typography>
+          {/* Vendor */}
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.3, mb: 0.15 }}>
+              <BusinessOutlinedIcon sx={{ fontSize: 11, color: C.slate }} />
+              <Typography sx={{ fontSize: "10px", color: C.slate, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                Vendor
+              </Typography>
+            </Box>
+            <Typography
+              noWrap
+              title={row.vendor ?? undefined}
+              sx={{ fontSize: "12px", color: C.navy, fontWeight: 600, minWidth: 0 }}
+            >
+              {row.vendor || "—"}
+            </Typography>
+          </Box>
+          {/* Invoice */}
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.3, mb: 0.15 }}>
+              <ReceiptOutlinedIcon sx={{ fontSize: 11, color: C.slate }} />
+              <Typography sx={{ fontSize: "10px", color: C.slate, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                Invoice
+              </Typography>
+            </Box>
+            <Typography
+              noWrap
+              title={row.invoice_number ?? undefined}
+              sx={{ fontSize: "12px", color: C.navy, fontWeight: 600, minWidth: 0 }}
+            >
+              {row.invoice_number || "—"}
+            </Typography>
+          </Box>
+          {/* User */}
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.3, mb: 0.15 }}>
+              <PersonOutlinedIcon sx={{ fontSize: 11, color: C.slate }} />
+              <Typography sx={{ fontSize: "10px", color: C.slate, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                User
+              </Typography>
+            </Box>
+            <Typography
+              noWrap
+              title={row.user_name ?? undefined}
+              sx={{ fontSize: "12px", color: C.navy, fontWeight: 600, minWidth: 0 }}
+            >
+              {row.user_name || "—"}
+            </Typography>
+          </Box>
+        </Box>
       </Box>
 
-      {/* Vendor / Invoice / User */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", mt: 0.75 }}>
-        <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, minWidth: 0 }}>
-          <Typography sx={{ color: C.slate, fontSize: "12px", flexShrink: 0 }}>Vendor:</Typography>
-          <Typography noWrap title={row.vendor ?? undefined} sx={{ color: C.navy, fontSize: "12.5px", minWidth: 0 }}>
-            {row.vendor || "—"}
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, minWidth: 0 }}>
-          <Typography sx={{ color: C.slate, fontSize: "12px", flexShrink: 0 }}>Invoice:</Typography>
-          <Typography noWrap title={row.invoice_number ?? undefined} sx={{ color: C.navy, fontSize: "12.5px", minWidth: 0 }}>
-            {row.invoice_number || "—"}
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, minWidth: 0, gridColumn: "1 / -1" }}>
-          <Typography sx={{ color: C.slate, fontSize: "12px", flexShrink: 0 }}>User:</Typography>
-          <Typography noWrap title={row.user_name ?? undefined} sx={{ color: C.navy, fontSize: "12.5px", minWidth: 0 }}>
-            {row.user_name || "—"}
-          </Typography>
-        </Box>
-      </Box>
-
-      {/* Expanded: all remaining fields, grouped */}
+      {/* ===== EXPANDED DETAILS ===== */}
       {expanded ? (
-        <Box sx={{ mt: 1.25, pt: 1, borderTop: `1px solid ${C.border}` }}>
-          {groups.map((group) => {
-            const rows = group.rows.filter((entry) => entry.value !== "");
-            if (rows.length === 0) return null;
-            return (
-              <Box key={group.title} sx={{ mb: 1 }}>
-                <Typography
-                  sx={{
-                    fontSize: "10.5px",
-                    fontWeight: 700,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    color: C.slate,
-                    mb: 0.5,
-                  }}
-                >
-                  {group.title}
+        <Box sx={{ px: 1.25, pb: 1.25 }}>
+          {/* Divider */}
+          <Box sx={{ borderTop: `1px solid ${C.border}`, mb: 1 }} />
+
+          {/* Two-column grid of info sections */}
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75, mb: 1 }}>
+            {/* MATERIAL section */}
+            <SectionCard title="Material" icon={<Inventory2OutlinedIcon sx={{ fontSize: 14 }} />} color={SEC.material}>
+              <FieldRow label="Material Code" value={row.material_code} />
+              <FieldRow label="Description" value={row.material_description ?? ""} />
+              <FieldRow label="Item" value={row.item ?? ""} />
+            </SectionCard>
+
+            {/* DOCUMENT section */}
+            <SectionCard title="Document" icon={<InsertDriveFileOutlinedIcon sx={{ fontSize: 14 }} />} color={SEC.document}>
+              <FieldRow label="Doc" value={docStr} />
+              <FieldRow label="Doc Header Text" value={row.document_header_text ?? ""} />
+              <FieldRow label="PO" value={row.purchase_order ?? ""} />
+              <FieldRow label="Invoice" value={row.invoice_number ?? ""} />
+            </SectionCard>
+
+            {/* ORGANIZATIONAL section */}
+            <SectionCard title="Organizational" icon={<LocationOnOutlinedIcon sx={{ fontSize: 14 }} />} color={SEC.org}>
+              <FieldRow label="Storage Location" value={row.storage_location} />
+              <FieldRow label="User" value={row.user_name ?? ""} />
+              <FieldRow label="Special Stock" value={row.special_stock ?? ""} />
+            </SectionCard>
+
+            {/* MOVEMENT section */}
+            <SectionCard title="Movement" icon={<SwapHorizOutlinedIcon sx={{ fontSize: 14 }} />} color={SEC.movement}>
+              <FieldRow label="Movement Type" value={movementLabel(row)} />
+              <FieldRow
+                label="Quantity"
+                value={`${qtyPositive ? "+" : ""}${row.quantity}${unit}`}
+                valueColor={qtyPositive ? C.green : C.red}
+              />
+              <FieldRow label="Running Balance" value={`${row.running_balance}${unit}`} valueColor={C.primary} />
+            </SectionCard>
+          </Box>
+
+          {/* Footer strip: Posting Date + Imported At */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 1,
+              bgcolor: "#FFFBEB",
+              borderRadius: "8px",
+              px: 1.25,
+              py: 0.75,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <CalendarMonthOutlinedIcon sx={{ fontSize: 14, color: C.orange }} />
+              <Box>
+                <Typography sx={{ fontSize: "9.5px", color: C.slate, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Posting Date
                 </Typography>
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                  {rows.map((entry) => (
-                    <Box
-                      key={entry.label}
-                      sx={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 1.5 }}
-                    >
-                      <Typography sx={{ color: C.slate, fontSize: "12.5px", whiteSpace: "nowrap" }}>
-                        {entry.label}
-                      </Typography>
-                      <Typography
-                        sx={{ color: C.navy, fontSize: "12.5px", textAlign: "right", wordBreak: "break-word" }}
-                      >
-                        {entry.value}
-                      </Typography>
-                    </Box>
-                  ))}
+                <Typography sx={{ fontSize: "12px", color: C.navy, fontWeight: 600 }}>
+                  {formatCardDate(row.posting_date)}
+                </Typography>
+              </Box>
+            </Box>
+            {importedAt ? (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <AccessTimeOutlinedIcon sx={{ fontSize: 14, color: C.slate }} />
+                <Box sx={{ textAlign: "right" }}>
+                  <Typography sx={{ fontSize: "9.5px", color: C.slate, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Imported At
+                  </Typography>
+                  <Typography sx={{ fontSize: "11.5px", color: C.navy, fontWeight: 500 }}>
+                    {importedAt}
+                  </Typography>
                 </Box>
               </Box>
-            );
-          })}
+            ) : null}
+          </Box>
         </Box>
       ) : null}
     </Paper>
