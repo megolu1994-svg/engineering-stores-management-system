@@ -16,9 +16,9 @@ import {
 } from "@mui/material";
 
 import HistoryIcon from "@mui/icons-material/History";
-import { useNavigate } from "react-router-dom";
 
 import { getAllocations } from "../services/materialAllocationService";
+import SapMaterialHistoryPopup from "./SapMaterialHistoryPopup";
 import {
   applySapReconciliation,
   dismissSapReconciliation,
@@ -58,7 +58,6 @@ export default function SapReviewDialog({
 }: Props) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
-  const navigate = useNavigate();
 
   const [loadedForReview, setLoadedForReview] = useState<number | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
@@ -207,20 +206,21 @@ export default function SapReviewDialog({
 
   const breakdown = review?.sloc_breakdown ?? [];
 
+  const [sapHistoryOpen, setSapHistoryOpen] = useState(false);
+
   const openSapHistory = () => {
     if (!review) return;
-    const url = `/sap-history?material=${review.material_code}`;
     if (fullScreen) {
-      // Mobile: keep the existing in-app navigation.
-      navigate(url);
+      // Mobile: open in a popup so the apply task is preserved.
+      setSapHistoryOpen(true);
     } else {
-      // Desktop: open SAP History in a new browser tab so the apply
-      // task stays open.
-      window.open(url, "_blank", "noopener,noreferrer");
+      // Desktop: open SAP History in a new browser tab.
+      window.open(`/sap-history?material=${review.material_code}`, "_blank", "noopener,noreferrer");
     }
   };
 
   return (
+    <>
     <Dialog
       open={!!review}
       onClose={saving || dismissing ? undefined : onClose}
@@ -373,5 +373,13 @@ export default function SapReviewDialog({
         </Button>
       </DialogActions>
     </Dialog>
+
+      {/* Mobile-only SAP History popup */}
+      <SapMaterialHistoryPopup
+        open={sapHistoryOpen}
+        onClose={() => setSapHistoryOpen(false)}
+        materialCode={review?.material_code ?? ""}
+      />
+    </>
   );
 }

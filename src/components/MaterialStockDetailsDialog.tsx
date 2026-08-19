@@ -36,9 +36,8 @@ import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import StorageIcon from "@mui/icons-material/Storage";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
-import { useNavigate } from "react-router-dom";
-
 import { searchMaterials } from "../services/materialService";
+import SapMaterialHistoryPopup from "./SapMaterialHistoryPopup";
 import { getAllocations } from "../services/materialAllocationService";
 import { getSapStockForMaterial } from "../services/sapHistoryService";
 import { getLocations } from "../services/locationService";
@@ -91,7 +90,6 @@ export default function MaterialStockDetailsDialog({
   materialCode,
   onClose,
 }: Props) {
-  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
@@ -214,16 +212,15 @@ export default function MaterialStockDetailsDialog({
         }
       : null;
 
+  const [sapHistoryOpen, setSapHistoryOpen] = useState(false);
+
   const openSapHistory = () => {
-    const url = `/sap-history?material=${materialCode}`;
     if (isMobile) {
-      // Mobile: keep the existing in-app navigation.
-      onClose();
-      navigate(url);
+      // Mobile: open the history in a popup so the current task is preserved.
+      setSapHistoryOpen(true);
     } else {
-      // Desktop: open SAP History in a new browser tab so the current
-      // popup and task stay intact.
-      window.open(url, "_blank", "noopener,noreferrer");
+      // Desktop: open SAP History in a new browser tab.
+      window.open(`/sap-history?material=${materialCode}`, "_blank", "noopener,noreferrer");
     }
   };
 
@@ -241,6 +238,7 @@ export default function MaterialStockDetailsDialog({
   );
 
   return (
+    <>
     <Dialog
       open={!!materialCode}
       onClose={onClose}
@@ -1293,5 +1291,13 @@ export default function MaterialStockDetailsDialog({
         </Button>
       </DialogActions>
     </Dialog>
+
+      {/* Mobile-only SAP History popup */}
+      <SapMaterialHistoryPopup
+        open={sapHistoryOpen}
+        onClose={() => setSapHistoryOpen(false)}
+        materialCode={materialCode ?? ""}
+      />
+    </>
   );
 }
