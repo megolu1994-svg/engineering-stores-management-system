@@ -4,8 +4,6 @@ import {
   Box,
   CircularProgress,
   Dialog,
-  DialogContent,
-  DialogTitle,
   IconButton,
   Typography,
   useMediaQuery,
@@ -455,17 +453,16 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
       fullScreen={isMobile}
       maxWidth="md"
       fullWidth
-      sx={isMobile ? { '& .MuiDialog-paper': { height: '100%', maxHeight: '100%' } } : {}}
       slotProps={{
         paper: {
           sx: isMobile
-            ? { borderRadius: 0, height: "100%", maxHeight: "100%", display: "flex", flexDirection: "column" }
-            : { borderRadius: "16px", maxHeight: "85vh", display: "flex", flexDirection: "column" },
+            ? { borderRadius: 0, height: "100%", maxHeight: "100%" }
+            : { borderRadius: "16px", maxHeight: "85vh" },
         },
       }}
     >
-      {/* Header */}
-      <DialogTitle
+      {/* Header – plain Box, not DialogTitle */}
+      <Box
         sx={{
           display: "flex",
           alignItems: "center",
@@ -474,6 +471,7 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
           py: 1.5,
           borderBottom: `1px solid ${C.border}`,
           bgcolor: "#F8FAFC",
+          flexShrink: 0,
         }}
       >
         <Box>
@@ -487,17 +485,18 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
         <IconButton onClick={onClose} size="small" sx={{ color: C.slate }}>
           <CloseIcon fontSize="small" />
         </IconButton>
-      </DialogTitle>
+      </Box>
 
-      <DialogContent
+      {/* Body – plain Box, not DialogContent */}
+      <Box
         sx={{
-          px: 0,
-          py: 0,
           flex: 1,
-          overflow: "hidden",
+          minHeight: 0,
+          overflowY: "auto",
+          p: 1.5,
           display: "flex",
           flexDirection: "column",
-          minWidth: 0,
+          gap: 1,
         }}
       >
         {loading ? (
@@ -515,28 +514,16 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
             </Typography>
           </Box>
         ) : (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 1,
-              p: 1.5,
-              flex: 1,
-              overflowY: "auto",
-              minHeight: 0,
-            }}
-          >
-            {docs.map((doc) => (
-              <HistoryCard
-                key={doc.id}
-                row={doc}
-                expanded={expandedId === doc.id}
-                onToggle={() => handleToggle(doc.id)}
-              />
-            ))}
-          </Box>
+          docs.map((doc) => (
+            <HistoryCard
+              key={doc.id}
+              row={doc}
+              expanded={expandedId === doc.id}
+              onToggle={() => handleToggle(doc.id)}
+            />
+          ))
         )}
-      </DialogContent>
+      </Box>
     </Dialog>
   );
 }
