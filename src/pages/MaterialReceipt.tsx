@@ -135,6 +135,8 @@ const emptyForm: ReceiptFormInput = {
   gross_weight: "",
   tare_weight: "",
   net_weight: "",
+  purpose: "",
+  driver_name: "",
   remarks: "",
 };
 
@@ -540,6 +542,8 @@ export default function MaterialReceipt() {
         receipt.tare_weight !== null ? String(receipt.tare_weight) : "",
       net_weight:
         receipt.net_weight !== null ? String(receipt.net_weight) : "",
+      purpose: receipt.purpose ?? receipt.remarks ?? "",
+      driver_name: receipt.driver_name ?? "",
       remarks: receipt.remarks ?? "",
     });
     setNewPhotoFiles([]);
@@ -714,10 +718,10 @@ export default function MaterialReceipt() {
       closeForm();
       await refreshAll();
 
-      // Prompt to notify the user department to inspect the material as
-      // soon as a new DRC is created.
+      // Auto-open the Security Gate Entry mail draft so the operator can
+      // copy it and send to security for material gate entry.
       if (createdReceipt) {
-        openMailDialog(createdReceipt, "Inspection Request");
+        openMailDialog(createdReceipt, "Security Gate Entry");
       }
     } catch (err) {
       const isDuplicateDrcNumber =
@@ -1147,7 +1151,8 @@ export default function MaterialReceipt() {
       ["Gross Weight", receipt.gross_weight !== null ? String(receipt.gross_weight) : "-"],
       ["Tare Weight", receipt.tare_weight !== null ? String(receipt.tare_weight) : "-"],
       ["Net Weight", receipt.net_weight !== null ? String(receipt.net_weight) : "-"],
-      ["Remarks", receipt.remarks ?? "-"],
+      ["Purpose", receipt.purpose ?? receipt.remarks ?? "-"],
+      [receipt.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name", receipt.driver_name ?? "-"],
     ];
 
     const rowsHtml = rows
@@ -1583,13 +1588,36 @@ export default function MaterialReceipt() {
               </RadioGroup>
 
               {form.receipt_mode === "Vehicle" && (
+                <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, mt: 1 }}>
+                  <TextField
+                    label="Vehicle Number"
+                    size="small"
+                    fullWidth
+                    required
+                    value={form.vehicle_number}
+                    onChange={(e) => updateField("vehicle_number", e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                  <TextField
+                    label="Driver Name"
+                    size="small"
+                    fullWidth
+                    required
+                    value={form.driver_name}
+                    onChange={(e) => updateField("driver_name", e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                </Box>
+              )}
+
+              {form.receipt_mode === "Hand" && (
                 <TextField
-                  label="Vehicle Number"
+                  label="Person Name (carrying by hand)"
                   size="small"
                   fullWidth
                   required
-                  value={form.vehicle_number}
-                  onChange={(e) => updateField("vehicle_number", e.target.value)}
+                  value={form.driver_name}
+                  onChange={(e) => updateField("driver_name", e.target.value)}
                   sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                 />
               )}
@@ -1894,18 +1922,19 @@ export default function MaterialReceipt() {
 
             <Divider />
 
-            {/* Remarks */}
+            {/* Purpose */}
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                Remarks
+                Purpose
               </Typography>
               <TextField
                 size="small"
                 fullWidth
                 multiline
                 minRows={2}
-                value={form.remarks}
-                onChange={(e) => updateField("remarks", e.target.value)}
+                placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD"
+                value={form.purpose}
+                onChange={(e) => updateField("purpose", e.target.value)}
                 sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               />
             </Box>
@@ -2251,7 +2280,8 @@ export default function MaterialReceipt() {
                   ["Gross Weight", viewReceipt.gross_weight !== null ? String(viewReceipt.gross_weight) : "-"],
                   ["Tare Weight", viewReceipt.tare_weight !== null ? String(viewReceipt.tare_weight) : "-"],
                   ["Net Weight", viewReceipt.net_weight !== null ? String(viewReceipt.net_weight) : "-"],
-                  ["Remarks", viewReceipt.remarks ?? "-"],
+                  ["Purpose", viewReceipt.purpose ?? viewReceipt.remarks ?? "-"],
+                  [viewReceipt.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name", viewReceipt.driver_name ?? "-"],
                 ].map(([label, value]) => (
                   <Box
                     key={label}

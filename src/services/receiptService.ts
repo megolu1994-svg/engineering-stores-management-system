@@ -123,6 +123,9 @@ export interface ReceiptHeader {
   receipt_datetime: string;
   created_at: string;
   updated_at: string;
+  // Security gate entry
+  purpose: string | null;
+  driver_name: string | null;
   // Sprint 2
   inspection_status: InspectionStatus | null;
   inspection_remarks: string | null;
@@ -163,6 +166,8 @@ export interface ReceiptFormInput {
   gross_weight: string;
   tare_weight: string;
   net_weight: string;
+  purpose: string;
+  driver_name: string;
   remarks: string;
 }
 
@@ -249,6 +254,8 @@ function buildPayload(input: ReceiptFormInput) {
 
     invoice_number: toNullable(input.invoice_number),
     invoice_date: toNullable(input.invoice_date),
+    purpose: toNullable(input.purpose),
+    driver_name: toNullable(input.driver_name),
     challan_number: toNullable(input.challan_number),
     challan_date: toNullable(input.challan_date),
     eway_bill_number: toNullable(input.eway_bill_number),
@@ -1426,7 +1433,8 @@ export function buildGrnTemplateRows(): { headers: string[]; rows: (string | num
 export type DrcMailType =
   | "Inspection Request"
   | "Inspection On Hold"
-  | "Counting Discrepancy";
+  | "Counting Discrepancy"
+  | "Security Gate Entry";
 
 export interface DraftMail {
   subject: string;
@@ -1446,6 +1454,39 @@ function formatMailDate(value: string | null): string {
 
 /** Plain-text fallback for the "inspection required" mail, used only if
  * AI drafting is unavailable. */
+function generateSecurityGateMailFallback(receipt: ReceiptHeader): DraftMail {
+  const packageSummary =
+    receipt.package_details && receipt.package_details.length > 0
+      ? receipt.package_details
+          .map((p) => p.package_type)
+          .filter(Boolean)
+          .join(", ") || "-"
+      : "-";
+
+  const invoiceLine = receipt.invoice_number
+    ? `${receipt.invoice_number}${receipt.invoice_date ? ` dated ${formatMailDate(receipt.invoice_date)}` : ""}`
+    : "-";
+
+  const subject = `Material Gate Entry - DRC ${receipt.drc_number}`;
+  const body = [
+    "Dear Sir,",
+    "",
+    `Please allow ${packageSummary} as per below details.`,
+    "",
+    `Vehicle No./By hand\t${receipt.vehicle_number ?? receipt.receipt_mode}`,
+    `Material Details\t${packageSummary}`,
+    `Supplier Name\t${receipt.vendor_name}`,
+    `PO No.\t${receipt.sap_po_number ?? "-"}`,
+    `Purpose\t${receipt.purpose ?? receipt.remarks ?? "-"}`,
+    `Invoice No.\t${invoiceLine}`,
+    `Driver\t${receipt.driver_name ?? "-"}`,
+    "",
+    "Thanks & Regards,",
+    "Stores Department",
+  ].join("\n");
+  return { subject, body };
+}
+
 function generateInspectionMailFallback(receipt: ReceiptHeader): DraftMail {
   const subject = `Inspection Required - DRC ${receipt.drc_number}`;
   const body = [
@@ -1546,6 +1587,8 @@ export async function generateAiMail(
             grn_date: receipt.grn_date,
           },
           discrepancyRemarks: discrepancyRemarks ?? null,
+          purpose: receipt.purpose ?? receipt.remarks ?? null,
+          driverName: receipt.driver_name ?? null,
           documents: (receipt.attachment_paths ?? []).map((d) => ({
             name: d.name,
             url: d.url,
@@ -1569,7 +1612,9 @@ export async function generateAiMail(
     console.error("AI mail generation failed, using fallback template:", err);
 
     const fallback =
-      mailType === "Inspection Request"
+      mailType === "Security Gate Entry"
+        ? generateSecurityGateMailFallback(receipt)
+        : mailType === "Inspection Request"
         ? generateInspectionMailFallback(receipt)
         : mailType === "Inspection On Hold"
         ? generateOnHoldMailFallback(receipt)
