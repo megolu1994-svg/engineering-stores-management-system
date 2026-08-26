@@ -133,6 +133,12 @@ export interface ReceiptHeader {
   inspection_by: string | null;
   grn_number: string | null;
   grn_date: string | null;
+  // DRC Register fields
+  tax_invoice_value: number | null;
+  msme_type: string | null;
+  important_note: string | null;
+  delivery_location: string | null;
+  vim_approval: string | null;
   uploaded_by: string | null;
   upload_date: string | null;
   closed_date: string | null;
@@ -168,6 +174,11 @@ export interface ReceiptFormInput {
   net_weight: string;
   purpose: string;
   driver_name: string;
+  tax_invoice_value: string;
+  msme_type: string;
+  important_note: string;
+  delivery_location: string;
+  vim_approval: string;
   remarks: string;
 }
 
@@ -269,6 +280,11 @@ function buildPayload(input: ReceiptFormInput) {
     net_weight: toNullableNumber(input.net_weight),
 
     remarks: toNullable(input.remarks),
+    tax_invoice_value: toNullableNumber(input.tax_invoice_value),
+    msme_type: toNullable(input.msme_type),
+    important_note: toNullable(input.important_note),
+    delivery_location: toNullable(input.delivery_location),
+    vim_approval: toNullable(input.vim_approval),
   };
 }
 
