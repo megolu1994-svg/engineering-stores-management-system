@@ -448,20 +448,26 @@ export interface DrcManualOverrides {
 
 /**
  * Best-effort suggestion for the next DRC No., used only to prefill the
- * manual-entry field in the Create DRC form (previous DRC No. + 1). It
- * increments the trailing numeric run of the most recently created DRC
- * No. (e.g. "DRC/26/000001" -> "DRC/26/000002"), preserving its
- * zero-padded width. Falls back to a fresh "DRC/{yy}/000001"-style
- * number if no DRC exists yet, or if the last one doesn't end in a
- * number.
+ * manual-entry field in the Create DRC form (previous DRC No. + 1).
+ *
+ * Financial-year format: DRC/26-27/1
+ *   – FY runs 1 Apr – 31 Mar; Aug 2026 → FY 2026-27.
+ *   – Increments the trailing numeric run, stripping any suffix (e.g. DRC/26-27/5A → DRC/26-27/6).
+ *   – Falls back to DRC/{startYY}-{endYY}/1 if no row exists for the current FY.
  */
 export async function getNextDrcNumberSuggestion(): Promise<string> {
-  const currentYear = String(new Date().getFullYear()).slice(-2);
-  const fallback = `DRC/${currentYear}/000001`;
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-12
+  const year = now.getFullYear();
+  const fyStart = month >= 4 ? year : year - 1;
+  const fyEnd = month >= 4 ? year + 1 : year;
+  const fyPrefix = `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/`;
+  const fallback = `${fyPrefix}1`;
 
   const { data, error } = await supabase
     .from("receipt_header")
     .select("drc_number")
+    .like("drc_number", `${fyPrefix}%`)
     .order("id", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -472,14 +478,15 @@ export async function getNextDrcNumberSuggestion(): Promise<string> {
     return fallback;
   }
 
-  const match = lastDrcNumber.match(/^(.*?)(\d+)(\D*)$/);
+  // Match the numeric portion after the FY prefix, ignoring any trailing suffix
+  const match = lastDrcNumber.match(/^DRC\/\d{2}-\d{2}\/(\d+)(.*)$/);
   if (!match) {
     return fallback;
   }
 
-  const [, prefix, digits, suffix] = match;
-  const next = String(Number(digits) + 1).padStart(digits.length, "0");
-  return `${prefix}${next}${suffix}`;
+  const [, digits] = match;
+  const next = String(Number(digits) + 1);
+  return `${fyPrefix}${next}`;
 }
 
 /**
@@ -1473,7 +1480,7 @@ function generateSecurityGateMailFallback(receipt: ReceiptHeader): DraftMail {
     ? receipt.driver_name || "By Hand"
     : `${receipt.vehicle_number ?? "-"}`;
 
-  const subject = `Material Gate Entry - DRC ${receipt.drc_number}`;
+  const subject = `Request for urgent Pass - ${receipt.drc_number}`;
 
   /*
    * Generate an HTML table so that Copy Mail produces a bordered table
