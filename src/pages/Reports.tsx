@@ -756,21 +756,7 @@ export default function Reports() {
 
   const fyOptions = useMemo(() => buildFyOptions(), []);
   const [drcRegisterFy, setDrcRegisterFy] = useState(fyOptions[0]?.label ?? "");
-  const [drcRegisterRows, setDrcRegisterRows] = useState<
-    {
-      id: number;
-      drc_number: string;
-      receipt_datetime: string;
-      vendor_name: string;
-      po_number: string | null;
-      package_details: { package_type: string; quantity: string | number }[] | null;
-      status: string;
-      purpose: string | null;
-      driver_name: string | null;
-      receipt_mode: string | null;
-      vehicle_number: string | null;
-    }[]
-  >([]);
+  const [drcRegisterRows, setDrcRegisterRows] = useState<Record<string, unknown>[]>([]);
   const [loadingDrcRegister, setLoadingDrcRegister] = useState(false);
   const [drcRegisterError, setDrcRegisterError] = useState<string | null>(null);
 
@@ -779,6 +765,41 @@ export default function Reports() {
     [drcRegisterFy, fyOptions]
   );
 
+  /** All 24 columns matching the Excel DRC Register. */
+  const DRC_REGISTER_SELECT =
+    "id, drc_number, receipt_datetime, vendor_name, sap_po_number, gem_order_number, " +
+    "package_details, receipt_mode, vehicle_number, driver_name, " +
+    "challan_number, challan_date, invoice_number, invoice_date, tax_invoice_value, " +
+    "eway_bill_number, eway_bill_date, net_weight, " +
+    "msme_type, inspection_date, inspection_remarks, " +
+    "important_note, grn_number, grn_date, delivery_location, vim_approval, status";
+
+  /** Helper to safely read a string key from a raw Supabase row. */
+  const s = (r: Record<string, unknown>, k: string) => (r[k] as string) ?? "";
+  const n = (r: Record<string, unknown>, k: string) => {
+    const v = r[k];
+    return v !== null && v !== undefined ? String(v) : "-";
+  };
+  /** Format material description from package_details array. */
+  const matDesc = (r: Record<string, unknown>) => {
+    const pd = r.package_details as { package_type: string; quantity: string | number }[] | null;
+    return (pd ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+  };
+  /** Total package quantity. */
+  const pkgQty = (r: Record<string, unknown>) => {
+    const pd = r.package_details as { package_type: string; quantity: string | number }[] | null;
+    return (pd ?? []).reduce((sum, p) => sum + safeNumber(p.quantity), 0);
+  };
+  /** LR / Challan / Bill No. & Date combined. */
+  const lrChallan = (r: Record<string, unknown>) => {
+    const no = s(r, "challan_number");
+    const dt = r.challan_date ? formatReportDate(r.challan_date as string) : "";
+    if (no && dt) return `${no} Date ${dt}`;
+    if (no) return no;
+    if (dt) return `Date ${dt}`;
+    return "-";
+  };
+
   async function fetchDrcRegister() {
     if (!selectedFy) return;
     setLoadingDrcRegister(true);
@@ -786,29 +807,12 @@ export default function Reports() {
     try {
       const { data, error } = await supabase
         .from("receipt_header")
-        .select(
-          "id, drc_number, receipt_datetime, vendor_name, sap_po_number, gem_order_number, package_details, status, purpose, driver_name, receipt_mode, vehicle_number"
-        )
+        .select(DRC_REGISTER_SELECT)
         .gte("receipt_datetime", selectedFy.start)
         .lt("receipt_datetime", selectedFy.end)
         .order("receipt_datetime", { ascending: true });
       if (error) throw error;
-      setDrcRegisterRows(
-        (data ?? []).map((r: Record<string, unknown>) => ({
-          id: r.id as number,
-          drc_number: r.drc_number as string,
-          receipt_datetime: r.receipt_datetime as string,
-          vendor_name: r.vendor_name as string,
-          po_number: (r.sap_po_number ?? r.gem_order_number) as string | null,
-          package_details: r.package_details as
-            { package_type: string; quantity: string | number }[] | null,
-          status: r.status as string,
-          purpose: r.purpose as string | null,
-          driver_name: r.driver_name as string | null,
-          receipt_mode: r.receipt_mode as string | null,
-          vehicle_number: r.vehicle_number as string | null,
-        }))
-      );
+      setDrcRegisterRows((data ?? []) as unknown as Record<string, unknown>[]);
     } catch (err) {
       console.error(err);
       setDrcRegisterError("Failed to load DRC register.");
@@ -818,69 +822,103 @@ export default function Reports() {
     }
   }
 
+  /** 24-column Excel export matching the user's DRC Register spreadsheet. */
   function handleExportDrcRegisterExcel() {
     const headers = [
-      "DRC No.",
-      "Date",
-      "Vendor",
-      "PO No.",
-      "Package Type",
-      "Qty",
-      "Status",
-      "Purpose",
-      "Driver / Person",
-      "Mode",
-      "Vehicle No.",
+      "Date",           // A
+      "DRC",            // B
+      "Vendor's Name",  // C
+      "PO No.",         // D
+      "GeM Contract No.", // E
+      "Material Description", // F
+      "Package Quantity", // G
+      "Mode of Dispatch", // H
+      "LR No./Challan No./Bill No./RR No. & Date", // I
+      "Tax Invoice No.", // J
+      "Tax Invoice Date", // K
+      "Tax Invoice Value", // L
+      "E-Waybill No.",  // M
+      "E-Waybill Date", // N
+      "Weight of the Consignment (Kg)", // O
+      "1st Date of Mail for Inspection of DRC File", // P
+      "MSME / Non MSME", // Q
+      "Date of Inspection", // R
+      "Discrepancy Details", // S
+      "Important Note", // T
+      "GRN No.",        // U
+      "GRN Date",       // V
+      "LOCATION",       // W
+      "VIM approval",   // X
     ];
-    const rows = drcRegisterRows.map((r) => {
-      const pkgType = (r.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
-      const totalQty = (r.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
-      return [
-        r.drc_number,
-        formatReportDate(r.receipt_datetime),
-        r.vendor_name,
-        safeText(r.po_number),
-        pkgType,
-        totalQty,
-        r.status,
-        safeText(r.purpose),
-        safeText(r.driver_name),
-        safeText(r.receipt_mode),
-        safeText(r.vehicle_number),
-      ];
-    });
+    const rows = drcRegisterRows.map((r) => [
+      formatReportDate(s(r, "receipt_datetime")),
+      s(r, "drc_number"),
+      s(r, "vendor_name"),
+      s(r, "sap_po_number") || s(r, "gem_order_number"),
+      s(r, "gem_order_number"),
+      matDesc(r),
+      String(pkgQty(r)),
+      s(r, "receipt_mode") === "Hand" ? "BY HAND" : s(r, "vehicle_number") || s(r, "receipt_mode"),
+      lrChallan(r),
+      s(r, "invoice_number"),
+      formatReportDate(s(r, "invoice_date") || null),
+      n(r, "tax_invoice_value"),
+      s(r, "eway_bill_number"),
+      formatReportDate(s(r, "eway_bill_date") || null),
+      n(r, "net_weight"),
+      formatReportDate(s(r, "receipt_datetime")),
+      s(r, "msme_type"),
+      formatReportDate(s(r, "inspection_date") || null),
+      s(r, "inspection_remarks"),
+      s(r, "important_note"),
+      s(r, "grn_number"),
+      formatReportDate(s(r, "grn_date") || null),
+      s(r, "delivery_location"),
+      s(r, "vim_approval"),
+    ]);
     downloadWorkbook(headers, rows, `DRC_Register_${selectedFy?.label ?? ""}.xlsx`, "DRC Register");
   }
 
+  /** 24-column PDF export. */
   function handleExportDrcRegisterPdf() {
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(14);
     doc.text(`DRC Register — ${selectedFy?.label ?? ""}`, 14, 18);
     doc.setFontSize(9);
     doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 25);
-    const body = drcRegisterRows.map((r) => {
-      const pkgType = (r.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
-      const totalQty = (r.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
-      return [
-        r.drc_number,
-        formatReportDate(r.receipt_datetime),
-        r.vendor_name,
-        safeText(r.po_number),
-        pkgType,
-        String(totalQty),
-        r.status,
-        safeText(r.purpose),
-        safeText(r.driver_name),
-        safeText(r.receipt_mode),
-        safeText(r.vehicle_number),
-      ];
-    });
+    const body = drcRegisterRows.map((r) => [
+      formatReportDate(s(r, "receipt_datetime")),
+      s(r, "drc_number"),
+      s(r, "vendor_name"),
+      s(r, "sap_po_number") || s(r, "gem_order_number"),
+      s(r, "gem_order_number"),
+      matDesc(r),
+      String(pkgQty(r)),
+      s(r, "receipt_mode") === "Hand" ? "BY HAND" : s(r, "vehicle_number") || s(r, "receipt_mode"),
+      lrChallan(r),
+      s(r, "invoice_number"),
+      formatReportDate(s(r, "invoice_date") || null),
+      n(r, "tax_invoice_value"),
+      s(r, "eway_bill_number"),
+      formatReportDate(s(r, "eway_bill_date") || null),
+      n(r, "net_weight"),
+      formatReportDate(s(r, "receipt_datetime")),
+      s(r, "msme_type"),
+      formatReportDate(s(r, "inspection_date") || null),
+      s(r, "inspection_remarks"),
+      s(r, "important_note"),
+      s(r, "grn_number"),
+      formatReportDate(s(r, "grn_date") || null),
+      s(r, "delivery_location"),
+      s(r, "vim_approval"),
+    ]);
     autoTable(doc, {
       startY: 30,
-      head: [["DRC No.", "Date", "Vendor", "PO", "Type", "Qty", "Status", "Purpose", "Driver", "Mode", "Vehicle"]],
+      head: [["Date", "DRC", "Vendor", "PO", "GeM", "Material", "Qty", "Dispatch", "LR/Challan", "Inv No.", "Inv Date", "Inv Value", "EWB No.", "EWB Date", "Weight", "Inspection Mail", "MSME", "Insp Date", "Discrepancy", "Note", "GRN No.", "GRN Date", "Location", "VIM"]],
       body,
-      styles: { fontSize: 7, cellPadding: 2 },
+      styles: { fontSize: 6, cellPadding: 1.5 },
       headStyles: { fillColor: [108, 43, 217] },
+      columnStyles: { 5: { cellWidth: 25 }, 8: { cellWidth: 30 } },
     });
     doc.save(`DRC_Register_${selectedFy?.label ?? ""}.pdf`);
   }
@@ -1498,37 +1536,46 @@ export default function Reports() {
                   {/* Mobile: card list */}
                   <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1, mt: 2 }}>
                     {drcRegisterRows.map((row) => {
-                      const pkgType = (row.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
-                      const totalQty = (row.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+                      const r = row as Record<string, unknown>;
+                      const pkgType = (r.package_details as { package_type: string; quantity: string | number }[] | null ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+                      const totalQty = (r.package_details as { package_type: string; quantity: string | number }[] | null ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
                       return (
-                        <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                        <Card key={r.id as number} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
                           <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
                             <Box sx={{ minWidth: 0 }}>
                               <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
-                                {row.drc_number}
+                                {r.drc_number as string}
                               </Typography>
                               <Typography variant="body2" color="text.secondary" noWrap>
-                                {row.vendor_name}
+                                {r.vendor_name as string}
                               </Typography>
                             </Box>
-                            <Chip size="small" label={row.status} sx={{ fontWeight: 600, fontSize: "0.65rem", alignSelf: "flex-start" }} />
+                            <Chip size="small" label={r.status as string} sx={{ fontWeight: 600, fontSize: "0.65rem", alignSelf: "flex-start" }} />
                           </Box>
                           <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
                             <Grid size={6}>
-                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>PO</Typography>
-                              <Typography variant="body2" noWrap>{safeText(row.po_number)}</Typography>
-                            </Grid>
-                            <Grid size={6}>
                               <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Date</Typography>
-                              <Typography variant="body2" noWrap>{formatReportDate(row.receipt_datetime)}</Typography>
+                              <Typography variant="body2" noWrap>{formatReportDate(r.receipt_datetime as string)}</Typography>
                             </Grid>
                             <Grid size={6}>
-                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Type / Qty</Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>PO</Typography>
+                              <Typography variant="body2" noWrap>{(r.sap_po_number as string) || (r.gem_order_number as string) || "-"}</Typography>
+                            </Grid>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Material / Qty</Typography>
                               <Typography variant="body2" noWrap>{pkgType} — {totalQty}</Typography>
                             </Grid>
                             <Grid size={6}>
-                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>{row.receipt_mode === "Hand" ? "Person" : "Vehicle"}</Typography>
-                              <Typography variant="body2" noWrap>{safeText(row.driver_name || row.vehicle_number)}</Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Dispatch</Typography>
+                              <Typography variant="body2" noWrap>{r.receipt_mode === "Hand" ? "BY HAND" : (r.vehicle_number as string) || "-"}</Typography>
+                            </Grid>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>GRN</Typography>
+                              <Typography variant="body2" noWrap>{(r.grn_number as string) || "-"}</Typography>
+                            </Grid>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Location</Typography>
+                              <Typography variant="body2" noWrap>{(r.delivery_location as string) || "-"}</Typography>
                             </Grid>
                           </Grid>
                         </Card>
@@ -1558,21 +1605,40 @@ export default function Reports() {
                       </TableHead>
                       <TableBody>
                         {drcRegisterRows.map((row) => {
-                          const pkgType = (row.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
-                          const totalQty = (row.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+                          const r = row as Record<string, unknown>;
+                          const pkgType = (r.package_details as { package_type: string; quantity: string | number }[] | null ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+                          const totalQty = (r.package_details as { package_type: string; quantity: string | number }[] | null ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+                          const challanNo = (r.challan_number as string) ?? "";
+                          const challanDt = r.challan_date ? formatReportDate(r.challan_date as string) : "";
+                          const lr = challanNo && challanDt ? `${challanNo} ${challanDt}` : challanNo || (challanDt ? `Date ${challanDt}` : "-");
                           return (
-                            <TableRow key={row.id} hover sx={{ height: 48 }}>
-                              <TableCell sx={{ fontWeight: 700 }}>{row.drc_number}</TableCell>
-                              <TableCell>{formatReportDate(row.receipt_datetime)}</TableCell>
-                              <TableCell>{row.vendor_name}</TableCell>
-                              <TableCell>{safeText(row.po_number)}</TableCell>
-                              <TableCell>{pkgType} — {totalQty}</TableCell>
+                            <TableRow key={Number(r.id)} hover sx={{ height: 44 }}>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.receipt_datetime as string)}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{r.drc_number as string}</TableCell>
+                              <TableCell>{r.vendor_name as string}</TableCell>
+                              <TableCell>{(r.sap_po_number as string) || (r.gem_order_number as string) || "-"}</TableCell>
+                              <TableCell>{(r.gem_order_number as string) || "-"}</TableCell>
+                              <TableCell>{pkgType}</TableCell>
+                              <TableCell align="right">{totalQty}</TableCell>
+                              <TableCell>{r.receipt_mode === "Hand" ? "BY HAND" : (r.vehicle_number as string) || (r.receipt_mode as string) || "-"}</TableCell>
+                              <TableCell>{lr}</TableCell>
+                              <TableCell>{(r.invoice_number as string) || "-"}</TableCell>
+                              <TableCell>{formatReportDate(r.invoice_date as string)}</TableCell>
+                              <TableCell align="right">{r.tax_invoice_value != null ? String(r.tax_invoice_value) : "-"}</TableCell>
+                              <TableCell>{(r.eway_bill_number as string) || "-"}</TableCell>
+                              <TableCell>{formatReportDate(r.eway_bill_date as string)}</TableCell>
+                              <TableCell align="right">{r.net_weight != null ? String(r.net_weight) : "-"}</TableCell>
+                              <TableCell>{(r.msme_type as string) || "-"}</TableCell>
+                              <TableCell>{formatReportDate(r.inspection_date as string)}</TableCell>
+                              <TableCell>{(r.inspection_remarks as string) || "-"}</TableCell>
+                              <TableCell>{(r.important_note as string) || "-"}</TableCell>
+                              <TableCell>{(r.grn_number as string) || "-"}</TableCell>
+                              <TableCell>{formatReportDate(r.grn_date as string)}</TableCell>
+                              <TableCell>{(r.delivery_location as string) || "-"}</TableCell>
+                              <TableCell>{(r.vim_approval as string) || "-"}</TableCell>
                               <TableCell>
-                                <Chip size="small" label={row.status} sx={{ fontWeight: 600, fontSize: "0.65rem" }} />
+                                <Chip size="small" label={r.status as string} sx={{ fontWeight: 600, fontSize: "0.6rem" }} />
                               </TableCell>
-                              <TableCell>{safeText(row.purpose)}</TableCell>
-                              <TableCell>{safeText(row.driver_name)}</TableCell>
-                              <TableCell>{safeText(row.vehicle_number)}</TableCell>
                             </TableRow>
                           );
                         })}

@@ -137,6 +137,11 @@ const emptyForm: ReceiptFormInput = {
   net_weight: "",
   purpose: "",
   driver_name: "",
+  tax_invoice_value: "",
+  msme_type: "",
+  important_note: "",
+  delivery_location: "",
+  vim_approval: "",
   remarks: "",
 };
 
@@ -544,6 +549,11 @@ export default function MaterialReceipt() {
         receipt.net_weight !== null ? String(receipt.net_weight) : "",
       purpose: receipt.purpose ?? receipt.remarks ?? "",
       driver_name: receipt.driver_name ?? "",
+      tax_invoice_value: receipt.tax_invoice_value !== null ? String(receipt.tax_invoice_value) : "",
+      msme_type: receipt.msme_type ?? "",
+      important_note: receipt.important_note ?? "",
+      delivery_location: receipt.delivery_location ?? "",
+      vim_approval: receipt.vim_approval ?? "",
       remarks: receipt.remarks ?? "",
     });
     setNewPhotoFiles([]);
@@ -1177,6 +1187,11 @@ export default function MaterialReceipt() {
       ["Net Weight", receipt.net_weight !== null ? String(receipt.net_weight) : "-"],
       ["Purpose", receipt.purpose ?? receipt.remarks ?? "-"],
       [receipt.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name", receipt.driver_name ?? "-"],
+      ["Tax Invoice Value", receipt.tax_invoice_value !== null ? String(receipt.tax_invoice_value) : "-"],
+      ["MSME / Non MSME", receipt.msme_type ?? "-"],
+      ["Location", receipt.delivery_location ?? "-"],
+      ["Important Note", receipt.important_note ?? "-"],
+      ["VIM Approval", receipt.vim_approval ?? "-"],
     ];
 
     const rowsHtml = rows
@@ -1818,6 +1833,15 @@ export default function MaterialReceipt() {
                   value={form.invoice_date}
                   onChange={(iso) => updateField("invoice_date", iso)}
                 />
+                <TextField
+                  label="Tax Invoice Value"
+                  size="small"
+                  fullWidth
+                  type="number"
+                  value={form.tax_invoice_value}
+                  onChange={(e) => updateField("tax_invoice_value", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
               </Box>
             </Box>
 
@@ -1961,6 +1985,68 @@ export default function MaterialReceipt() {
                 onChange={(e) => updateField("purpose", e.target.value)}
                 sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               />
+            </Box>
+
+            <Divider />
+
+            {/* MSME & Location */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Classification
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
+                <TextField
+                  select
+                  label="MSME / Non MSME"
+                  size="small"
+                  fullWidth
+                  value={form.msme_type}
+                  onChange={(e) => updateField("msme_type", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                >
+                  <MenuItem value="">None</MenuItem>
+                  <MenuItem value="MSME">MSME</MenuItem>
+                  <MenuItem value="General">General</MenuItem>
+                </TextField>
+                <TextField
+                  label="Location"
+                  size="small"
+                  fullWidth
+                  placeholder="e.g. Ware House, Drum Filling Yard"
+                  value={form.delivery_location}
+                  onChange={(e) => updateField("delivery_location", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+            </Box>
+
+            <Divider />
+
+            {/* Additional Details (Important Note, VIM) */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Additional Details
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1 }}>
+                <TextField
+                  label="Important Note"
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  value={form.important_note}
+                  onChange={(e) => updateField("important_note", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                <TextField
+                  label="VIM Approval"
+                  size="small"
+                  fullWidth
+                  value={form.vim_approval}
+                  onChange={(e) => updateField("vim_approval", e.target.value)}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
             </Box>
 
             <Divider />
@@ -2306,6 +2392,11 @@ export default function MaterialReceipt() {
                   ["Net Weight", viewReceipt.net_weight !== null ? String(viewReceipt.net_weight) : "-"],
                   ["Purpose", viewReceipt.purpose ?? viewReceipt.remarks ?? "-"],
                   [viewReceipt.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name", viewReceipt.driver_name ?? "-"],
+                  ["Tax Invoice Value", viewReceipt.tax_invoice_value !== null ? String(viewReceipt.tax_invoice_value) : "-"],
+                  ["MSME / Non MSME", viewReceipt.msme_type ?? "-"],
+                  ["Location", viewReceipt.delivery_location ?? "-"],
+                  ["Important Note", viewReceipt.important_note ?? "-"],
+                  ["VIM Approval", viewReceipt.vim_approval ?? "-"],
                 ].map(([label, value]) => (
                   <Box
                     key={label}
