@@ -1439,6 +1439,8 @@ export type DrcMailType =
 export interface DraftMail {
   subject: string;
   body: string;
+  /** HTML-rendered version of body (used for rich-text clipboard copy). */
+  html?: string;
 }
 
 function formatMailDate(value: string | null): string {
@@ -1467,24 +1469,35 @@ function generateSecurityGateMailFallback(receipt: ReceiptHeader): DraftMail {
     ? `${receipt.invoice_number}${receipt.invoice_date ? ` dated ${formatMailDate(receipt.invoice_date)}` : ""}`
     : "-";
 
+  const vehicleDisplay = receipt.receipt_mode === "Hand"
+    ? receipt.driver_name || "By Hand"
+    : `${receipt.vehicle_number ?? "-"}`;
+
   const subject = `Material Gate Entry - DRC ${receipt.drc_number}`;
-  const body = [
-    "Dear Sir,",
-    "",
-    `Please allow ${packageSummary} as per below details.`,
-    "",
-    `Vehicle No./By hand\t${receipt.vehicle_number ?? receipt.receipt_mode}`,
-    `Material Details\t${packageSummary}`,
-    `Supplier Name\t${receipt.vendor_name}`,
-    `PO No.\t${receipt.sap_po_number ?? "-"}`,
-    `Purpose\t${receipt.purpose ?? receipt.remarks ?? "-"}`,
-    `Invoice No.\t${invoiceLine}`,
-    `Driver\t${receipt.driver_name ?? "-"}`,
-    "",
-    "Thanks & Regards,",
-    "Stores Department",
+
+  /*
+   * Generate an HTML table so that Copy Mail produces a bordered table
+   * when pasted into Outlook / Gmail / any rich-text mail client.
+   * The plain-text fallback is also kept in `body` for console-clipboard.
+   */
+  const htmlBody = [
+    '<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">Dear Sir,</p>',
+    `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">Please allow ${packageSummary} as per below details.</p>`,
+    '<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:14px;">',
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">Vehicle No./By hand</td><td style="border:1px solid #000;padding:6px 14px;">${vehicleDisplay}</td></tr>`,
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">Material Details</td><td style="border:1px solid #000;padding:6px 14px;">${packageSummary}</td></tr>`,
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">Supplier Name</td><td style="border:1px solid #000;padding:6px 14px;">${receipt.vendor_name}</td></tr>`,
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">PO No.</td><td style="border:1px solid #000;padding:6px 14px;">${receipt.sap_po_number ?? "-"}</td></tr>`,
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">Purpose</td><td style="border:1px solid #000;padding:6px 14px;">${receipt.purpose ?? receipt.remarks ?? "-"}</td></tr>`,
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">Invoice No.</td><td style="border:1px solid #000;padding:6px 14px;">${invoiceLine}</td></tr>`,
+    `<tr><td style="border:1px solid #000;padding:6px 14px;font-weight:700;">Driver</td><td style="border:1px solid #000;padding:6px 14px;">${receipt.driver_name ?? "-"}</td></tr>`,
+    '</table>',
+    '<br/>',
+    '<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">Thanks & Regards,<br/>Stores Department</p>',
   ].join("\n");
-  return { subject, body };
+
+  const body = htmlBody;
+  return { subject, body, html: htmlBody };
 }
 
 function generateInspectionMailFallback(receipt: ReceiptHeader): DraftMail {
