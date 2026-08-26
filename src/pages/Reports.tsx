@@ -13,8 +13,12 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  FormControl,
   Grid,
   InputAdornment,
+  InputLabel,
+  MenuItem,
+  Select,
   Snackbar,
   Stack,
   Tab,
@@ -43,6 +47,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import OutputIcon from "@mui/icons-material/Output";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import DescriptionIcon from "@mui/icons-material/Description";
 
 import MaterialSearch from "../components/MaterialSearch";
 import PaginationControls from "../components/PaginationControls";
@@ -728,6 +733,158 @@ export default function Reports() {
     }
   }
 
+  // ---------------- DRC Register (FY wise) ----------------
+
+  /** Build FY options from current year. FY runs Apr – Mar. */
+  function buildFyOptions(): { label: string; start: string; end: string }[] {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const currentFyStart = month >= 4 ? year : year - 1;
+    const options: { label: string; start: string; end: string }[] = [];
+    for (let y = currentFyStart; y >= currentFyStart - 4; y--) {
+      const startYY = String(y).slice(-2);
+      const endYY = String(y + 1).slice(-2);
+      options.push({
+        label: `FY ${y}-${endYY}  (DRC/${startYY}-${endYY}/*)`,
+        start: `${y}-04-01`,
+        end: `${y + 1}-04-01`,
+      });
+    }
+    return options;
+  }
+
+  const fyOptions = useMemo(() => buildFyOptions(), []);
+  const [drcRegisterFy, setDrcRegisterFy] = useState(fyOptions[0]?.label ?? "");
+  const [drcRegisterRows, setDrcRegisterRows] = useState<
+    {
+      id: number;
+      drc_number: string;
+      receipt_datetime: string;
+      vendor_name: string;
+      po_number: string | null;
+      package_details: { package_type: string; quantity: string | number }[] | null;
+      status: string;
+      purpose: string | null;
+      driver_name: string | null;
+      receipt_mode: string | null;
+      vehicle_number: string | null;
+    }[]
+  >([]);
+  const [loadingDrcRegister, setLoadingDrcRegister] = useState(false);
+  const [drcRegisterError, setDrcRegisterError] = useState<string | null>(null);
+
+  const selectedFy = useMemo(
+    () => fyOptions.find((o) => o.label === drcRegisterFy) ?? fyOptions[0],
+    [drcRegisterFy, fyOptions]
+  );
+
+  async function fetchDrcRegister() {
+    if (!selectedFy) return;
+    setLoadingDrcRegister(true);
+    setDrcRegisterError(null);
+    try {
+      const { data, error } = await supabase
+        .from("receipt_header")
+        .select(
+          "id, drc_number, receipt_datetime, vendor_name, sap_po_number, gem_order_number, package_details, status, purpose, driver_name, receipt_mode, vehicle_number"
+        )
+        .gte("receipt_datetime", selectedFy.start)
+        .lt("receipt_datetime", selectedFy.end)
+        .order("receipt_datetime", { ascending: true });
+      if (error) throw error;
+      setDrcRegisterRows(
+        (data ?? []).map((r: Record<string, unknown>) => ({
+          id: r.id as number,
+          drc_number: r.drc_number as string,
+          receipt_datetime: r.receipt_datetime as string,
+          vendor_name: r.vendor_name as string,
+          po_number: (r.sap_po_number ?? r.gem_order_number) as string | null,
+          package_details: r.package_details as
+            { package_type: string; quantity: string | number }[] | null,
+          status: r.status as string,
+          purpose: r.purpose as string | null,
+          driver_name: r.driver_name as string | null,
+          receipt_mode: r.receipt_mode as string | null,
+          vehicle_number: r.vehicle_number as string | null,
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+      setDrcRegisterError("Failed to load DRC register.");
+      setDrcRegisterRows([]);
+    } finally {
+      setLoadingDrcRegister(false);
+    }
+  }
+
+  function handleExportDrcRegisterExcel() {
+    const headers = [
+      "DRC No.",
+      "Date",
+      "Vendor",
+      "PO No.",
+      "Package Type",
+      "Qty",
+      "Status",
+      "Purpose",
+      "Driver / Person",
+      "Mode",
+      "Vehicle No.",
+    ];
+    const rows = drcRegisterRows.map((r) => {
+      const pkgType = (r.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+      const totalQty = (r.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+      return [
+        r.drc_number,
+        formatReportDate(r.receipt_datetime),
+        r.vendor_name,
+        safeText(r.po_number),
+        pkgType,
+        totalQty,
+        r.status,
+        safeText(r.purpose),
+        safeText(r.driver_name),
+        safeText(r.receipt_mode),
+        safeText(r.vehicle_number),
+      ];
+    });
+    downloadWorkbook(headers, rows, `DRC_Register_${selectedFy?.label ?? ""}.xlsx`, "DRC Register");
+  }
+
+  function handleExportDrcRegisterPdf() {
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(14);
+    doc.text(`DRC Register — ${selectedFy?.label ?? ""}`, 14, 18);
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 25);
+    const body = drcRegisterRows.map((r) => {
+      const pkgType = (r.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+      const totalQty = (r.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+      return [
+        r.drc_number,
+        formatReportDate(r.receipt_datetime),
+        r.vendor_name,
+        safeText(r.po_number),
+        pkgType,
+        String(totalQty),
+        r.status,
+        safeText(r.purpose),
+        safeText(r.driver_name),
+        safeText(r.receipt_mode),
+        safeText(r.vehicle_number),
+      ];
+    });
+    autoTable(doc, {
+      startY: 30,
+      head: [["DRC No.", "Date", "Vendor", "PO", "Type", "Qty", "Status", "Purpose", "Driver", "Mode", "Vehicle"]],
+      body,
+      styles: { fontSize: 7, cellPadding: 2 },
+      headStyles: { fillColor: [108, 43, 217] },
+    });
+    doc.save(`DRC_Register_${selectedFy?.label ?? ""}.pdf`);
+  }
+
   // ---------------- Movement History ----------------
   const [movementSearch, setMovementSearch] = useState("");
   const [debouncedMovementSearch, setDebouncedMovementSearch] = useState("");
@@ -1255,6 +1412,181 @@ export default function Reports() {
               <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
                 Exports will include the latest data as per current stock and allocation status.
               </Alert>
+            </CardContent>
+          </Card>
+
+          {/* ---- DRC Register (FY wise) ---- */}
+          <Card elevation={0} sx={{ borderRadius: 2, boxShadow: "0 2px 14px rgba(15,23,42,0.06)", mb: 2 }}>
+            <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                <DescriptionIcon sx={{ fontSize: 20, color: "primary.main" }} />
+                <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+                  DRC Register (FY wise)
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Download a complete register of all DRCs raised in the selected financial year.
+              </Typography>
+
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, alignItems: { sm: "center" } }}>
+                <FormControl size="small" sx={{ minWidth: 220 }}>
+                  <InputLabel id="drc-register-fy-label">Financial Year</InputLabel>
+                  <Select
+                    labelId="drc-register-fy-label"
+                    value={drcRegisterFy}
+                    label="Financial Year"
+                    onChange={(e) => setDrcRegisterFy(e.target.value as string)}
+                    sx={{ borderRadius: 2 }}
+                  >
+                    {fyOptions.map((opt) => (
+                      <MenuItem key={opt.label} value={opt.label}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={loadingDrcRegister ? <CircularProgress size={14} color="inherit" /> : <DownloadIcon fontSize="small" />}
+                  disabled={loadingDrcRegister}
+                  onClick={fetchDrcRegister}
+                  sx={{ borderRadius: 2, fontWeight: 600, minHeight: 36 }}
+                >
+                  Load Register
+                </Button>
+              </Box>
+
+              {drcRegisterError && (
+                <Alert severity="error" sx={{ mt: 1.5, borderRadius: 2 }}>
+                  {drcRegisterError}
+                </Alert>
+              )}
+
+              {drcRegisterRows.length > 0 && (
+                <Box sx={{ mt: 2, display: "flex", gap: 1, flexWrap: "wrap" }}>
+                  <Chip
+                    label={`${drcRegisterRows.length} DRC${drcRegisterRows.length !== 1 ? "s" : ""} found`}
+                    color="primary"
+                    size="small"
+                    sx={{ fontWeight: 700 }}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<DownloadIcon fontSize="small" />}
+                    onClick={handleExportDrcRegisterExcel}
+                    sx={{ borderRadius: 2, fontWeight: 600, minHeight: 32 }}
+                  >
+                    Export Excel
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<PictureAsPdfIcon fontSize="small" />}
+                    onClick={handleExportDrcRegisterPdf}
+                    sx={{ borderRadius: 2, fontWeight: 600, minHeight: 32 }}
+                  >
+                    Export PDF
+                  </Button>
+                </Box>
+              )}
+
+              {drcRegisterRows.length > 0 && (
+                <>
+                  {/* Mobile: card list */}
+                  <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1, mt: 2 }}>
+                    {drcRegisterRows.map((row) => {
+                      const pkgType = (row.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+                      const totalQty = (row.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+                      return (
+                        <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
+                                {row.drc_number}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" noWrap>
+                                {row.vendor_name}
+                              </Typography>
+                            </Box>
+                            <Chip size="small" label={row.status} sx={{ fontWeight: 600, fontSize: "0.65rem", alignSelf: "flex-start" }} />
+                          </Box>
+                          <Grid container spacing={0.5} sx={{ mt: 0.5 }}>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>PO</Typography>
+                              <Typography variant="body2" noWrap>{safeText(row.po_number)}</Typography>
+                            </Grid>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Date</Typography>
+                              <Typography variant="body2" noWrap>{formatReportDate(row.receipt_datetime)}</Typography>
+                            </Grid>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>Type / Qty</Typography>
+                              <Typography variant="body2" noWrap>{pkgType} — {totalQty}</Typography>
+                            </Grid>
+                            <Grid size={6}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>{row.receipt_mode === "Hand" ? "Person" : "Vehicle"}</Typography>
+                              <Typography variant="body2" noWrap>{safeText(row.driver_name || row.vehicle_number)}</Typography>
+                            </Grid>
+                          </Grid>
+                        </Card>
+                      );
+                    })}
+                  </Box>
+
+                  {/* Desktop: table */}
+                  <TableContainer
+                    component={Card}
+                    elevation={0}
+                    sx={{ display: { xs: "none", md: "block" }, mt: 2, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+                  >
+                    <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                      <TableHead>
+                        <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                          <TableCell>DRC No.</TableCell>
+                          <TableCell>Date</TableCell>
+                          <TableCell>Vendor</TableCell>
+                          <TableCell>PO</TableCell>
+                          <TableCell>Type / Qty</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Purpose</TableCell>
+                          <TableCell>Driver / Person</TableCell>
+                          <TableCell>Vehicle</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {drcRegisterRows.map((row) => {
+                          const pkgType = (row.package_details ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
+                          const totalQty = (row.package_details ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
+                          return (
+                            <TableRow key={row.id} hover sx={{ height: 48 }}>
+                              <TableCell sx={{ fontWeight: 700 }}>{row.drc_number}</TableCell>
+                              <TableCell>{formatReportDate(row.receipt_datetime)}</TableCell>
+                              <TableCell>{row.vendor_name}</TableCell>
+                              <TableCell>{safeText(row.po_number)}</TableCell>
+                              <TableCell>{pkgType} — {totalQty}</TableCell>
+                              <TableCell>
+                                <Chip size="small" label={row.status} sx={{ fontWeight: 600, fontSize: "0.65rem" }} />
+                              </TableCell>
+                              <TableCell>{safeText(row.purpose)}</TableCell>
+                              <TableCell>{safeText(row.driver_name)}</TableCell>
+                              <TableCell>{safeText(row.vehicle_number)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
+
+              {drcRegisterRows.length === 0 && !loadingDrcRegister && !drcRegisterError && (
+                <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+                  Select a financial year and click Load Register to view the DRC register.
+                </Alert>
+              )}
             </CardContent>
           </Card>
 
