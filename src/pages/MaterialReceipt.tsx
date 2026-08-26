@@ -786,6 +786,7 @@ export default function MaterialReceipt() {
   const [mailDiscrepancyRemarks, setMailDiscrepancyRemarks] = useState("");
   const [mailSubject, setMailSubject] = useState("");
   const [mailBody, setMailBody] = useState("");
+  const [mailBodyHtml, setMailBodyHtml] = useState("");
   const [generatingMail, setGeneratingMail] = useState(false);
   const [mailAiGenerated, setMailAiGenerated] = useState(false);
 
@@ -803,6 +804,7 @@ export default function MaterialReceipt() {
       );
       setMailSubject(draft.subject);
       setMailBody(draft.body);
+      setMailBodyHtml(draft.html ?? draft.body);
       setMailAiGenerated(draft.aiGenerated);
     } finally {
       setGeneratingMail(false);
@@ -819,6 +821,7 @@ export default function MaterialReceipt() {
     setMailDiscrepancyRemarks(discrepancyRemarks);
     setMailSubject("");
     setMailBody("");
+    setMailBodyHtml("");
     setMailAiGenerated(false);
     setMailDialogOpen(true);
     await regenerateMail(receipt, type, discrepancyRemarks);
@@ -826,10 +829,31 @@ export default function MaterialReceipt() {
 
   async function handleCopyMail() {
     try {
-      await navigator.clipboard.writeText(`Subject: ${mailSubject}\n\n${mailBody}`);
+      const htmlBlob = new Blob(
+        [
+          `<html><body>`,
+          `<p style="font-family:Arial,Helvetica,sans-serif;font-size:14px;"><b>Subject:</b> ${mailSubject}</p>`,
+          mailBodyHtml,
+          `</body></html>`,
+        ],
+        { type: "text/html" }
+      );
+      const plainText = `Subject: ${mailSubject}\n\n${mailBody.replace(/<[^>]+>/g, "").replace(/<\/br>/g, "\n").replace(/<br\s*\/?>/g, "\n")}`;
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [htmlBlob.type]: htmlBlob,
+          ["text/plain"]: new Blob([plainText], { type: "text/plain" }),
+        }),
+      ]);
       showSnackbar("Mail content copied to clipboard.", "success");
     } catch {
-      showSnackbar("Could not copy to clipboard.", "error");
+      // Fallback: plain text copy
+      try {
+        await navigator.clipboard.writeText(`Subject: ${mailSubject}\n\n${mailBody}`);
+        showSnackbar("Mail content copied (plain text).", "success");
+      } catch {
+        showSnackbar("Could not copy to clipboard.", "error");
+      }
     }
   }
 
@@ -3029,22 +3053,45 @@ export default function MaterialReceipt() {
                 sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               />
 
-              <TextField
-                label="Body"
-                size="small"
-                fullWidth
-                multiline
-                minRows={10}
-                value={mailBody}
-                onChange={(e) => setMailBody(e.target.value)}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    borderRadius: 2,
-                    fontFamily: "monospace",
-                    fontSize: "0.85rem",
-                  },
-                }}
-              />
+              {mailType === "Security Gate Entry" && mailBodyHtml ? (
+                <Box>
+                  <Typography variant="caption" sx={{ color: "text.secondary", mb: 0.5, display: "block" }}>
+                    Mail Preview (HTML)
+                  </Typography>
+                  <Box
+                    sx={{
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 2,
+                      p: 2,
+                      fontFamily: "Arial, Helvetica, sans-serif",
+                      fontSize: "14px",
+                      lineHeight: 1.6,
+                      color: "text.primary",
+                      bgcolor: "background.paper",
+                      overflowX: "auto",
+                    }}
+                    dangerouslySetInnerHTML={{ __html: mailBodyHtml }}
+                  />
+                </Box>
+              ) : (
+                <TextField
+                  label="Body"
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={10}
+                  value={mailBody}
+                  onChange={(e) => setMailBody(e.target.value)}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: 2,
+                      fontFamily: "monospace",
+                      fontSize: "0.85rem",
+                    },
+                  }}
+                />
+              )}
             </>
           )}
         </DialogContent>
