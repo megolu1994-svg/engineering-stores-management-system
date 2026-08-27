@@ -1520,7 +1520,7 @@ export default function MaterialReceipt() {
         onClose={closeForm}
         fullScreen={mobile}
         fullWidth
-        maxWidth="sm"
+        maxWidth={mobile ? "sm" : "md"}
       >
         <DialogTitle
           sx={{
@@ -1538,7 +1538,7 @@ export default function MaterialReceipt() {
           </IconButton>
         </DialogTitle>
 
-        <DialogContent dividers sx={{ p: 1.5 }}>
+        <DialogContent dividers sx={{ p: { xs: 1.5, sm: 3 } }}>
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: { xs: 2, sm: 2 }, alignItems: "start" }}>
             {/* DRC No. & Date (create-only; fixed once a DRC exists) */}
             {!editingReceipt && (
