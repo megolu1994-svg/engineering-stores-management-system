@@ -1539,10 +1539,10 @@ export default function MaterialReceipt() {
         </DialogTitle>
 
         <DialogContent dividers sx={{ p: 1.5 }}>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: { xs: 2, sm: 2 }, alignItems: "start" }}>
             {/* DRC No. & Date (create-only; fixed once a DRC exists) */}
             {!editingReceipt && (
-              <Box>
+              <Box sx={{ gridColumn: { xs: "span 1", sm: "span 2" } }}>
                 <Box
                   sx={{
                     display: "flex",
@@ -1608,10 +1608,10 @@ export default function MaterialReceipt() {
               </Box>
             )}
 
-            {!editingReceipt && <Divider />}
+            {!editingReceipt && <Divider sx={{ gridColumn: "1 / -1" }} />}
 
             {/* Transport */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
                 Transport
               </Typography>
@@ -1662,10 +1662,26 @@ export default function MaterialReceipt() {
               )}
             </Box>
 
-            <Divider />
+            {/* Supplier */}
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Supplier
+              </Typography>
+              <TextField
+                label="Vendor Name"
+                size="small"
+                fullWidth
+                required
+                value={form.vendor_name}
+                onChange={(e) => updateField("vendor_name", e.target.value)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
+            </Box>
+
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* Package Details */}
-            <Box>
+            <Box sx={{ gridColumn: { xs: "span 1", sm: "span 2" } }}>
               <Box
                 sx={{
                   display: "flex",
@@ -1750,28 +1766,10 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
-
-            {/* Supplier */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                Supplier
-              </Typography>
-              <TextField
-                label="Vendor Name"
-                size="small"
-                fullWidth
-                required
-                value={form.vendor_name}
-                onChange={(e) => updateField("vendor_name", e.target.value)}
-                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-              />
-            </Box>
-
-            <Divider />
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* Purchase */}
-            <Box>
+            <Box sx={{ gridColumn: { xs: "span 1", sm: "span 2" } }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Purchase
               </Typography>
@@ -1812,10 +1810,10 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* Invoice */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Invoice
               </Typography>
@@ -1845,10 +1843,8 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
-
             {/* Challan */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Challan
               </Typography>
@@ -1869,10 +1865,10 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* E-Way Bill */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 E-Way Bill
               </Typography>
@@ -1893,10 +1889,10 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
+            
 
             {/* Transport */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Transport
               </Typography>
@@ -1917,10 +1913,10 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* Weighbridge */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Weighbridge
               </Typography>
@@ -1968,29 +1964,8 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
-
-            {/* Purpose */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
-                Purpose
-              </Typography>
-              <TextField
-                size="small"
-                fullWidth
-                multiline
-                minRows={2}
-                placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD"
-                value={form.purpose}
-                onChange={(e) => updateField("purpose", e.target.value)}
-                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-              />
-            </Box>
-
-            <Divider />
-
             {/* MSME & Location */}
-            <Box>
+            <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Classification
               </Typography>
@@ -2020,7 +1995,26 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
+            <Divider sx={{ gridColumn: "1 / -1" }} />
+
+            {/* Purpose */}
+            <Box sx={{ gridColumn: { xs: "span 1", sm: "span 2" } }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
+                Purpose
+              </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD"
+                value={form.purpose}
+                onChange={(e) => updateField("purpose", e.target.value)}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+              />
+            </Box>
+
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* Additional Details (Important Note, VIM) */}
             <Box>
@@ -2049,10 +2043,9 @@ export default function MaterialReceipt() {
               </Box>
             </Box>
 
-            <Divider />
 
             {/* Photo upload */}
-            <Box>
+            <Box sx={{ gridColumn: { xs: "span 1", sm: "span 2" } }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Photos
               </Typography>
@@ -2163,10 +2156,10 @@ export default function MaterialReceipt() {
               )}
             </Box>
 
-            <Divider />
+            <Divider sx={{ gridColumn: "1 / -1" }} />
 
             {/* Documents */}
-            <Box>
+            <Box sx={{ gridColumn: { xs: "span 1", sm: "span 2" } }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
                 Documents
               </Typography>
@@ -2293,7 +2286,7 @@ export default function MaterialReceipt() {
 
         <DialogActions
           sx={{
-            p: 1.5,
+            p: { xs: 1.5, sm: 2 },
             gap: 1,
             position: mobile ? "sticky" : "static",
             bottom: 0,
@@ -2319,7 +2312,7 @@ export default function MaterialReceipt() {
             onClick={handleSave}
             disabled={saving}
             startIcon={saving ? <CircularProgress size={18} color="inherit" /> : null}
-            sx={{ minHeight: 44, borderRadius: 2, fontWeight: 700, flex: 1 }}
+            sx={{ minHeight: { xs: 44, sm: 48 }, borderRadius: 2, fontWeight: 700, flex: 1 }}
           >
             Save DRC
           </Button>
