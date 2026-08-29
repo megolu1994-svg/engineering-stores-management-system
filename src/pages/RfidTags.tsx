@@ -169,12 +169,18 @@ export default function RfidTags() {
   } | null>(null);
   const [showImport, setShowImport] = useState(false);
 
-  // Locate tab
+  // Locate tab — material search
+  const [locateMatQuery, setLocateMatQuery] = useState("");
+  const [locateMatOptions, setLocateMatOptions] = useState<MaterialType[]>([]);
+  const [locateMatSearching, setLocateMatSearching] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialType | null>(null);
+
+  // Locate tab — scan
   const [locateInput, setLocateInput] = useState("");
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<RfidScanResult | null>(null);
   const [scanHistory, setScanHistory] = useState<
-    Array<{ code: string; time: string; result: RfidScanResult }>
+    Array<{ code: string; time: string; result: RfidScanResult; matched: boolean }>
   >([]);
   const scanInputRef = useRef<HTMLInputElement>(null);
 
@@ -289,12 +295,7 @@ export default function RfidTags() {
       setMasterDialogOpen(false);
       loadTags();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Save failed.";
-      setFormError(
-        msg.includes("duplicate") || msg.includes("unique")
-          ? "This RFID code already exists."
-          : msg
-      );
+      setFormError(err instanceof Error ? err.message : "Save failed.");
     } finally {
       setSaving(false);
     }
@@ -374,9 +375,10 @@ export default function RfidTags() {
     setScanResult(null);
     try {
       const result = await locateByScan(code);
+      const matched = !!selectedMaterial && result.found && result.tag.material_code === selectedMaterial.material_code;
       setScanResult(result);
       setScanHistory((prev) => [
-        { code, time: new Date().toLocaleTimeString(), result },
+        { code, time: new Date().toLocaleTimeString(), result, matched },
         ...prev.slice(0, 19),
       ]);
     } catch {
@@ -439,6 +441,29 @@ export default function RfidTags() {
       setImporting(false);
     }
   }
+
+  /* ---- Material search for Locate tab ---- */
+
+  useEffect(() => {
+    if (selectedMaterial) return;
+    if (!locateMatQuery.trim()) {
+      setLocateMatOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setLocateMatSearching(true);
+    const timer = setTimeout(() => {
+      searchMaterials(locateMatQuery, 0, 10)
+        .then((mats) => {
+          if (!cancelled) setLocateMatOptions(mats);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setLocateMatSearching(false);
+        });
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [locateMatQuery, selectedMaterial]);
 
   /* ---- Keyboard shortcut: Enter to scan ---- */
 
@@ -793,149 +818,227 @@ export default function RfidTags() {
       {/* ============================================================ */}
       {activeTab === TAB_LOCATE && (
         <Box>
-          {/* Scan input area */}
-          <Card
-            sx={{
-              p: { xs: 3, sm: 4 },
-              mb: 3,
-              textAlign: "center",
-              bgcolor: "primary.soft",
-              border: 2,
-              borderColor: "primary.main",
-            }}
-          >
-            <QrCodeScannerIcon sx={{ fontSize: 56, color: "primary.main", mb: 1 }} />
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-              Scan RFID Tag to Locate Material
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Point your RFID reader at a tag. The scanned code will appear below.
+          {/* Step 1: Material Search / Selection */}
+          <Card sx={{ p: { xs: 2, sm: 3 }, mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 24, height: 24, borderRadius: "50%",
+                backgroundColor: selectedMaterial ? "success.main" : "primary.main",
+                color: "white", fontSize: "0.75rem", fontWeight: 700,
+              }}>1</span>
+              {selectedMaterial ? "Material Selected" : "Select Material to Locate"}
             </Typography>
 
-            <Box
-              sx={{
-                display: "flex",
-                gap: 1,
-                maxWidth: 500,
-                mx: "auto",
-              }}
-            >
-              <TextField
-                inputRef={scanInputRef}
-                size="medium"
-                fullWidth
-                autoFocus
-                placeholder="Scan or type RFID code..."
-                value={locateInput}
-                onChange={(e) => setLocateInput(e.target.value)}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <QrCodeScannerIcon />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    borderRadius: 3,
-                    fontSize: "1.1rem",
-                  },
-                }}
-              />
-              <Button
-                variant="contained"
-                size="large"
-                onClick={handleLocate}
-                disabled={!locateInput.trim() || scanning}
-                sx={{ minWidth: 100, borderRadius: 3, textTransform: "none", fontWeight: 700 }}
-              >
-                {scanning ? <CircularProgress size={24} /> : "Locate"}
-              </Button>
-            </Box>
+            {selectedMaterial ? (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+                <Chip
+                  label={`${selectedMaterial.material_code} \u2014 ${selectedMaterial.short_description}`}
+                  color="primary"
+                  onDelete={() => {
+                    setSelectedMaterial(null);
+                    setLocateMatQuery("");
+                    setScanResult(null);
+                    setScanHistory([]);
+                  }}
+                  sx={{ fontWeight: 600, fontSize: "0.85rem" }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  UOM: {selectedMaterial.uom}
+                </Typography>
+              </Box>
+            ) : (
+              <Box>
+                <TextField
+                  size="small"
+                  fullWidth
+                  autoFocus
+                  placeholder="Search by material code or description..."
+                  value={locateMatQuery}
+                  onChange={(e) => setLocateMatQuery(e.target.value)}
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                      endAdornment: locateMatSearching ? <CircularProgress size={16} /> : null,
+                    },
+                  }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                {locateMatOptions.length > 0 && (
+                  <Box
+                    sx={{
+                      border: 1, borderColor: "divider", borderRadius: 1,
+                      mt: 0.5, maxHeight: 200, overflow: "auto",
+                    }}
+                  >
+                    {locateMatOptions.map((m) => (
+                      <Box
+                        key={m.material_code}
+                        sx={{
+                          px: 1.5, py: 1, cursor: "pointer",
+                          "&:hover": { bgcolor: "action.hover" },
+                          borderBottom: "1px solid", borderColor: "divider",
+                          "&:last-child": { borderBottom: "none" },
+                        }}
+                        onClick={() => {
+                          setSelectedMaterial(m);
+                          setLocateMatQuery("");
+                          setLocateMatOptions([]);
+                          setScanResult(null);
+                          setScanHistory([]);
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {m.material_code}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {m.short_description} &middot; {m.uom}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            )}
           </Card>
 
-          {/* Scan result */}
-          {scanResult && (
+          {/* Step 2: Scan RFID Tags */}
+          {selectedMaterial && (
+            <Card
+              sx={{
+                p: { xs: 2, sm: 3 },
+                mb: 2,
+                bgcolor: "primary.soft",
+                border: 2,
+                borderColor: "primary.main",
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 24, height: 24, borderRadius: "50%",
+                  backgroundColor: "primary.main", color: "white", fontSize: "0.75rem", fontWeight: 700,
+                }}>2</span>
+                Scan RFID Tag to Locate Material
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Point your RFID reader at a tag. The scanned code will appear below.
+              </Typography>
+
+              <Box sx={{ display: "flex", gap: 1, maxWidth: 500 }}>
+                <TextField
+                  inputRef={scanInputRef}
+                  size="small"
+                  fullWidth
+                  placeholder="Scan or type RFID code..."
+                  value={locateInput}
+                  onChange={(e) => setLocateInput(e.target.value)}
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <QrCodeScannerIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleLocate}
+                  disabled={!locateInput.trim() || scanning}
+                  sx={{ minWidth: 90, borderRadius: 2, textTransform: "none", fontWeight: 700 }}
+                >
+                  {scanning ? <CircularProgress size={20} /> : "Locate"}
+                </Button>
+              </Box>
+            </Card>
+          )}
+
+          {/* Step 3: Scan result */}
+          {scanResult && selectedMaterial && (
             <Card
               sx={{
                 p: 3,
-                mb: 3,
+                mb: 2,
                 border: 2,
-                borderColor: scanResult.found ? "success.main" : "error.main",
-                bgcolor: scanResult.found ? "success.soft" : "error.soft",
+                borderColor: scanResult.found && scanResult.tag.material_code === selectedMaterial.material_code ? "success.main" : "error.main",
+                bgcolor: scanResult.found && scanResult.tag.material_code === selectedMaterial.material_code ? "success.soft" : "error.soft",
               }}
             >
               {scanResult.found ? (
-                <Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                    <CheckCircleIcon color="success" sx={{ fontSize: 32 }} />
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: "success.dark" }}>
-                      Material Found
-                    </Typography>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                      gap: 2,
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        RFID Code
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontFamily: "monospace", fontWeight: 600 }}>
-                        {scanResult.tag.rfid_code}
+                scanResult.tag.material_code === selectedMaterial.material_code ? (
+                  <Box>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                      <CheckCircleIcon color="success" sx={{ fontSize: 32 }} />
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: "success.dark" }}>
+                        Material Located!
                       </Typography>
                     </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Tag Type
-                      </Typography>
-                      <Typography variant="body1" sx={{ textTransform: "capitalize", fontWeight: 600 }}>
-                        {scanResult.tag.tag_type}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Material Code
-                      </Typography>
-                      <Typography variant="h5" sx={{ fontWeight: 800, color: "primary.main" }}>
-                        {scanResult.tag.material_code}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Description
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                        {scanResult.material_description || "-"}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Quantity
-                      </Typography>
-                      <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                        {scanResult.tag.quantity} {scanResult.tag.uom}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                      <LocationOnIcon color="action" sx={{ fontSize: 20 }} />
+                    <Box
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                        gap: 2,
+                      }}
+                    >
                       <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Storage Location
+                        <Typography variant="caption" color="text.secondary">RFID Code</Typography>
+                        <Typography variant="body1" sx={{ fontFamily: "monospace", fontWeight: 600 }}>
+                          {scanResult.tag.rfid_code}
                         </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Tag Type</Typography>
+                        <Typography variant="body1" sx={{ textTransform: "capitalize", fontWeight: 600 }}>
+                          {scanResult.tag.tag_type}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Material Code</Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 800, color: "primary.main" }}>
+                          {scanResult.tag.material_code}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Description</Typography>
                         <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                          {scanResult.tag.storage_location || "Not specified"}
+                          {scanResult.material_description || "-"}
                         </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Quantity</Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                          {scanResult.tag.quantity} {scanResult.tag.uom}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <LocationOnIcon color="action" sx={{ fontSize: 20 }} />
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Storage Location</Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {scanResult.tag.storage_location || "Not specified"}
+                          </Typography>
+                        </Box>
                       </Box>
                     </Box>
                   </Box>
-                </Box>
+                ) : (
+                  <Box sx={{ textAlign: "center" }}>
+                    <ErrorIcon color="warning" sx={{ fontSize: 48, mb: 1 }} />
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: "warning.dark" }}>
+                      Wrong Material
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      This tag is linked to material <strong>{scanResult.tag.material_code}</strong>, not <strong>{selectedMaterial.material_code}</strong>.
+                    </Typography>
+                  </Box>
+                )
               ) : (
                 <Box sx={{ textAlign: "center" }}>
                   <ErrorIcon color="error" sx={{ fontSize: 48, mb: 1 }} />
@@ -952,61 +1055,89 @@ export default function RfidTags() {
           )}
 
           {/* Scan history */}
-          {scanHistory.length > 0 && (
-            <Box>
+          {scanHistory.length > 0 && selectedMaterial && (
+            <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
-                Recent Scans
+                Scan History for {selectedMaterial.material_code}
               </Typography>
-              <TableContainer sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: "grey.50" }}>
-                      <TableCell sx={{ fontWeight: 700 }}>Time</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>RFID Code</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Material</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Qty</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {scanHistory.map((entry, i) => (
-                      <TableRow key={i}>
-                        <TableCell>{entry.time}</TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>
+              {mobile ? (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {scanHistory.map((entry, i) => (
+                    <Card key={i} variant="outlined" sx={{ p: 1.5 }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">{entry.time}</Typography>
+                          <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem", fontWeight: 600 }}>
                             {entry.code}
                           </Typography>
-                        </TableCell>
-                        <TableCell>
-                          {entry.result.found ? entry.result.tag.material_code ?? "-" : "-"}
-                        </TableCell>
-                        <TableCell>
-                          {entry.result.found ? `${entry.result.tag.quantity ?? "-"} ${entry.result.tag.uom ?? ""}` : "-"}
-                        </TableCell>
-                        <TableCell>
-                          {entry.result.found ? entry.result.tag.storage_location ?? "-" : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={entry.result.found ? "Found" : "Not Found"}
-                            color={entry.result.found ? "success" : "error"}
-                            sx={{ fontSize: "0.65rem" }}
-                          />
-                        </TableCell>
+                          {entry.result.found && (
+                            <Typography variant="body2">
+                              {entry.result.tag.quantity} {entry.result.tag.uom} &middot; {entry.result.tag.storage_location ?? "-"}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={entry.matched ? "Match" : entry.result.found ? "Wrong Material" : "Not Found"}
+                          color={entry.matched ? "success" : entry.result.found ? "warning" : "error"}
+                          sx={{ fontSize: "0.65rem" }}
+                        />
+                      </Box>
+                    </Card>
+                  ))}
+                </Box>
+              ) : (
+                <TableContainer sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: "grey.50" }}>
+                        <TableCell sx={{ fontWeight: 700 }}>Time</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>RFID Code</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Material</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Qty</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Result</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableHead>
+                    <TableBody>
+                      {scanHistory.map((entry, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{entry.time}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>
+                              {entry.code}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {entry.result.found ? entry.result.tag.material_code ?? "-" : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {entry.result.found ? `${entry.result.tag.quantity ?? "-"} ${entry.result.tag.uom ?? ""}` : "-"}
+                          </TableCell>
+                          <TableCell>
+                            {entry.result.found ? entry.result.tag.storage_location ?? "-" : "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={entry.matched ? "Match" : entry.result.found ? "Wrong Material" : "Not Found"}
+                              color={entry.matched ? "success" : entry.result.found ? "warning" : "error"}
+                              sx={{ fontSize: "0.65rem" }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </Box>
           )}
 
           {/* RFID Stock Summary */}
-          <Box sx={{ mt: 4 }}>
+          <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
-              Linked RFID Stock by Material
+              All Linked RFID Stock by Material
             </Typography>
             {stockLoading ? (
               <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
@@ -1016,6 +1147,43 @@ export default function RfidTags() {
               <Typography variant="body2" color="text.secondary">
                 No linked RFID tags found.
               </Typography>
+            ) : mobile ? (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {stockRows.map((row) => (
+                  <Card
+                    key={row.material_code}
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      cursor: "pointer",
+                      borderColor: selectedMaterial?.material_code === row.material_code ? "primary.main" : undefined,
+                      borderWidth: selectedMaterial?.material_code === row.material_code ? 2 : 1,
+                      "&:hover": { bgcolor: "action.hover" },
+                    }}
+                    onClick={() => {
+                      setSelectedMaterial({
+                        material_code: row.material_code,
+                        short_description: row.short_description,
+                        uom: row.uom,
+                      } as MaterialType);
+                      setScanResult(null);
+                      setScanHistory([]);
+                      scanInputRef.current?.focus();
+                    }}
+                  >
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{row.material_code}</Typography>
+                        <Typography variant="caption" color="text.secondary">{row.short_description}</Typography>
+                      </Box>
+                      <Box sx={{ textAlign: "right" }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{row.total_quantity} {row.uom}</Typography>
+                        <Typography variant="caption" color="text.secondary">{row.total_tags} tag(s)</Typography>
+                      </Box>
+                    </Box>
+                  </Card>
+                ))}
+              </Box>
             ) : (
               <TableContainer sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}>
                 <Table size="small">
@@ -1030,7 +1198,25 @@ export default function RfidTags() {
                   </TableHead>
                   <TableBody>
                     {stockRows.map((row) => (
-                      <TableRow key={row.material_code} hover>
+                      <TableRow
+                        key={row.material_code}
+                        hover
+                        sx={{
+                          cursor: "pointer",
+                          bgcolor: selectedMaterial?.material_code === row.material_code ? "primary.soft" : undefined,
+                          "&:hover": { bgcolor: "primary.soft" },
+                        }}
+                        onClick={() => {
+                          setSelectedMaterial({
+                            material_code: row.material_code,
+                            short_description: row.short_description,
+                            uom: row.uom,
+                          } as MaterialType);
+                          setScanResult(null);
+                          setScanHistory([]);
+                          scanInputRef.current?.focus();
+                        }}
+                      >
                         <TableCell sx={{ fontWeight: 600 }}>{row.material_code}</TableCell>
                         <TableCell>{row.short_description}</TableCell>
                         <TableCell align="right">

@@ -89,8 +89,23 @@ export async function getRfidTags(
   }
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) throw friendlyError(error);
   return (data ?? []) as RfidTag[];
+}
+
+function friendlyError(err: { message: string; code?: string }): Error {
+  if (err.code === "42P01" || err.message?.includes("does not exist") || err.message?.includes("relation \"rfid_tags\" does not exist")) {
+    return new Error(
+      "The rfid_tags table does not exist yet. Please run the database migration in Supabase SQL Editor first."
+    );
+  }
+  if (err.code === "23505" || err.message?.includes("duplicate") || err.message?.includes("unique")) {
+    return new Error("This RFID code is already registered.");
+  }
+  if (err.code === "42501" || err.message?.includes("permission denied") || err.message?.includes("RLS")) {
+    return new Error("Permission denied. Check that RLS policies are set up on the rfid_tags table.");
+  }
+  return new Error(err.message || "Database error.");
 }
 
 /** Register a new RFID tag (master data only, not yet linked). */
@@ -107,7 +122,7 @@ export async function addRfidTag(input: RfidTagMasterInput): Promise<RfidTag> {
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) throw friendlyError(error);
   return data as RfidTag;
 }
 
