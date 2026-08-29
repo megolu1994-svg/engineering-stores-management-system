@@ -36,6 +36,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import ContentPasteSearchIcon from "@mui/icons-material/ContentPasteSearch";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import HistoryIcon from "@mui/icons-material/History";
+import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 
 import { useTheme } from "@mui/material/styles";
 
@@ -99,6 +100,7 @@ const menuItems = [
   { text: "Inventory", path: "/allocation", icon: <FactCheckIcon /> },
   { text: "Material Receipt", path: "/material-receipt", icon: <LocalShippingIcon /> },
   { text: "Material Issue", path: "/material-issue", icon: <OutputIcon /> },
+  { text: "RFID Tags", path: "/rfid-tags", icon: <QrCodeScannerIcon /> },
   { text: "SAP Stock", path: "/sap-stock", icon: <AccountTreeIcon /> },
   { text: "SAP History", path: "/sap-history", icon: <HistoryIcon /> },
   { text: "Reports", path: "/reports", icon: <BarChartIcon /> },

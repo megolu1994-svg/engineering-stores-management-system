@@ -14,6 +14,7 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import SapStock from "./pages/SapStock";
 import SapHistory from "./pages/SapHistory";
+import RfidTags from "./pages/RfidTags";
 
 export default function App() {
   return (
@@ -33,6 +34,8 @@ export default function App() {
           <Route path="material-receipt" element={<MaterialReceipt />} />
 
           <Route path="material-issue" element={<MaterialIssue />} />
+
+          <Route path="rfid-tags" element={<RfidTags />} />
 
           <Route path="reports" element={<Reports />} />
 
