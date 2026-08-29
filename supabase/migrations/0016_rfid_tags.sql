@@ -1,32 +1,50 @@
--- RFID Tag Management: link physical RFID tags to material codes.
+-- RFID Tag Master: physical RFID tags (EPC/TID) that can be linked
+-- to material codes with quantities. Scanning a tag with an RFID
+-- reader instantly reveals what material it's linked to and where.
 --
--- Each row represents one physical RFID tag (EPC/TID) attached to a
--- specific quantity of a material at a storage location.
--- One material can have many tags; each tag maps to exactly one material.
+-- Workflow:
+--   1. Register tags in RFID Master (tag code + basic details)
+--   2. Link a tag to a material code + quantity + location
+--   3. Scan tag with RFID reader → see material + location instantly
 
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.rfid_tags (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  rfid_code       TEXT NOT NULL,                          -- EPC/TID on the tag
-  material_code   TEXT NOT NULL,                          -- FK to material_master
-  quantity         NUMERIC NOT NULL DEFAULT 0,            -- fixed qty per tag (e.g. 50 kg)
-  uom             TEXT NOT NULL DEFAULT '',               -- unit of measure
-  storage_location TEXT,                                  -- physical location
-  status          TEXT NOT NULL DEFAULT 'active'          -- active | damaged | decommissioned
-                  CHECK (status IN ('active', 'damaged', 'decommissioned')),
-  notes           TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
 
-  -- Each tag code is unique per user (same EPC can't appear twice for same account)
+  -- Tag identity (master data)
+  rfid_code        TEXT NOT NULL,                          -- EPC/TID on the tag
+  tag_type         TEXT NOT NULL DEFAULT 'paper',          -- paper | adhesive | metal | ceramic
+  tag_description  TEXT,                                   -- optional label/description
+
+  -- Material linkage (filled when tag is linked to material)
+  material_code    TEXT,                                   -- FK to material_master (nullable until linked)
+  quantity          NUMERIC,                               -- fixed qty per tag (e.g. 50 kg)
+  uom              TEXT,                                   -- unit of measure
+  storage_location TEXT,                                   -- physical location / bin
+
+  -- Status
+  status           TEXT NOT NULL DEFAULT 'unlinked'        -- unlinked | active | damaged | decommissioned
+                   CHECK (status IN ('unlinked', 'active', 'damaged', 'decommissioned')),
+  notes            TEXT,
+
+  -- Timestamps
+  linked_at        TIMESTAMPTZ,                            -- when tag was linked to material
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Each tag code is unique per user
   CONSTRAINT rfid_tags_user_rfid_unique UNIQUE (user_id, rfid_code)
 );
 
--- Fast lookups
+-- Fast lookups for locate-by-scan and material grouping
+CREATE INDEX IF NOT EXISTS rfid_tags_user_rfid_idx
+  ON public.rfid_tags (user_id, rfid_code);
+
 CREATE INDEX IF NOT EXISTS rfid_tags_user_material_idx
-  ON public.rfid_tags (user_id, material_code);
+  ON public.rfid_tags (user_id, material_code)
+  WHERE material_code IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS rfid_tags_user_status_idx
   ON public.rfid_tags (user_id, status);

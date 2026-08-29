@@ -8,27 +8,52 @@ export interface RfidTag {
   id: string;
   user_id: string;
   rfid_code: string;
-  material_code: string;
-  quantity: number;
-  uom: string;
+  tag_type: string;
+  tag_description: string | null;
+  material_code: string | null;
+  quantity: number | null;
+  uom: string | null;
   storage_location: string | null;
-  status: "active" | "damaged" | "decommissioned";
+  status: "unlinked" | "active" | "damaged" | "decommissioned";
   notes: string | null;
+  linked_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface RfidTagInput {
+/** Master data fields (no material linkage). */
+export interface RfidTagMasterInput {
   rfid_code: string;
+  tag_type?: string;
+  tag_description?: string;
+  notes?: string;
+}
+
+/** Link a tag to a material + quantity + location. */
+export interface RfidLinkInput {
   material_code: string;
   quantity: number;
   uom: string;
-  storage_location?: string | null;
-  status?: RfidTag["status"];
-  notes?: string | null;
+  storage_location?: string;
 }
 
-/** Aggregated view per material for the stock summary tab. */
+export interface RfidTagInput extends RfidTagMasterInput {
+  material_code?: string;
+  quantity?: number;
+  uom?: string;
+  storage_location?: string;
+  status?: RfidTag["status"];
+}
+
+/** Result of scanning a tag — enriched with material master data. */
+export interface RfidScanResult {
+  tag: RfidTag;
+  material_description: string;
+  material_uom: string;
+  found: boolean;
+}
+
+/** Aggregated view per material for stock summary. */
 export interface RfidStockRow {
   material_code: string;
   short_description: string;
@@ -39,9 +64,10 @@ export interface RfidStockRow {
 }
 
 /* ------------------------------------------------------------------ */
-/*  CRUD                                                              */
+/*  RFID Master CRUD                                                  */
 /* ------------------------------------------------------------------ */
 
+/** List all tags with optional search and status filter. */
 export async function getRfidTags(
   search?: string,
   status?: string
@@ -58,7 +84,7 @@ export async function getRfidTags(
   if (search?.trim()) {
     const safe = search.trim().replace(/[%_]/g, (m) => `\\${m}`);
     query = query.or(
-      `rfid_code.ilike.%${safe}%,material_code.ilike.%${safe}%,storage_location.ilike.%${safe}%`
+      `rfid_code.ilike.%${safe}%,tag_description.ilike.%${safe}%,material_code.ilike.%${safe}%,storage_location.ilike.%${safe}%`
     );
   }
 
@@ -67,17 +93,16 @@ export async function getRfidTags(
   return (data ?? []) as RfidTag[];
 }
 
-export async function addRfidTag(input: RfidTagInput): Promise<RfidTag> {
+/** Register a new RFID tag (master data only, not yet linked). */
+export async function addRfidTag(input: RfidTagMasterInput): Promise<RfidTag> {
   const { data, error } = await supabase
     .from("rfid_tags")
     .insert({
       rfid_code: input.rfid_code.trim(),
-      material_code: input.material_code.trim(),
-      quantity: input.quantity,
-      uom: input.uom,
-      storage_location: input.storage_location?.trim() || null,
-      status: input.status ?? "active",
+      tag_type: input.tag_type ?? "paper",
+      tag_description: input.tag_description?.trim() || null,
       notes: input.notes?.trim() || null,
+      status: "unlinked",
     })
     .select()
     .single();
@@ -86,20 +111,18 @@ export async function addRfidTag(input: RfidTagInput): Promise<RfidTag> {
   return data as RfidTag;
 }
 
+/** Update master data fields of a tag. */
 export async function updateRfidTag(
   id: string,
-  input: Partial<RfidTagInput>
+  input: Partial<RfidTagMasterInput & { status: string }>
 ): Promise<RfidTag> {
   const payload: Record<string, unknown> = {};
   if (input.rfid_code !== undefined) payload.rfid_code = input.rfid_code.trim();
-  if (input.material_code !== undefined)
-    payload.material_code = input.material_code.trim();
-  if (input.quantity !== undefined) payload.quantity = input.quantity;
-  if (input.uom !== undefined) payload.uom = input.uom;
-  if (input.storage_location !== undefined)
-    payload.storage_location = input.storage_location?.trim() || null;
-  if (input.status !== undefined) payload.status = input.status;
+  if (input.tag_type !== undefined) payload.tag_type = input.tag_type;
+  if (input.tag_description !== undefined)
+    payload.tag_description = input.tag_description?.trim() || null;
   if (input.notes !== undefined) payload.notes = input.notes?.trim() || null;
+  if (input.status !== undefined) payload.status = input.status;
 
   const { data, error } = await supabase
     .from("rfid_tags")
@@ -112,26 +135,133 @@ export async function updateRfidTag(
   return data as RfidTag;
 }
 
+/** Delete a tag permanently. */
 export async function deleteRfidTag(id: string): Promise<void> {
   const { error } = await supabase.from("rfid_tags").delete().eq("id", id);
   if (error) throw error;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Bulk import (Excel / CSV rows)                                    */
+/*  Link / Unlink tag to material                                     */
+/* ------------------------------------------------------------------ */
+
+/** Link (or re-link) a tag to a material code + quantity + location. */
+export async function linkTagToMaterial(
+  tagId: string,
+  input: RfidLinkInput
+): Promise<RfidTag> {
+  const { data, error } = await supabase
+    .from("rfid_tags")
+    .update({
+      material_code: input.material_code.trim(),
+      quantity: input.quantity,
+      uom: input.uom,
+      storage_location: input.storage_location?.trim() || null,
+      status: "active",
+      linked_at: new Date().toISOString(),
+    })
+    .eq("id", tagId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as RfidTag;
+}
+
+/** Unlink a tag from its material (reset to unlinked state). */
+export async function unlinkTag(tagId: string): Promise<RfidTag> {
+  const { data, error } = await supabase
+    .from("rfid_tags")
+    .update({
+      material_code: null,
+      quantity: null,
+      uom: null,
+      storage_location: null,
+      status: "unlinked",
+      linked_at: null,
+    })
+    .eq("id", tagId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as RfidTag;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Locate Material by Scanning                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Scan an RFID tag code → return the tag record enriched with
+ * material master data (description, UOM). This is the core "locate"
+ * function: point RFID reader at a tag, get instant material info.
+ */
+export async function locateByScan(rfidCode: string): Promise<RfidScanResult> {
+  const code = rfidCode.trim();
+  if (!code) {
+    throw new Error("RFID code is required.");
+  }
+
+  // Look up the tag by its EPC/TID code
+  const { data: tag, error } = await supabase
+    .from("rfid_tags")
+    .select("*")
+    .eq("rfid_code", code)
+    .single();
+
+  if (error || !tag) {
+    return {
+      tag: null as unknown as RfidTag,
+      material_description: "",
+      material_uom: "",
+      found: false,
+    };
+  }
+
+  // Fetch material master details if linked
+  let materialDescription = "";
+  let materialUom = "";
+
+  if (tag.material_code) {
+    const { data: mat } = await supabase
+      .from("material_master")
+      .select("short_description, uom")
+      .eq("material_code", tag.material_code)
+      .single();
+
+    if (mat) {
+      materialDescription = mat.short_description ?? "";
+      materialUom = mat.uom ?? "";
+    }
+  }
+
+  return {
+    tag: tag as RfidTag,
+    material_description: materialDescription,
+    material_uom: materialUom,
+    found: true,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bulk Import                                                       */
 /* ------------------------------------------------------------------ */
 
 export interface BulkRfidRow {
   rfid_code: string;
-  material_code: string;
-  quantity: number;
-  uom: string;
+  tag_type?: string;
+  tag_description?: string;
+  material_code?: string;
+  quantity?: number;
+  uom?: string;
   storage_location?: string;
   notes?: string;
 }
 
 export interface BulkImportResult {
   imported: number;
+  linked: number;
   errors: Array<{ row: number; message: string }>;
 }
 
@@ -146,46 +276,49 @@ export async function bulkImportRfidTags(
       errors.push({ row: i + 1, message: "Missing RFID code" });
       return;
     }
-    if (!row.material_code?.trim()) {
-      errors.push({ row: i + 1, message: "Missing material code" });
-      return;
-    }
-    if (!row.quantity || row.quantity <= 0) {
-      errors.push({ row: i + 1, message: "Invalid quantity" });
-      return;
-    }
     valid.push(row);
   });
 
   if (valid.length === 0) {
-    return { imported: 0, errors };
+    return { imported: 0, linked: 0, errors };
   }
 
-  const { data, error } = await supabase.from("rfid_tags").upsert(
-    valid.map((row) => ({
+  const records = valid.map((row) => {
+    const hasMaterial = !!row.material_code?.trim();
+    return {
       rfid_code: row.rfid_code.trim(),
-      material_code: row.material_code.trim(),
-      quantity: row.quantity,
-      uom: row.uom || "NOS",
-      storage_location: row.storage_location?.trim() || null,
+      tag_type: row.tag_type?.trim() || "paper",
+      tag_description: row.tag_description?.trim() || null,
+      material_code: hasMaterial ? row.material_code!.trim() : null,
+      quantity: hasMaterial ? (row.quantity ?? 0) : null,
+      uom: hasMaterial ? (row.uom?.trim() || null) : null,
+      storage_location: hasMaterial ? (row.storage_location?.trim() || null) : null,
+      status: hasMaterial ? "active" : "unlinked",
+      linked_at: hasMaterial ? new Date().toISOString() : null,
       notes: row.notes?.trim() || null,
-    })),
-    { onConflict: "user_id,rfid_code", ignoreDuplicates: false }
-  );
+    };
+  });
+
+  const { data, error } = await supabase.from("rfid_tags").upsert(records, {
+    onConflict: "user_id,rfid_code",
+    ignoreDuplicates: false,
+  });
 
   if (error) {
-    // If the whole batch fails, report it for each row
     valid.forEach((_, i) => {
       errors.push({ row: i + 1, message: error.message });
     });
-    return { imported: 0, errors };
+    return { imported: 0, linked: 0, errors };
   }
 
-  return { imported: (data ?? []).length || valid.length, errors };
+  const imported = (data ?? []).length || valid.length;
+  const linked = records.filter((r) => r.status === "active").length;
+
+  return { imported, linked, errors };
 }
 
 /* ------------------------------------------------------------------ */
-/*  Stock summary (grouped by material)                               */
+/*  RFID Stock Summary (grouped by material)                          */
 /* ------------------------------------------------------------------ */
 
 export async function getRfidStockSummary(): Promise<RfidStockRow[]> {
@@ -193,14 +326,15 @@ export async function getRfidStockSummary(): Promise<RfidStockRow[]> {
     .from("rfid_tags")
     .select("*")
     .eq("status", "active")
+    .not("material_code", "is", null)
     .order("material_code");
 
   if (error) throw error;
 
   const allTags = (tags ?? []) as RfidTag[];
 
-  // Fetch material descriptions for all unique codes
-  const codes = [...new Set(allTags.map((t) => t.material_code))];
+  // Fetch material descriptions
+  const codes = [...new Set(allTags.map((t) => t.material_code!))];
   let materialMap: Record<string, { short_description: string; uom: string }> =
     {};
 
@@ -223,20 +357,21 @@ export async function getRfidStockSummary(): Promise<RfidStockRow[]> {
   // Group by material_code
   const grouped: Record<string, RfidStockRow> = {};
   for (const tag of allTags) {
-    if (!grouped[tag.material_code]) {
-      const mat = materialMap[tag.material_code];
-      grouped[tag.material_code] = {
-        material_code: tag.material_code,
+    const mc = tag.material_code!;
+    if (!grouped[mc]) {
+      const mat = materialMap[mc];
+      grouped[mc] = {
+        material_code: mc,
         short_description: mat?.short_description ?? "",
-        uom: tag.uom || (mat?.uom ?? ""),
+        uom: tag.uom ?? mat?.uom ?? "",
         total_tags: 0,
         total_quantity: 0,
         tags: [],
       };
     }
-    grouped[tag.material_code].total_tags++;
-    grouped[tag.material_code].total_quantity += tag.quantity;
-    grouped[tag.material_code].tags.push(tag);
+    grouped[mc].total_tags++;
+    grouped[mc].total_quantity += tag.quantity ?? 0;
+    grouped[mc].tags.push(tag);
   }
 
   return Object.values(grouped).sort((a, b) =>
