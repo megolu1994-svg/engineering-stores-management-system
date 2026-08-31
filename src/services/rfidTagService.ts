@@ -1,5 +1,14 @@
 import { supabase } from "../config/supabase";
 
+/** Get the current authenticated user's ID. */
+async function getCurrentUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    throw new Error("Not authenticated. Please log in again.");
+  }
+  return data.user.id;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
@@ -110,9 +119,11 @@ function friendlyError(err: { message: string; code?: string }): Error {
 
 /** Register a new RFID tag (master data only, not yet linked). */
 export async function addRfidTag(input: RfidTagMasterInput): Promise<RfidTag> {
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("rfid_tags")
     .insert({
+      user_id: userId,
       rfid_code: input.rfid_code.trim(),
       tag_type: input.tag_type ?? "paper",
       tag_description: input.tag_description?.trim() || null,
@@ -283,6 +294,7 @@ export interface BulkImportResult {
 export async function bulkImportRfidTags(
   rows: BulkRfidRow[]
 ): Promise<BulkImportResult> {
+  const userId = await getCurrentUserId();
   const errors: Array<{ row: number; message: string }> = [];
   const valid: BulkRfidRow[] = [];
 
@@ -301,6 +313,7 @@ export async function bulkImportRfidTags(
   const records = valid.map((row) => {
     const hasMaterial = !!row.material_code?.trim();
     return {
+      user_id: userId,
       rfid_code: row.rfid_code.trim(),
       tag_type: row.tag_type?.trim() || "paper",
       tag_description: row.tag_description?.trim() || null,
