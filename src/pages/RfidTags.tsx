@@ -183,6 +183,8 @@ export default function RfidTags() {
     Array<{ code: string; time: string; result: RfidScanResult; matched: boolean }>
   >([]);
   const scanInputRef = useRef<HTMLInputElement>(null);
+  const locateInputRef = useRef("");
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Stock summary
   const [stockRows, setStockRows] = useState<RfidStockRow[]>([]);
@@ -391,7 +393,11 @@ export default function RfidTags() {
     } finally {
       setScanning(false);
       setLocateInput("");
-      scanInputRef.current?.focus();
+      locateInputRef.current = "";
+      // Delay focus to ensure DOM is ready after state update
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 50);
     }
   }
 
@@ -465,12 +471,18 @@ export default function RfidTags() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [locateMatQuery, selectedMaterial]);
 
-  /* ---- Keyboard shortcut: Enter to scan ---- */
+  /* ---- Keep ref in sync with locateInput state ---- */
+  useEffect(() => {
+    locateInputRef.current = locateInput;
+  }, [locateInput]);
+
+  /* ---- Keyboard shortcut: Enter to scan (global fallback) ---- */
 
   useEffect(() => {
     if (activeTab !== TAB_LOCATE) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Enter" && locateInput.trim() && !scanning) {
+      if (e.key === "Enter" && locateInputRef.current.trim() && !scanning) {
+        e.preventDefault();
         handleLocate();
       }
     }
@@ -934,9 +946,29 @@ export default function RfidTags() {
                   inputRef={scanInputRef}
                   size="small"
                   fullWidth
+                  autoFocus
                   placeholder="Scan or type RFID code..."
                   value={locateInput}
-                  onChange={(e) => setLocateInput(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    // If InfoWedge sends characters with a trailing newline, strip it
+                    const cleaned = val.replace(/\r?\n$/, "");
+                    setLocateInput(cleaned);
+                    locateInputRef.current = cleaned;
+                    // Clear any pending scan timer when new input arrives
+                    if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !scanning) {
+                      e.preventDefault();
+                      // Small delay to ensure InfoWedge has finished typing all characters
+                      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+                      scanTimerRef.current = setTimeout(() => {
+                        const code = locateInputRef.current.trim();
+                        if (code) handleLocate();
+                      }, 80);
+                    }
+                  }}
                   slotProps={{
                     input: {
                       startAdornment: (
