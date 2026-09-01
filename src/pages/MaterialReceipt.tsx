@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import * as XLSX from "xlsx";
 
 import {
@@ -420,34 +420,54 @@ export default function MaterialReceipt() {
 
   // Previous DRCs for the "Suggest from Previous DRC" feature
   const [previousDrcs, setPreviousDrcs] = useState<ReceiptHeader[]>([]);
-  const [loadingPreviousDrcs, setLoadingPreviousDrcs] = useState(false);
 
   async function loadPreviousDrcs() {
-    setLoadingPreviousDrcs(true);
     try {
       const receipts = await getReceipts();
       setPreviousDrcs(receipts);
     } catch {
       // ignore - best effort
-    } finally {
-      setLoadingPreviousDrcs(false);
     }
   }
 
-  function handleSuggestFromPreviousDrc(receipt: ReceiptHeader | null) {
-    if (!receipt) return;
-    setForm((prev) => ({
-      ...prev,
-      vehicle_number: receipt.vehicle_number ?? "",
-      driver_name: receipt.driver_name ?? "",
-      vendor_name: receipt.vendor_name ?? "",
-      package_details:
-        receipt.package_details && receipt.package_details.length > 0
-          ? receipt.package_details
-          : [{ ...emptyPackageRow }],
-      purpose: receipt.purpose ?? receipt.remarks ?? "",
-    }));
-  }
+
+
+  // Extract unique suggestions from previous DRCs for each field
+  const vehicleSuggestions = useMemo(() => {
+    const values = previousDrcs
+      .map((r) => r.vehicle_number)
+      .filter((v): v is string => !!v && v.trim() !== '');
+    return [...new Set(values)];
+  }, [previousDrcs]);
+
+  const driverSuggestions = useMemo(() => {
+    const values = previousDrcs
+      .map((r) => r.driver_name)
+      .filter((v): v is string => !!v && v.trim() !== '');
+    return [...new Set(values)];
+  }, [previousDrcs]);
+
+  const vendorSuggestions = useMemo(() => {
+    const values = previousDrcs
+      .map((r) => r.vendor_name)
+      .filter((v): v is string => !!v && v.trim() !== '');
+    return [...new Set(values)];
+  }, [previousDrcs]);
+
+  const packageTypeSuggestions = useMemo(() => {
+    const values = previousDrcs
+      .flatMap((r) => r.package_details ?? [])
+      .map((p) => p.package_type)
+      .filter((v): v is string => !!v && v.trim() !== '');
+    return [...new Set(values)];
+  }, [previousDrcs]);
+
+  const purposeSuggestions = useMemo(() => {
+    const values = previousDrcs
+      .map((r) => r.purpose ?? r.remarks)
+      .filter((v): v is string => !!v && v.trim() !== '');
+    return [...new Set(values)];
+  }, [previousDrcs]);
 
   async function loadDrcSuggestion() {
     setLoadingDrcSuggestion(true);
@@ -1638,38 +1658,15 @@ export default function MaterialReceipt() {
                     </Box>
                   )}
 
-                  {/* Suggest from Previous DRC */}
-                  {!editingReceipt && (
-                    <Box>
-                      <Autocomplete
-                        options={previousDrcs}
-                        loading={loadingPreviousDrcs}
-                        getOptionLabel={(option) => `${option.drc_number} - ${option.vendor_name}`}
-                        isOptionEqualToValue={(option, value) => option.id === value.id}
-                        onChange={(_e, value) => handleSuggestFromPreviousDrc(value)}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Suggest from Previous DRC"
-                            placeholder="Search by DRC No. or Vendor Name..."
-                            size="small"
-                            fullWidth
-                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                          />
-                        )}
-                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                      />
-                    </Box>
-                  )}
-
                   {/* Vendor Name */}
-                  <TextField
-                    label="Vendor Name (Supplier)"
-                    size="small"
-                    fullWidth
-                    required
-                    value={form.vendor_name}
-                    onChange={(e) => updateField("vendor_name", e.target.value)}
+                  <Autocomplete
+                    freeSolo
+                    options={vendorSuggestions}
+                    inputValue={form.vendor_name}
+                    onInputChange={(_e, value) => updateField("vendor_name", value ?? "")}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Vendor Name (Supplier)" size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    )}
                     sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                   />
                 </Box>
@@ -1691,23 +1688,25 @@ export default function MaterialReceipt() {
                     <FormControlLabel value="Hand" control={<Radio size="small" />} label="By Hand" />
                   </RadioGroup>
                   {form.receipt_mode === "Vehicle" && (
-                    <TextField
-                      label="Vehicle Number"
-                      size="small"
-                      fullWidth
-                      required
-                      value={form.vehicle_number}
-                      onChange={(e) => updateField("vehicle_number", e.target.value)}
+                    <Autocomplete
+                      freeSolo
+                      options={vehicleSuggestions}
+                      inputValue={form.vehicle_number}
+                      onInputChange={(_e, value) => updateField("vehicle_number", value ?? "")}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Vehicle Number" size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      )}
                       sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                     />
                   )}
-                  <TextField
-                    label={form.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name (carrying by hand)"}
-                    size="small"
-                    fullWidth
-                    required
-                    value={form.driver_name}
-                    onChange={(e) => updateField("driver_name", e.target.value)}
+                  <Autocomplete
+                    freeSolo
+                    options={driverSuggestions}
+                    inputValue={form.driver_name}
+                    onInputChange={(_e, value) => updateField("driver_name", value ?? "")}
+                    renderInput={(params) => (
+                      <TextField {...params} label={form.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name (carrying by hand)"} size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    )}
                     sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                   />
                 </Box>
@@ -1728,7 +1727,7 @@ export default function MaterialReceipt() {
                   {form.package_details.map((row, index) => (
                     <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 0.75, p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
                       <TextField label="Qty" placeholder="e.g. 10" size="small" value={row.quantity} onChange={(e) => updatePackageRow(index, "quantity", e.target.value)} sx={{ width: { xs: "100%", sm: 80 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <TextField label="Package Type" placeholder="e.g. Boxes, Drums" size="small" fullWidth value={row.package_type} onChange={(e) => updatePackageRow(index, "package_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <Autocomplete freeSolo options={packageTypeSuggestions} inputValue={row.package_type} onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")} renderInput={(params) => (<TextField {...params} label="Package Type" placeholder="e.g. Boxes, Drums" size="small" sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                       <TextField label="Description" placeholder="Optional" size="small" fullWidth value={row.description} onChange={(e) => updatePackageRow(index, "description", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                       <IconButton size="small" onClick={() => removePackageRow(index)} aria-label="Delete row" sx={{ flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } }}>
                         <DeleteIcon fontSize="small" color="error" />
@@ -1765,22 +1764,14 @@ export default function MaterialReceipt() {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>INVOICE & CHALLAN</Typography>
                 </Box>
                 <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  {/* Line 1: Invoice */}
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 42, color: "text.secondary" }}>Line 1</Typography>
-                    <Box sx={{ display: "flex", gap: 1, flex: 1 }}>
-                      <TextField label="Invoice No." size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
-                      <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    </Box>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <TextField label="Invoice No." size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
+                    <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                   </Box>
-                  {/* Line 2: Challan */}
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 42, color: "text.secondary" }}>Line 2</Typography>
-                    <Box sx={{ display: "flex", gap: 1, flex: 1 }}>
-                      <TextField label="Challan No." size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
-                    </Box>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <TextField label="Challan No." size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
                   </Box>
                   {/* E-Way Bill & Lorry Receipt */}
                   <Box sx={{ display: "flex", gap: 1 }}>
@@ -1826,6 +1817,13 @@ export default function MaterialReceipt() {
                 </Box>
                 <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
                   <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  {purposeSuggestions.length > 0 && (
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {purposeSuggestions.slice(0, 4).map((suggestion) => (
+                        <Chip key={suggestion} label={suggestion} size="small" variant="outlined" onClick={() => updateField("purpose", suggestion)} sx={{ cursor: "pointer", fontSize: "0.7rem", height: 24 }} />
+                      ))}
+                    </Box>
+                  )}
                   <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
                     <MenuItem value="">None</MenuItem>
                     <MenuItem value="MSME">MSME</MenuItem>
