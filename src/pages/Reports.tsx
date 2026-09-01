@@ -109,17 +109,58 @@ function formatReportDateTime(value: string | null): string {
   });
 }
 
+interface DownloadWorkbookOptions {
+  /** Custom column widths (default: all 20). */
+  colWidths?: { wch: number }[];
+  /** Hex color for header cell fill, e.g. "8DB4E2". */
+  headerFillColor?: string;
+  /** Whether to add auto-filter on the header row. */
+  autoFilter?: boolean;
+}
+
 function downloadWorkbook(
   headers: string[],
   rows: (string | number)[][],
   filename: string,
-  sheetName: string
+  sheetName: string,
+  opts?: DownloadWorkbookOptions
 ) {
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  worksheet["!cols"] = headers.map(() => ({ wch: 20 }));
+  const data = [headers, ...rows];
+  const worksheet = XLSX.utils.aoa_to_sheet(data);
+  worksheet["!cols"] = opts?.colWidths ?? headers.map(() => ({ wch: 20 }));
+
+  /* Apply header styling when requested. */
+  if (opts?.headerFillColor) {
+    const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1");
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r: range.s.r, c });
+      const cell = worksheet[addr];
+      if (cell) {
+        cell.s = {
+          font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+          fill: { fgColor: { rgb: opts.headerFillColor }, patternType: "solid" },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        };
+      }
+    }
+  }
+
+  /* Auto-filter for table-style registers. */
+  if (opts?.autoFilter && rows.length > 0) {
+    const range = XLSX.utils.decode_range(workbook_sref(worksheet));
+    worksheet["!autofilter"] = {
+      ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: range.e.r, c: range.e.c } }),
+    };
+  }
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   XLSX.writeFile(workbook, filename);
+}
+
+/** Safely read the sheet range ref, falling back to A1. */
+function workbook_sref(ws: XLSX.WorkSheet): string {
+  return ws["!ref"] ?? "A1";
 }
 
 function downloadPdf(
@@ -876,7 +917,36 @@ export default function Reports() {
       s(r, "delivery_location"),
       s(r, "vim_approval"),
     ]);
-    downloadWorkbook(headers, rows, `DRC_Register_${selectedFy?.label ?? ""}.xlsx`, "DRC Register");
+    downloadWorkbook(headers, rows, `DRC_Register_${selectedFy?.label ?? ""}.xlsx`, "DRC Register", {
+      headerFillColor: "8DB4E2",
+      autoFilter: true,
+      colWidths: [
+        { wch: 12 },  // A  Date
+        { wch: 8 },   // B  DRC
+        { wch: 30 },  // C  Vendor's Name
+        { wch: 14 },  // D  PO No.
+        { wch: 22 },  // E  GeM Contract No.
+        { wch: 30 },  // F  Material Description
+        { wch: 18 },  // G  Package Quantity
+        { wch: 16 },  // H  Mode of Dispatch
+        { wch: 30 },  // I  LR No./Challan No./Bill No./RR No. & Date
+        { wch: 20 },  // J  Tax Invoice No.
+        { wch: 14 },  // K  Tax Invoice Date
+        { wch: 16 },  // L  Tax Invoice Value
+        { wch: 22 },  // M  E-Waybill No.
+        { wch: 14 },  // N  E-Waybill Date
+        { wch: 14 },  // O  Weight
+        { wch: 18 },  // P  1st Date of Mail for Inspection
+        { wch: 16 },  // Q  MSME / Non MSME
+        { wch: 14 },  // R  Date of Inspection
+        { wch: 20 },  // S  Discrepancy Details
+        { wch: 18 },  // T  Important Note
+        { wch: 16 },  // U  GRN No.
+        { wch: 14 },  // V  GRN Date
+        { wch: 18 },  // W  LOCATION
+        { wch: 16 },  // X  VIM approval
+      ],
+    });
   }
 
   /** 24-column PDF export. */
@@ -914,10 +984,10 @@ export default function Reports() {
     ]);
     autoTable(doc, {
       startY: 30,
-      head: [["Date", "DRC", "Vendor", "PO", "GeM", "Material", "Qty", "Dispatch", "LR/Challan", "Inv No.", "Inv Date", "Inv Value", "EWB No.", "EWB Date", "Weight", "Inspection Mail", "MSME", "Insp Date", "Discrepancy", "Note", "GRN No.", "GRN Date", "Location", "VIM"]],
+      head: [["Date", "DRC", "Vendor's Name", "PO No.", "GeM Contract No.", "Material Description", "Package Quantity", "Mode of Dispatch", "LR No./Challan No./Bill No./RR No. & Date", "Tax Invoice No.", "Tax Invoice Date", "Tax Invoice Value", "E-Waybill No.", "E-Waybill Date", "Weight of the Consignment (Kg)", "1st Date of Mail for Inspection of DRC File", "MSME / Non MSME", "Date of Inspection", "Discrepancy Details", "Important Note", "GRN No.", "GRN Date", "LOCATION", "VIM approval"]],
       body,
-      styles: { fontSize: 6, cellPadding: 1.5 },
-      headStyles: { fillColor: [108, 43, 217] },
+      styles: { fontSize: 5.5, cellPadding: 1.2, overflow: "linebreak" },
+      headStyles: { fillColor: [141, 180, 226], textColor: 255, fontStyle: "bold", halign: "center" },
       columnStyles: { 5: { cellWidth: 25 }, 8: { cellWidth: 30 } },
     });
     doc.save(`DRC_Register_${selectedFy?.label ?? ""}.pdf`);
@@ -1587,58 +1657,77 @@ export default function Reports() {
                   <TableContainer
                     component={Card}
                     elevation={0}
-                    sx={{ display: { xs: "none", md: "block" }, mt: 2, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)" }}
+                    sx={{ display: { xs: "none", md: "block" }, mt: 2, borderRadius: 2, boxShadow: "0 2px 10px rgba(15,23,42,0.06)", overflowX: "auto" }}
                   >
-                    <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                    <Table size="small" sx={{ minWidth: 2200, "& td, & th": { borderColor: "divider", fontSize: "0.75rem", py: 0.75 }, "& th": { whiteSpace: "nowrap" } }}>
                       <TableHead>
-                        <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
-                          <TableCell>DRC No.</TableCell>
+                        <TableRow
+                          sx={{
+                            "& th": {
+                              bgcolor: "#8DB4E2",
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: "0.7rem",
+                              textAlign: "center",
+                              borderBottom: "2px solid #5B9BD5",
+                            },
+                          }}
+                        >
                           <TableCell>Date</TableCell>
-                          <TableCell>Vendor</TableCell>
-                          <TableCell>PO</TableCell>
-                          <TableCell>Type / Qty</TableCell>
-                          <TableCell>Status</TableCell>
-                          <TableCell>Purpose</TableCell>
-                          <TableCell>Driver / Person</TableCell>
-                          <TableCell>Vehicle</TableCell>
+                          <TableCell>DRC</TableCell>
+                          <TableCell>Vendor's Name</TableCell>
+                          <TableCell>PO No.</TableCell>
+                          <TableCell>GeM Contract No.</TableCell>
+                          <TableCell>Material Description</TableCell>
+                          <TableCell>Package Quantity</TableCell>
+                          <TableCell>Mode of Dispatch</TableCell>
+                          <TableCell>LR No./Challan No. /Bill No./RR No. & Date</TableCell>
+                          <TableCell>Tax Invoice No.</TableCell>
+                          <TableCell>Tax Invoice Date</TableCell>
+                          <TableCell>Tax Invoice Value</TableCell>
+                          <TableCell>E-Waybill No.</TableCell>
+                          <TableCell>E-Waybill Date</TableCell>
+                          <TableCell>Weight (Kg)</TableCell>
+                          <TableCell>1st Date of Mail for Inspection</TableCell>
+                          <TableCell>MSME / Non MSME</TableCell>
+                          <TableCell>Date of Inspection</TableCell>
+                          <TableCell>Discrepancy Details</TableCell>
+                          <TableCell>Important Note</TableCell>
+                          <TableCell>GRN No.</TableCell>
+                          <TableCell>GRN Date</TableCell>
+                          <TableCell>LOCATION</TableCell>
+                          <TableCell>VIM approval</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {drcRegisterRows.map((row) => {
                           const r = row as Record<string, unknown>;
-                          const pkgType = (r.package_details as { package_type: string; quantity: string | number }[] | null ?? []).map((p) => p.package_type).filter(Boolean).join(", ") || "-";
-                          const totalQty = (r.package_details as { package_type: string; quantity: string | number }[] | null ?? []).reduce((s, p) => s + safeNumber(p.quantity), 0);
-                          const challanNo = (r.challan_number as string) ?? "";
-                          const challanDt = r.challan_date ? formatReportDate(r.challan_date as string) : "";
-                          const lr = challanNo && challanDt ? `${challanNo} ${challanDt}` : challanNo || (challanDt ? `Date ${challanDt}` : "-");
                           return (
-                            <TableRow key={Number(r.id)} hover sx={{ height: 44 }}>
+                            <TableRow key={Number(r.id)} hover sx={{ height: 36 }}>
                               <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.receipt_datetime as string)}</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>{r.drc_number as string}</TableCell>
+                              <TableCell sx={{ fontWeight: 700, whiteSpace: "nowrap" }}>{r.drc_number as string}</TableCell>
                               <TableCell>{r.vendor_name as string}</TableCell>
-                              <TableCell>{(r.sap_po_number as string) || (r.gem_order_number as string) || "-"}</TableCell>
+                              <TableCell>{(r.sap_po_number as string) || "-"}</TableCell>
                               <TableCell>{(r.gem_order_number as string) || "-"}</TableCell>
-                              <TableCell>{pkgType}</TableCell>
-                              <TableCell align="right">{totalQty}</TableCell>
+                              <TableCell>{matDesc(r)}</TableCell>
+                              <TableCell align="right">{pkgQty(r)}</TableCell>
                               <TableCell>{r.receipt_mode === "Hand" ? "BY HAND" : (r.vehicle_number as string) || (r.receipt_mode as string) || "-"}</TableCell>
-                              <TableCell>{lr}</TableCell>
+                              <TableCell>{lrChallan(r)}</TableCell>
                               <TableCell>{(r.invoice_number as string) || "-"}</TableCell>
-                              <TableCell>{formatReportDate(r.invoice_date as string)}</TableCell>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.invoice_date as string)}</TableCell>
                               <TableCell align="right">{r.tax_invoice_value != null ? String(r.tax_invoice_value) : "-"}</TableCell>
                               <TableCell>{(r.eway_bill_number as string) || "-"}</TableCell>
-                              <TableCell>{formatReportDate(r.eway_bill_date as string)}</TableCell>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.eway_bill_date as string)}</TableCell>
                               <TableCell align="right">{r.net_weight != null ? String(r.net_weight) : "-"}</TableCell>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.receipt_datetime as string)}</TableCell>
                               <TableCell>{(r.msme_type as string) || "-"}</TableCell>
-                              <TableCell>{formatReportDate(r.inspection_date as string)}</TableCell>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.inspection_date as string)}</TableCell>
                               <TableCell>{(r.inspection_remarks as string) || "-"}</TableCell>
                               <TableCell>{(r.important_note as string) || "-"}</TableCell>
                               <TableCell>{(r.grn_number as string) || "-"}</TableCell>
-                              <TableCell>{formatReportDate(r.grn_date as string)}</TableCell>
+                              <TableCell sx={{ whiteSpace: "nowrap" }}>{formatReportDate(r.grn_date as string)}</TableCell>
                               <TableCell>{(r.delivery_location as string) || "-"}</TableCell>
                               <TableCell>{(r.vim_approval as string) || "-"}</TableCell>
-                              <TableCell>
-                                <Chip size="small" label={r.status as string} sx={{ fontWeight: 600, fontSize: "0.6rem" }} />
-                              </TableCell>
                             </TableRow>
                           );
                         })}
