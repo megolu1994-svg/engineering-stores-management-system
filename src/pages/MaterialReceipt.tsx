@@ -71,6 +71,8 @@ import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import ScaleIcon from "@mui/icons-material/Scale";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 
 import {
@@ -1560,19 +1562,22 @@ export default function MaterialReceipt() {
         onClose={closeForm}
         fullScreen={mobile}
         fullWidth
-        maxWidth={mobile ? "sm" : "md"}
+        maxWidth={mobile ? "sm" : "xl"}
       >
         <DialogTitle
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            fontWeight: 700,
-            backgroundColor: "primary.main",
+            fontWeight: 800,
+            fontSize: "1.1rem",
+            letterSpacing: 0.5,
+            py: 1.75,
+            background: "linear-gradient(135deg, #6C2BD9 0%, #8B5CF6 100%)",
             color: "#FFFFFF",
           }}
         >
-          {editingReceipt ? `Edit DRC - ${editingReceipt.drc_number}` : "Create DRC"}
+          {editingReceipt ? `Edit DRC - ${editingReceipt.drc_number}` : "CREATE DRC"}
           <IconButton onClick={closeForm} size="small" sx={{ color: "#FFFFFF" }}>
             <CloseIcon fontSize="small" />
           </IconButton>
@@ -1588,7 +1593,8 @@ export default function MaterialReceipt() {
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                   <BusinessIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>GENERAL INFO</Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>GENERAL INFO</Typography>
+                  <InfoOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
                 </Box>
                 <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
                   {/* DRC No. & Date */}
@@ -1741,7 +1747,8 @@ export default function MaterialReceipt() {
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                   <LocalOfferIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>PURCHASE DETAILS</Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>PURCHASE DETAILS</Typography>
+                  <CalendarTodayIcon fontSize="small" sx={{ color: "text.secondary" }} />
                 </Box>
                 <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
                   <TextField label="SAP PO Number" size="small" fullWidth value={form.sap_po_number} onChange={(e) => updateField("sap_po_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
@@ -1758,20 +1765,32 @@ export default function MaterialReceipt() {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>INVOICE & CHALLAN</Typography>
                 </Box>
                 <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>Invoice</Typography>
-                  <TextField label="Invoice Number" size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <Box sx={{ display: "flex", gap: 1 }}>
-                    <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
-                    <TextField label="Tax Invoice Value" size="small" fullWidth type="number" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  {/* Line 1: Invoice */}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 42, color: "text.secondary" }}>Line 1</Typography>
+                    <Box sx={{ display: "flex", gap: 1, flex: 1 }}>
+                      <TextField label="Invoice No." size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
+                      <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    </Box>
                   </Box>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>Challan</Typography>
-                  <TextField label="Challan Number" size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>E-Way Bill & Lorry Receipt</Typography>
-                  <TextField label="E-Way Bill Number" size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <DateTextField label="E-Way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
-                  <TextField label="Lorry Receipt Number" size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <DateTextField label="Lorry Receipt Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
+                  {/* Line 2: Challan */}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 42, color: "text.secondary" }}>Line 2</Typography>
+                    <Box sx={{ display: "flex", gap: 1, flex: 1 }}>
+                      <TextField label="Challan No." size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
+                    </Box>
+                  </Box>
+                  {/* E-Way Bill & Lorry Receipt */}
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <TextField label="E-Way Bill No." size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="E-Way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
+                  </Box>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <TextField label="Lorry Receipt No." size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="Lorry Receipt Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
+                  </Box>
                 </Box>
               </Card>
 
@@ -1806,15 +1825,13 @@ export default function MaterialReceipt() {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>REMARKS & ATTACHMENTS</Typography>
                 </Box>
                 <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  <TextField label="Purpose" size="small" fullWidth multiline minRows={2} placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <Box sx={{ display: "flex", gap: 1 }}>
-                    <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
-                      <MenuItem value="">None</MenuItem>
-                      <MenuItem value="MSME">MSME</MenuItem>
-                      <MenuItem value="General">General</MenuItem>
-                    </TextField>
-                    <TextField label="Location" size="small" fullWidth placeholder="e.g. Ware House" value={form.delivery_location} onChange={(e) => updateField("delivery_location", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  </Box>
+                  <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
+                    <MenuItem value="">None</MenuItem>
+                    <MenuItem value="MSME">MSME</MenuItem>
+                    <MenuItem value="General">General</MenuItem>
+                  </TextField>
+                  <TextField label="Location" size="small" fullWidth placeholder="e.g. Ware House" value={form.delivery_location} onChange={(e) => updateField("delivery_location", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                   <TextField label="Important Note" size="small" fullWidth value={form.important_note} onChange={(e) => updateField("important_note", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                   <TextField label="VIM Approval" size="small" fullWidth value={form.vim_approval} onChange={(e) => updateField("vim_approval", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
 
@@ -1822,7 +1839,7 @@ export default function MaterialReceipt() {
                   <Box>
                     <input ref={photoInputRef} type="file" accept="image/*" multiple hidden onChange={handlePhotoSelect} />
                     <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" hidden onChange={handleCameraCapture} />
-                    <Button variant="outlined" startIcon={capturingPhoto ? <CircularProgress size={16} color="inherit" /> : <AddPhotoAlternateIcon fontSize="small" />} onClick={openPhotoMenu} disabled={capturingPhoto} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
+                    <Button variant="contained" startIcon={capturingPhoto ? <CircularProgress size={16} color="inherit" /> : <AddPhotoAlternateIcon fontSize="small" />} onClick={openPhotoMenu} disabled={capturingPhoto} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
                       Add Photo
                     </Button>
                     <Menu anchorEl={photoMenuAnchor} open={!!photoMenuAnchor} onClose={closePhotoMenu}>
@@ -1867,7 +1884,7 @@ export default function MaterialReceipt() {
                       ))}
                     </TextField>
                     <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" multiple hidden onChange={handleDocumentSelect} />
-                    <Button variant="outlined" startIcon={<AttachFileIcon fontSize="small" />} onClick={() => documentInputRef.current?.click()} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
+                    <Button variant="contained" startIcon={<AttachFileIcon fontSize="small" />} onClick={() => documentInputRef.current?.click()} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
                       Upload {documentTypeSelection}
                     </Button>
                   </Box>
