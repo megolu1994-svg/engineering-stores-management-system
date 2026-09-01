@@ -546,23 +546,53 @@ export async function createReceipt(
     attachment_paths: attachmentPaths,
   };
 
-  const { data, error } = await supabase
-    .from("receipt_header")
-    .insert([payload])
-    .select()
-    .single();
+  // Retry loop: the database trigger generates drc_number, but a race
+  // condition can occasionally produce a duplicate. Retrying lets the
+  // trigger run again and pick the next available number.
+  const MAX_RETRIES = 5;
+  let data: ReceiptHeader | null = null;
+  let insertError: unknown = null;
 
-  if (error) {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const result = await supabase
+      .from("receipt_header")
+      .insert([payload])
+      .select()
+      .single();
+
+    if (result.error) {
+      const msg = result.error.message ?? "";
+      const isDuplicateDrc =
+        msg.includes("idx_receipt_header_drc_number") ||
+        msg.includes("duplicate key value violates unique constraint");
+
+      if (isDuplicateDrc && attempt < MAX_RETRIES - 1) {
+        console.warn(
+          `DRC number collision on attempt ${attempt + 1}/${MAX_RETRIES}, retrying...`
+        );
+        continue;
+      }
+
+      insertError = result.error;
+      break;
+    }
+
+    data = result.data as ReceiptHeader;
+    break;
+  }
+
+  if (insertError || !data) {
     console.error("========== SUPABASE ERROR ==========");
-    console.error(error);
+    console.error(insertError);
     console.error("Payload:");
     console.error(JSON.stringify(payload, null, 2));
+    const errObj = insertError as { message?: string; details?: string; hint?: string };
     alert(
-      error.message +
-      "\n\nDetails: " + (error.details ?? "") +
-      "\nHint: " + (error.hint ?? "")
+      (errObj?.message ?? "Unknown error") +
+      "\n\nDetails: " + (errObj?.details ?? "") +
+      "\nHint: " + (errObj?.hint ?? "")
     );
-    throw error;
+    throw insertError;
   }
 
   const created = data as ReceiptHeader;
@@ -586,7 +616,16 @@ export async function createReceipt(
     .select()
     .single();
 
-  if (updateError) throw updateError;
+  if (updateError) {
+    const msg = updateError.message ?? "";
+    if (msg.includes("idx_receipt_header_drc_number") ||
+        msg.includes("duplicate key value violates unique constraint")) {
+      alert(
+        "The DRC number you entered already exists.\nPlease choose a different DRC number."
+      );
+    }
+    throw updateError;
+  }
 
   return updated as ReceiptHeader;
 }
