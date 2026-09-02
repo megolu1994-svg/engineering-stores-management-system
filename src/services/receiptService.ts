@@ -549,9 +549,12 @@ export async function createReceipt(
   // Retry loop: the database trigger generates drc_number, but a race
   // condition can occasionally produce a duplicate. Retrying lets the
   // trigger run again and pick the next available number.
-  const MAX_RETRIES = 5;
+  const MAX_RETRIES = 8;
+  const RETRY_DELAY_MS = 300;
   let data: ReceiptHeader | null = null;
   let insertError: unknown = null;
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const result = await supabase
@@ -568,8 +571,9 @@ export async function createReceipt(
 
       if (isDuplicateDrc && attempt < MAX_RETRIES - 1) {
         console.warn(
-          `DRC number collision on attempt ${attempt + 1}/${MAX_RETRIES}, retrying...`
+          `DRC number collision on attempt ${attempt + 1}/${MAX_RETRIES}, retrying in ${RETRY_DELAY_MS}ms...`
         );
+        await sleep(RETRY_DELAY_MS);
         continue;
       }
 
@@ -587,10 +591,12 @@ export async function createReceipt(
     console.error("Payload:");
     console.error(JSON.stringify(payload, null, 2));
     const errObj = insertError as { message?: string; details?: string; hint?: string };
+    const rawMsg = errObj?.message ?? "Unknown error";
+    const isDuplicateDrc = rawMsg.includes("idx_receipt_header_drc_number") || rawMsg.includes("duplicate key value violates unique constraint");
     alert(
-      (errObj?.message ?? "Unknown error") +
-      "\n\nDetails: " + (errObj?.details ?? "") +
-      "\nHint: " + (errObj?.hint ?? "")
+      isDuplicateDrc
+        ? "A DRC number collision occurred. Please try creating the DRC again — the system will assign the next available number."
+        : rawMsg + "\n\nDetails: " + (errObj?.details ?? "") + "\nHint: " + (errObj?.hint ?? "")
     );
     throw insertError;
   }
