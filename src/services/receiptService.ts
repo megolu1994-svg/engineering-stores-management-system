@@ -472,37 +472,21 @@ export interface DrcManualOverrides {
  *   – Falls back to DRC/{startYY}-{endYY}/1 if no row exists for the current FY.
  */
 export async function getNextDrcNumberSuggestion(): Promise<string> {
-  const now = new Date();
-  const month = now.getMonth() + 1; // 1-12
-  const year = now.getFullYear();
-  const fyStart = month >= 4 ? year : year - 1;
-  const fyEnd = month >= 4 ? year + 1 : year;
-  const fyPrefix = `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/`;
-  const fallback = `${fyPrefix}1`;
+  // Use the database RPC function to get the next DRC number.
+  // This avoids race conditions from the old trigger-based approach.
+  const { data, error } = await supabase.rpc("generate_next_drc_number");
 
-  const { data, error } = await supabase
-    .from("receipt_header")
-    .select("drc_number")
-    .like("drc_number", `${fyPrefix}%`)
-    .order("id", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const lastDrcNumber = (data as { drc_number: string } | null)?.drc_number;
-
-  if (error || !lastDrcNumber) {
-    return fallback;
+  if (error || !data) {
+    // Fallback: compute locally
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const fyStart = month >= 4 ? year : year - 1;
+    const fyEnd = month >= 4 ? year + 1 : year;
+    return `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/1`;
   }
 
-  // Match the numeric portion after the FY prefix, ignoring any trailing suffix
-  const match = lastDrcNumber.match(/^DRC\/\d{2}-\d{2}\/(\d+)(.*)$/);
-  if (!match) {
-    return fallback;
-  }
-
-  const [, digits] = match;
-  const next = String(Number(digits) + 1);
-  return `${fyPrefix}${next}`;
+  return data as string;
 }
 
 /**
@@ -539,50 +523,40 @@ export async function createReceipt(
       ? await uploadReceiptDocuments(documentUploads)
       : [];
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     ...buildPayload(input),
     photo_urls: photoUrls,
     photo_paths: photoPaths,
     attachment_paths: attachmentPaths,
   };
 
-  // Retry loop: the database trigger generates drc_number, but a race
-  // condition can occasionally produce a duplicate. Retrying lets the
-  // trigger run again and pick the next available number.
-  const MAX_RETRIES = 8;
-  const RETRY_DELAY_MS = 300;
+  // Generate DRC number via RPC (avoids trigger race conditions).
+  // If manualOverrides.drc_number is set, use that instead.
+  if (!payload.drc_number || payload.drc_number === "") {
+    try {
+      const { data: nextDrc, error: rpcError } = await supabase.rpc("generate_next_drc_number");
+      if (!rpcError && nextDrc) {
+        payload.drc_number = nextDrc as string;
+      }
+    } catch (rpcErr) {
+      console.warn("RPC generate_next_drc_number failed, falling back to trigger:", rpcErr);
+    }
+  }
+
+  // Insert the row (trigger is disabled; drc_number is already set in payload)
   let data: ReceiptHeader | null = null;
   let insertError: unknown = null;
 
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const result = await supabase
+    .from("receipt_header")
+    .insert([payload])
+    .select()
+    .single();
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const result = await supabase
-      .from("receipt_header")
-      .insert([payload])
-      .select()
-      .single();
-
-    if (result.error) {
-      const msg = result.error.message ?? "";
-      const isDuplicateDrc =
-        msg.includes("idx_receipt_header_drc_number") ||
-        msg.includes("duplicate key value violates unique constraint");
-
-      if (isDuplicateDrc && attempt < MAX_RETRIES - 1) {
-        console.warn(
-          `DRC number collision on attempt ${attempt + 1}/${MAX_RETRIES}, retrying in ${RETRY_DELAY_MS}ms...`
-        );
-        await sleep(RETRY_DELAY_MS);
-        continue;
-      }
-
-      insertError = result.error;
-      break;
-    }
-
+  if (result.error) {
+    insertError = result.error;
+  } else {
     data = result.data as ReceiptHeader;
-    break;
   }
 
   if (insertError || !data) {

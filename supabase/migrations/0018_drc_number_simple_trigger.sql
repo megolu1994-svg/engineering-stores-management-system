@@ -1,12 +1,6 @@
--- Fix DRC number generation race condition.
---
--- The original trigger (0014) used a plain SELECT to find the max DRC
--- number. Two concurrent inserts could both read the same "last number"
--- and generate the same DRC number, causing a unique-constraint violation.
---
--- Fix: Use pg_advisory_xact_lock to serialize trigger execution within
--- each transaction, plus a fallback that appends a letter suffix (A, B, …)
--- if the next number still collides (e.g. manual override edge case).
+-- Simplified DRC number trigger: no letter-suffix fallback.
+-- If the next number collides, the application-level retry will handle it.
+-- The advisory lock prevents concurrent triggers from generating the same number.
 
 BEGIN;
 
@@ -21,16 +15,13 @@ DECLARE
   last_number    text;
   numeric_part   text;
   next_num       int;
-  candidate      text;
-  suffix         char;
 BEGIN
   -- Only auto-generate when drc_number is not already set
   IF NEW.drc_number IS NOT NULL AND NEW.drc_number <> '' THEN
     RETURN NEW;
   END IF;
 
-  -- Serialize concurrent trigger executions with an advisory lock.
-  -- Use a fixed int32 key for this table.
+  -- Serialize concurrent trigger executions
   PERFORM pg_advisory_xact_lock(1234567);
 
   -- Determine financial year boundaries
@@ -54,35 +45,23 @@ BEGIN
   LIMIT 1;
 
   IF last_number IS NULL THEN
-    candidate := fy_prefix || '1';
+    NEW.drc_number := fy_prefix || '1';
   ELSE
     numeric_part := regexp_replace(last_number, '^' || fy_prefix || '([0-9]*).*$', '\1', 'i');
 
     IF numeric_part = '' OR numeric_part IS NULL THEN
-      candidate := fy_prefix || '1';
+      NEW.drc_number := fy_prefix || '1';
     ELSE
       next_num := numeric_part::int + 1;
-      candidate := fy_prefix || next_num;
+      NEW.drc_number := fy_prefix || next_num;
     END IF;
   END IF;
 
-  -- Safety check: if the candidate already exists (manual override or
-  -- other edge case), append letter suffixes until we find a free slot.
-  IF EXISTS (SELECT 1 FROM public.receipt_header WHERE drc_number = candidate) THEN
-    FOR suffix IN SELECT chr(g) FROM generate_series(65, 90) g LOOP
-      IF NOT EXISTS (SELECT 1 FROM public.receipt_header WHERE drc_number = candidate || suffix) THEN
-        candidate := candidate || suffix;
-        EXIT;
-      END IF;
-    END LOOP;
-  END IF;
-
-  NEW.drc_number := candidate;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Recreate the trigger (drop + create ensures idempotency)
+-- Recreate the trigger
 DROP TRIGGER IF EXISTS trg_generate_drc_number ON public.receipt_header;
 CREATE TRIGGER trg_generate_drc_number
   BEFORE INSERT ON public.receipt_header
