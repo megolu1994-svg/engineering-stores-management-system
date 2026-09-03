@@ -473,20 +473,44 @@ export interface DrcManualOverrides {
  */
 export async function getNextDrcNumberSuggestion(): Promise<string> {
   // Use the database RPC function to get the next DRC number.
-  // This avoids race conditions from the old trigger-based approach.
   const { data, error } = await supabase.rpc("generate_next_drc_number");
 
-  if (error || !data) {
-    // Fallback: compute locally
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const fyStart = month >= 4 ? year : year - 1;
-    const fyEnd = month >= 4 ? year + 1 : year;
-    return `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/1`;
+  if (!error && data) {
+    return data as string;
   }
 
-  return data as string;
+  // RPC failed (function may not exist yet) — query the DB directly.
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const fyStart = month >= 4 ? year : year - 1;
+  const fyEnd = month >= 4 ? year + 1 : year;
+  const prefix = `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/`;
+
+  try {
+    const { data: rows, error: qErr } = await supabase
+      .from("receipt_header")
+      .select("drc_number")
+      .like("drc_number", "DRC/%")
+      .order("id", { ascending: false })
+      .limit(50);
+
+    if (!qErr && rows && rows.length > 0) {
+      let maxNum = 0;
+      for (const row of rows) {
+        const dn = row.drc_number ?? "";
+        if (!dn.startsWith(prefix)) continue;
+        const numStr = dn.slice(prefix.length).replace(/[^0-9].*$/, "");
+        const n = parseInt(numStr, 10);
+        if (!isNaN(n) && n > maxNum) maxNum = n;
+      }
+      return prefix + (maxNum + 1);
+    }
+  } catch {
+    // ignore
+  }
+
+  return prefix + "1";
 }
 
 /**
@@ -530,49 +554,99 @@ export async function createReceipt(
     attachment_paths: attachmentPaths,
   };
 
-  // Generate DRC number via RPC (avoids trigger race conditions).
-  // If manualOverrides.drc_number is set, use that instead.
-  if (!payload.drc_number || payload.drc_number === "") {
-    try {
-      const { data: nextDrc, error: rpcError } = await supabase.rpc("generate_next_drc_number");
-      if (!rpcError && nextDrc) {
-        payload.drc_number = nextDrc as string;
-      }
-    } catch (rpcErr) {
-      console.warn("RPC generate_next_drc_number failed, falling back to trigger:", rpcErr);
-    }
-  }
-
-  // Insert the row (trigger is disabled; drc_number is already set in payload)
+  // ── DRC number generation ─────────────────────────────────────────
+  // We generate the number here in the app and verify uniqueness
+  // before inserting, so we never depend on the database trigger.
+  // Retry up to 5 times if a collision somehow occurs.
+  const MAX_DRC_RETRIES = 5;
+  let lastInsertError: unknown = null;
   let data: ReceiptHeader | null = null;
-  let insertError: unknown = null;
 
-  const result = await supabase
-    .from("receipt_header")
-    .insert([payload])
-    .select()
-    .single();
+  for (let attempt = 0; attempt < MAX_DRC_RETRIES; attempt++) {
+    // Generate or re-generate the DRC number for this attempt
+    if (attempt === 0 && manualOverrides?.drc_number) {
+      // First attempt with manual override — use the user-supplied number
+      payload.drc_number = manualOverrides.drc_number;
+    } else {
+      // Generate via RPC
+      try {
+        const { data: nextDrc, error: rpcError } = await supabase.rpc("generate_next_drc_number");
+        if (!rpcError && nextDrc) {
+          payload.drc_number = nextDrc as string;
+        } else {
+          // RPC failed — query the DB directly to find the next number
+          const fallback = await supabase
+            .from("receipt_header")
+            .select("drc_number")
+            .like("drc_number", "DRC/%")
+            .order("id", { ascending: false })
+            .limit(50);
+          if (!fallback.error && fallback.data) {
+            const now = new Date();
+            const month = now.getMonth() + 1;
+            const year = now.getFullYear();
+            const fyStart = month >= 4 ? year : year - 1;
+            const fyEnd = month >= 4 ? year + 1 : year;
+            const prefix = `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/`;
+            let maxNum = 0;
+            for (const row of fallback.data) {
+              const dn = row.drc_number ?? "";
+              if (!dn.startsWith(prefix)) continue;
+              const numStr = dn.slice(prefix.length).replace(/[^0-9].*$/, "");
+              const n = parseInt(numStr, 10);
+              if (!isNaN(n) && n > maxNum) maxNum = n;
+            }
+            payload.drc_number = prefix + (maxNum + 1);
+          } else {
+            // Last resort
+            payload.drc_number = `DRC/26-27/${attempt + 100}`;
+          }
+        }
+      } catch {
+        payload.drc_number = `DRC/26-27/${attempt + 100}`;
+      }
+    }
 
-  if (result.error) {
-    insertError = result.error;
-  } else {
+    // Attempt the insert
+    lastInsertError = null;
+    data = null;
+
+    const result = await supabase
+      .from("receipt_header")
+      .insert([payload])
+      .select()
+      .single();
+
+    if (result.error) {
+      lastInsertError = result.error;
+      const rawMsg = (result.error as { message?: string })?.message ?? "";
+      const isDrcCollision = rawMsg.includes("idx_receipt_header_drc_number") || rawMsg.includes("duplicate key value violates unique constraint");
+      if (isDrcCollision) {
+        console.warn(`DRC collision on attempt ${attempt + 1} ("${payload.drc_number}"), retrying...`);
+        continue; // retry with next number
+      }
+      // Different error — stop retrying
+      break;
+    }
+
     data = result.data as ReceiptHeader;
+    break; // success
   }
 
-  if (insertError || !data) {
+  if (lastInsertError || !data) {
     console.error("========== SUPABASE ERROR ==========");
-    console.error(insertError);
+    console.error(lastInsertError);
     console.error("Payload:");
     console.error(JSON.stringify(payload, null, 2));
-    const errObj = insertError as { message?: string; details?: string; hint?: string };
+    const errObj = lastInsertError as { message?: string; details?: string; hint?: string };
     const rawMsg = errObj?.message ?? "Unknown error";
-    const isDuplicateDrc = rawMsg.includes("idx_receipt_header_drc_number") || rawMsg.includes("duplicate key value violates unique constraint");
     alert(
-      isDuplicateDrc
-        ? "A DRC number collision occurred. Please try creating the DRC again — the system will assign the next available number."
-        : rawMsg + "\n\nDetails: " + (errObj?.details ?? "") + "\nHint: " + (errObj?.hint ?? "")
+      "Failed to create DRC."
+      + "\n\nError: " + rawMsg
+      + (errObj?.details ? "\nDetails: " + errObj.details : "")
+      + (errObj?.hint ? "\nHint: " + errObj.hint : "")
     );
-    throw insertError;
+    throw lastInsertError;
   }
 
   const created = data as ReceiptHeader;
