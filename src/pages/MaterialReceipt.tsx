@@ -469,11 +469,45 @@ export default function MaterialReceipt() {
     return [...new Set(values)];
   }, [previousDrcs]);
 
+  // Compute the next DRC number from already-loaded previousDrcs data.
+  // This is the primary source — no RPC or extra DB query needed.
+  const computedNextDrc = useMemo(() => {
+    if (previousDrcs.length === 0) return "";
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const fyStart = month >= 4 ? year : year - 1;
+    const fyEnd = month >= 4 ? year + 1 : year;
+    const prefix = `DRC/${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}/`;
+    let maxNum = 0;
+    for (const r of previousDrcs) {
+      const dn = r.drc_number ?? "";
+      if (!dn.startsWith(prefix)) continue;
+      const numStr = dn.slice(prefix.length).replace(/[^0-9].*$/, "");
+      const n = parseInt(numStr, 10);
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    }
+    return maxNum > 0 ? prefix + (maxNum + 1) : prefix + "1";
+  }, [previousDrcs]);
+
+  // When previousDrcs finish loading, update the DRC number suggestion.
+  useEffect(() => {
+    if (!manualDrcEntry && computedNextDrc) {
+      setDrcNumber(computedNextDrc);
+    }
+  }, [computedNextDrc, manualDrcEntry]);
+
   async function loadDrcSuggestion() {
     setLoadingDrcSuggestion(true);
     try {
-      const suggestion = await getNextDrcNumberSuggestion();
-      setDrcNumber(suggestion);
+      // Primary: use computed value from loaded data
+      if (computedNextDrc) {
+        setDrcNumber(computedNextDrc);
+      } else {
+        // Fallback: RPC or DB query (data not loaded yet)
+        const suggestion = await getNextDrcNumberSuggestion();
+        setDrcNumber(suggestion);
+      }
     } finally {
       setLoadingDrcSuggestion(false);
     }
