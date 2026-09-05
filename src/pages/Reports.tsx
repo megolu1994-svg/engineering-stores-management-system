@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
-import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -117,8 +116,6 @@ interface DownloadWorkbookOptions {
   headerFillColor?: string;
   /** Whether to add auto-filter on the header row. */
   autoFilter?: boolean;
-  /** Apply polished, native Excel styling for the DRC Register. */
-  drcRegisterStyle?: boolean;
 }
 
 function downloadWorkbook(
@@ -158,66 +155,7 @@ function downloadWorkbook(
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-
-  if (opts?.drcRegisterStyle) {
-    const file = applyDrcRegisterExcelStyle(XLSX.write(workbook, { type: "array", bookType: "xlsx" }));
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([file as unknown as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    return;
-  }
-
   XLSX.writeFile(workbook, filename);
-}
-
-const DRC_REGISTER_STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="3"><font><sz val="11"/><color theme="1"/><name val="Aptos"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Aptos Display"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FF17365D"/><name val="Aptos"/><family val="2"/></font></fonts>
-  <fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF7FBFF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9EAF7"/><bgColor indexed="64"/></patternFill></fill></fills>
-  <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFB8C7D9"/></left><right style="thin"><color rgb="FFB8C7D9"/></right><top style="thin"><color rgb="FFB8C7D9"/></top><bottom style="thin"><color rgb="FFB8C7D9"/></bottom><diagonal/></border></borders>
-  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="3" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs>
-  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
-</styleSheet>`;
-
-/**
- * SheetJS Community Edition does not serialize cell fill/font styles. Add the
- * small OOXML style part after the workbook is generated so Excel, LibreOffice,
- * and compatible viewers receive the intended native formatting.
- */
-function applyDrcRegisterExcelStyle(workbook: ArrayBuffer): Uint8Array {
-  const files = unzipSync(new Uint8Array(workbook));
-  const decode = (path: string) => strFromU8(files[path]);
-  const encode = (value: string) => strToU8(value);
-  const sheetPath = "xl/worksheets/sheet1.xml";
-  let sheet = decode(sheetPath);
-
-  sheet = sheet.replace(/<row r="1"/u, '<row r="1" ht="42" customHeight="1"');
-  sheet = sheet.replace(/<row r="([2-9]\d*|1\d+)"/gu, '<row r="$1" ht="32" customHeight="1"');
-  sheet = sheet.replace(/<row r="(\d+)"[^>]*>([\s\S]*?)<\/row>/gu, (_row, rowNumber, content) => {
-    const style = rowNumber === "1" ? "1" : Number(rowNumber) % 2 === 0 ? "2" : "3";
-    return _row.replace(content, content.replace(/<c r="([A-Z]+)\d+"(?![^>]*\ss=)/gu, (_cell: string, column: string) =>
-      `<c r="${column}${rowNumber}" s="${column === "B" && rowNumber !== "1" ? "4" : style}"`
-    ));
-  });
-  sheet = sheet.replace(/<sheetView workbookViewId="0"\/>/u, '<sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView>');
-  files[sheetPath] = encode(sheet);
-  files["xl/styles.xml"] = encode(DRC_REGISTER_STYLES_XML);
-
-  const contentTypesPath = "[Content_Types].xml";
-  files[contentTypesPath] = encode(decode(contentTypesPath).replace(
-    "</Types>",
-    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'
-  ));
-  const relationshipsPath = "xl/_rels/workbook.xml.rels";
-  files[relationshipsPath] = encode(decode(relationshipsPath).replace(
-    "</Relationships>",
-    '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'
-  ));
-
-  return zipSync(files, { level: 6 });
 }
 
 /** Safely read the sheet range ref, falling back to A1. */
@@ -982,7 +920,6 @@ export default function Reports() {
     downloadWorkbook(headers, rows, `DRC_Register_${selectedFy?.label ?? ""}.xlsx`, "DRC Register", {
       headerFillColor: "8DB4E2",
       autoFilter: true,
-      drcRegisterStyle: true,
       colWidths: [
         { wch: 12 },  // A  Date
         { wch: 8 },   // B  DRC
