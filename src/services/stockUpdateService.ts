@@ -5,7 +5,7 @@ import {
   applyOpeningStock,
   applyAdjustment,
 } from "./materialAllocationService";
-import { addMaterial } from "./materialService";
+import { addMaterial, getBlockedMaterialCodes } from "./materialService";
 import { normalizeMaterialCode } from "../utils/materialCode";
 import {
   applyStockMovement,
@@ -732,6 +732,16 @@ export async function bulkApplyStockUpdate(
     );
   });
 
+  // ---- Phase 1b: which material codes are blocked? Blocked materials
+  // are skipped entirely - no stock update, no pending flag, nothing. ----
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // Fall back to the database trigger (migration 0020) which rejects
+    // the writes anyway.
+  }
+
   // ---- Phase 2: current system quantity (summed across all locations)
   // for every material that already exists ----
   const existingCodeList = allCodes.filter((code) => existingCodes.has(code));
@@ -761,6 +771,19 @@ export async function bulkApplyStockUpdate(
   const flaggedRows: { row: StockUpdateImportRow; systemQty: number }[] = [];
 
   for (const row of rows) {
+    if (blockedCodes.has(row.material_code)) {
+      summary.failed += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        uploaded_qty: row.quantity,
+        system_qty: null,
+        status: "failed",
+        message: `Material ${row.material_code} is blocked - stock update skipped.`,
+      });
+      continue;
+    }
+
     if (row.location_code && !knownLocations.has(row.location_code)) {
       summary.failed += 1;
       summary.outcomes.push({

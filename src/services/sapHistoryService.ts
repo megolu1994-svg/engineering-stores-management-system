@@ -8,6 +8,8 @@ import {
   applyOpeningStock,
 } from "./materialAllocationService";
 import { dismissPendingStockUpdate } from "./stockUpdateService";
+import { assertMaterialNotBlocked } from "./inventoryTransactionService";
+import { getBlockedMaterialCodes } from "./materialService";
 import {
   type BulkImportReportRow,
   type BulkImportRowStatus,
@@ -921,9 +923,38 @@ export async function bulkImportMb51(
     summary.materialsCreated = await createMissingMaterials(missingCodes, meta);
   }
 
+  // Blocked materials never get SAP history: their rows are skipped and
+  // reported as failed (with a clear reason) instead of being upserted.
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // If the lookup fails, fall back to the database trigger (migration
+    // 0020) which rejects the writes anyway.
+  }
+
+  const importableRows = rows.filter((row) => !blockedCodes.has(row.material_code));
+
+  if (importableRows.length !== rows.length) {
+    for (const row of rows) {
+      if (!blockedCodes.has(row.material_code)) continue;
+      summary.failed += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        storage_location: row.storage_location,
+        movement_type: row.movement_type,
+        posting_date: row.posting_date,
+        quantity: row.quantity,
+        status: "failed",
+        message: `Material ${row.material_code} is blocked - SAP history import skipped.`,
+      });
+    }
+  }
+
   reportProgress(0.3);
 
-  await runChunked(rows, async (batch) => {
+  await runChunked(importableRows, async (batch) => {
     const payload = batch.map((row) => ({
       material_code: row.material_code,
       material_description: row.material_description || null,
@@ -1033,7 +1064,7 @@ export async function bulkImportMb51(
   // Provenance: record which documents this file brought in (best-effort).
   const importedDocs = Array.from(
     new Set(
-      rows
+      importableRows
         .map((r) => r.material_document)
         .filter((d): d is string => !!d)
     )
@@ -1044,7 +1075,7 @@ export async function bulkImportMb51(
       batch.map((document) => ({
         material_document: document,
         file_name: fileName ?? null,
-        row_count: rows.filter((r) => r.material_document === document).length,
+        row_count: importableRows.filter((r) => r.material_document === document).length,
       }))
     );
 
@@ -1139,6 +1170,21 @@ export async function bulkImportMb52(
       byMaterial.set(row.material_code, slocs);
     }
     slocs.set(row.storage_location, (slocs.get(row.storage_location) ?? 0) + row.quantity);
+  }
+
+  // Blocked materials never get an SAP stock snapshot: drop them from the
+  // distribution replace and the review pass, and report them as failed.
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // If the lookup fails, fall back to the database trigger (migration
+    // 0020) which rejects the writes anyway.
+  }
+
+  for (const code of Array.from(byMaterial.keys())) {
+    if (!blockedCodes.has(code)) continue;
+    byMaterial.delete(code);
   }
 
   const materialCodes = Array.from(byMaterial.keys());
@@ -1342,8 +1388,22 @@ export async function bulkImportMb52(
 
   reportProgress(0.9);
 
-  // 4. Per-row outcomes for the report.
+  // 4. Per-row outcomes for the report. Blocked rows are reported as
+  //    failed (they were never written to the snapshot).
   for (const row of rows) {
+    if (blockedCodes.has(row.material_code)) {
+      summary.failed += 1;
+      summary.outcomes.push({
+        rowNumber: row.rowNumber,
+        material_code: row.material_code,
+        storage_location: row.storage_location,
+        quantity: row.quantity,
+        status: "failed",
+        message: `Material ${row.material_code} is blocked - SAP stock snapshot skipped.`,
+      });
+      continue;
+    }
+
     summary.outcomes.push({
       rowNumber: row.rowNumber,
       material_code: row.material_code,
@@ -1788,6 +1848,9 @@ export async function applySapReconciliation(
   remarks?: string
 ): Promise<void> {
   const reason = "SAP Reconciliation";
+
+  // Blocked materials cannot be adjusted through SAP reconciliation.
+  await assertMaterialNotBlocked(materialCode);
 
   for (const { location_code, quantity } of locationQuantities) {
     await applyAdjustment(materialCode, location_code, quantity, reason, remarks);

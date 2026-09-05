@@ -67,6 +67,32 @@ function generateTransactionNumber(type: InventoryTransactionType): string {
 }
 
 /**
+ * Throws if the given material is blocked in Material Master. Every stock
+ * write (allocation, opening stock, adjustment, receipt, issue, transfer)
+ * goes through this engine, so this single guard stops blocked materials
+ * from being used in any transaction. The database also enforces the same
+ * rule via the `enforce_material_not_blocked` trigger (migration 0020),
+ * so even a direct insert/update that bypasses the app is rejected.
+ */
+export async function assertMaterialNotBlocked(
+  materialCode: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("material_master")
+    .select("is_blocked")
+    .eq("material_code", materialCode)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (data?.is_blocked) {
+    throw new Error(
+      `Material ${materialCode} is blocked. Blocked materials cannot be used in any transaction or stock update.`
+    );
+  }
+}
+
+/**
  * Best-effort audit log insert into `inventory_transactions`.
  *
  * This NEVER throws. If the table doesn't exist yet (or the insert
@@ -148,6 +174,8 @@ export async function applyStockMovement(
     createdBy,
   } = params;
 
+  await assertMaterialNotBlocked(materialCode);
+
   if (allocationId !== undefined) {
     const { error } = await supabase
       .from("material_allocation")
@@ -224,6 +252,8 @@ export async function reverseStockMovement(
     remarks,
     createdBy,
   } = params;
+
+  await assertMaterialNotBlocked(materialCode);
 
   const { error } = await supabase
     .from("material_allocation")
