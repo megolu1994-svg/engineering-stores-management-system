@@ -51,6 +51,7 @@ import {
   deleteMaterial,
   searchMaterials,
   updateMaterial,
+  setMaterialBlocked,
   parseMaterialExcelRows,
   bulkImportMaterials,
   downloadMaterialImportReport,
@@ -114,6 +115,9 @@ export default function MaterialMaster() {
   >("materialMaster.selectedMaterial", null);
 
   const [deleteMaterialData, setDeleteMaterialData] =
+    useState<Material | null>(null);
+
+  const [blockToggleData, setBlockToggleData] =
     useState<Material | null>(null);
 
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -416,6 +420,38 @@ export default function MaterialMaster() {
     setSelectedMaterial(null);
     setShowForm(true);
   }
+
+  const confirmBlockToggle = useCallback(async () => {
+    if (!blockToggleData) return;
+
+    const blocking = !blockToggleData.is_blocked;
+
+    try {
+      await setMaterialBlocked(blockToggleData.material_code, blocking);
+
+      // Refresh only the current (small) page instead of reloading the
+      // entire material_master table.
+      await Promise.all([
+        loadMaterials(debouncedSearch, page, pageSize),
+        getLastMaterialUpdate()
+          .then(setLastUpdated)
+          .catch(() => {}),
+      ]);
+
+      setSnackbarSeverity("success");
+      setSnackbarMessage(
+        blocking
+          ? `Material ${blockToggleData.material_code} blocked. No transactions or stock updates are allowed for it.`
+          : `Material ${blockToggleData.material_code} unblocked.`
+      );
+    } catch (error: any) {
+      setSnackbarSeverity("error");
+      setSnackbarMessage(error.message);
+    }
+
+    setBlockToggleData(null);
+    setSnackbarOpen(true);
+  }, [blockToggleData, debouncedSearch, page, pageSize, loadMaterials]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteMaterialData) return;
@@ -859,12 +895,64 @@ export default function MaterialMaster() {
         onPageSizeChange={handlePageSizeChange}
         onEdit={handleEdit}
         onDelete={(material) => setDeleteMaterialData(material)}
+        onToggleBlock={(material) => setBlockToggleData(material)}
         onUploadPhoto={handleOpenPhotoMenu}
         uploadingPhotoCode={uploadingPhotoCode}
         onRowClick={setInfoMaterial}
       />
 
       <MaterialInfoDialog material={infoMaterial} onClose={() => setInfoMaterial(null)} />
+
+      <Dialog
+        open={!!blockToggleData}
+        onClose={() => setBlockToggleData(null)}
+        fullWidth
+        maxWidth="xs"
+        fullScreen={mobile}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {blockToggleData?.is_blocked ? "Unblock Material" : "Block Material"}
+        </DialogTitle>
+
+        <DialogContent>
+          <DialogContentText>
+            {blockToggleData?.is_blocked ? (
+              <>
+                Are you sure you want to unblock{" "}
+                <strong>{blockToggleData.material_code}</strong>? Transactions
+                and stock updates will be allowed again.
+              </>
+            ) : (
+              <>
+                Are you sure you want to block{" "}
+                <strong>{blockToggleData?.material_code}</strong>? Once blocked,
+                no transactions, stock updates, SAP stock updates or SAP
+                history updates will be allowed for this material.
+              </>
+            )}
+          </DialogContentText>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => setBlockToggleData(null)}
+            fullWidth={mobile}
+            sx={{ minHeight: 48, borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            color={blockToggleData?.is_blocked ? "success" : "error"}
+            variant="contained"
+            onClick={confirmBlockToggle}
+            fullWidth={mobile}
+            sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700 }}
+          >
+            {blockToggleData?.is_blocked ? "Unblock" : "Block"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={!!deleteMaterialData}

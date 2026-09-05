@@ -37,7 +37,7 @@ export async function getMaterials(): Promise<Material[]> {
 }
 
 const MATERIAL_SEARCH_COLUMNS =
-  "material_code, short_description, uom, hsn_code, material_group, is_active";
+  "material_code, short_description, uom, hsn_code, material_group, is_active, is_blocked";
 
 /**
  * Escapes PostgREST `ilike` wildcard characters (% and _) in user-provided
@@ -232,6 +232,55 @@ export async function updateMaterial(
     .eq("material_code", material.material_code);
 
   if (error) throw error;
+}
+
+/**
+ * Blocks (or unblocks) a material code. Blocked materials reject every
+ * stock-moving write: transactions, stock updates, SAP stock snapshots
+ * and SAP history imports (enforced both by the app's
+ * `assertMaterialNotBlocked` guard and by the `enforce_material_not_blocked`
+ * database trigger from migration 0020). Master-data fields can still be
+ * edited; only stock/transaction behaviour is frozen.
+ */
+export async function setMaterialBlocked(
+  materialCode: string,
+  blocked: boolean,
+  reason?: string
+): Promise<void> {
+  const payload: Record<string, unknown> = { is_blocked: blocked };
+
+  if (blocked) {
+    payload.blocked_at = new Date().toISOString();
+    payload.blocked_reason = reason?.trim() || null;
+  } else {
+    payload.blocked_at = null;
+    payload.blocked_reason = null;
+  }
+
+  const { error } = await supabase
+    .from("material_master")
+    .update(payload)
+    .eq("material_code", materialCode);
+
+  if (error) throw error;
+}
+
+/**
+ * Returns the set of currently blocked material codes. Used by the bulk
+ * import paths (Stock Update, SAP MB51/MB52) so blocked rows can be
+ * skipped with a clear message instead of aborting an entire batch.
+ */
+export async function getBlockedMaterialCodes(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("material_master")
+    .select("material_code")
+    .eq("is_blocked", true);
+
+  if (error) throw error;
+
+  return new Set(
+    (data ?? []).map((m: { material_code: string }) => m.material_code)
+  );
 }
 
 export async function deleteMaterial(

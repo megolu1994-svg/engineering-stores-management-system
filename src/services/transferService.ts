@@ -1,5 +1,8 @@
 import { supabase } from "../config/supabase";
-import { applyStockMovement } from "./inventoryTransactionService";
+import {
+  applyStockMovement,
+  assertMaterialNotBlocked,
+} from "./inventoryTransactionService";
 import { getAllocations } from "./materialAllocationService";
 import type { MaterialAllocation } from "../types/materialAllocation";
 
@@ -198,6 +201,12 @@ export async function createTransfer(
   const validation = validateTransfer(materials);
   if (!validation.valid) {
     throw new Error(validation.error ?? "Invalid transfer.");
+  }
+
+  // Blocked materials cannot be transferred - check before creating the
+  // header so no orphaned transfer rows are left behind.
+  for (const material of materials) {
+    await assertMaterialNotBlocked(material.material_code);
   }
 
   const { totalMaterials, totalLocations, totalQuantity } =

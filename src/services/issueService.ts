@@ -1,5 +1,8 @@
 import { supabase } from "../config/supabase";
-import { applyStockMovement } from "./inventoryTransactionService";
+import {
+  applyStockMovement,
+  assertMaterialNotBlocked,
+} from "./inventoryTransactionService";
 import { getAllocations } from "./materialAllocationService";
 
 /* =========================================================================
@@ -182,6 +185,12 @@ export async function createIssue(
   const validation = validateIssue(materials);
   if (!validation.valid) {
     throw new Error(validation.error ?? "Invalid issue.");
+  }
+
+  // Blocked materials cannot be issued - check before creating the
+  // header so no orphaned issue rows are left behind.
+  for (const material of materials) {
+    await assertMaterialNotBlocked(material.material_code);
   }
 
   const { totalMaterials, totalLocations, totalQuantity } =

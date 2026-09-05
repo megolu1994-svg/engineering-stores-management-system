@@ -23,6 +23,8 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import BlockIcon from "@mui/icons-material/Block";
+import LockOpenIcon from "@mui/icons-material/LockOpen";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
@@ -41,6 +43,7 @@ interface Props {
   onPageSizeChange: (pageSize: number) => void;
   onEdit: (material: Material) => void;
   onDelete: (material: Material) => void;
+  onToggleBlock: (material: Material) => void;
   onUploadPhoto: (material: Material, anchorEl: HTMLElement) => void;
   uploadingPhotoCode: string | null;
   onRowClick: (material: Material) => void;
@@ -124,6 +127,7 @@ export default function MaterialMasterListView({
   onPageSizeChange,
   onEdit,
   onDelete,
+  onToggleBlock,
   onUploadPhoto,
   uploadingPhotoCode,
   onRowClick,
@@ -214,6 +218,20 @@ export default function MaterialMasterListView({
                       color: "primary.main",
                     }}
                   />
+                  {material.is_blocked && (
+                    <Chip
+                      label="BLOCKED"
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: "0.62rem",
+                        fontWeight: 800,
+                        bgcolor: "error.main",
+                        color: "#fff",
+                        letterSpacing: 0.4,
+                      }}
+                    />
+                  )}
                 </Box>
 
                 <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.25, sm: 1.5 }, flexShrink: 0 }}>
@@ -228,6 +246,22 @@ export default function MaterialMasterListView({
                     sx={{ p: 0.75 }}
                   >
                     <EditIcon fontSize="small" />
+                  </IconButton>
+
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleBlock(material);
+                    }}
+                    aria-label={material.is_blocked ? "Unblock material" : "Block material"}
+                    sx={{ p: 0.75, color: material.is_blocked ? "success.main" : "error.main" }}
+                  >
+                    {material.is_blocked ? (
+                      <LockOpenIcon fontSize="small" />
+                    ) : (
+                      <BlockIcon fontSize="small" />
+                    )}
                   </IconButton>
 
                   <IconButton
@@ -308,7 +342,23 @@ export default function MaterialMasterListView({
                     sx={{ cursor: "pointer", height: 60, "&:hover": { bgcolor: "primary.hover" } }}
                   >
                     <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>
-                      {material.material_code}
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        {material.material_code}
+                        {material.is_blocked && (
+                          <Chip
+                            label="BLOCKED"
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: "0.62rem",
+                              fontWeight: 800,
+                              bgcolor: "error.main",
+                              color: "#fff",
+                              letterSpacing: 0.4,
+                            }}
+                          />
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ maxWidth: 480 }}>
                       <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
@@ -341,6 +391,26 @@ export default function MaterialMasterListView({
                             aria-label="Edit material"
                           >
                             <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip
+                          title={material.is_blocked ? "Unblock material" : "Block material"}
+                        >
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleBlock(material);
+                            }}
+                            aria-label={material.is_blocked ? "Unblock material" : "Block material"}
+                            sx={{ color: material.is_blocked ? "success.main" : "error.main" }}
+                          >
+                            {material.is_blocked ? (
+                              <LockOpenIcon fontSize="small" />
+                            ) : (
+                              <BlockIcon fontSize="small" />
+                            )}
                           </IconButton>
                         </Tooltip>
 
