@@ -375,8 +375,23 @@ export default function Dashboard() {
           );
         });
 
+        // Blocked materials are hidden from every screen, including the
+        // Low Stock list.
+        let blockedCodes = new Set<string>();
+        try {
+          const { data: blocked } = await supabase
+            .from("material_master")
+            .select("material_code")
+            .eq("is_blocked", true);
+          blockedCodes = new Set(
+            (blocked ?? []).map((b: { material_code: string }) => b.material_code)
+          );
+        } catch {
+          // Fall through - blocked materials would only be visible briefly.
+        }
+
         const lowCodes = Array.from(totals.entries())
-          .filter(([, qty]) => qty > 0 && qty <= LOW_STOCK_THRESHOLD)
+          .filter(([code, qty]) => !blockedCodes.has(code) && qty > 0 && qty <= LOW_STOCK_THRESHOLD)
           .sort((a, b) => a[1] - b[1])
           .slice(0, 8);
 

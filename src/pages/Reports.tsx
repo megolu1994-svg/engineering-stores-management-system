@@ -1036,9 +1036,12 @@ export default function Reports() {
         .select("id", { count: "exact", head: true });
 
       const trimmed = debouncedMovementSearch.trim();
+      const orFilter = trimmed
+        ? `material_code.ilike.%${trimmed.replace(/[%_]/g, (m) => `\\${m}`)}%,` +
+          `reference_number.ilike.%${trimmed.replace(/[%_]/g, (m) => `\\${m}`)}%,` +
+          `location_code.ilike.%${trimmed.replace(/[%_]/g, (m) => `\\${m}`)}%`
+        : "";
       if (trimmed) {
-        const safe = trimmed.replace(/[%_]/g, (m) => `\\${m}`);
-        const orFilter = `material_code.ilike.%${safe}%,reference_number.ilike.%${safe}%,location_code.ilike.%${safe}%`;
         query = query.or(orFilter);
         countQuery = countQuery.or(orFilter);
       }
@@ -1050,9 +1053,37 @@ export default function Reports() {
       if (error) throw error;
       if (countError) throw countError;
 
-      setMovementTotalCount(count ?? 0);
+      // Blocked materials are hidden from every screen - drop their
+      // movement-register rows and subtract them from the total count.
+      let blockedCodes = new Set<string>();
+      try {
+        const { data: blocked } = await supabase
+          .from("material_master")
+          .select("material_code")
+          .eq("is_blocked", true);
+        blockedCodes = new Set(
+          (blocked ?? []).map((b: { material_code: string }) => b.material_code)
+        );
+      } catch {
+        // Fall through - blocked rows would only be visible briefly.
+      }
 
-      const rows = (data ?? []) as Omit<MovementRow, "material_description">[];
+      let adjustedCount = count ?? 0;
+      if (blockedCodes.size > 0) {
+        let blockedCountQuery = supabase
+          .from("inventory_transactions")
+          .select("id", { count: "exact", head: true })
+          .in("material_code", Array.from(blockedCodes));
+        if (trimmed) blockedCountQuery = blockedCountQuery.or(orFilter);
+        const { count: blockedCount } = await blockedCountQuery;
+        adjustedCount = Math.max(0, adjustedCount - (blockedCount ?? 0));
+      }
+
+      setMovementTotalCount(adjustedCount);
+
+      const rows = ((data ?? []) as Omit<MovementRow, "material_description">[]).filter(
+        (r) => !blockedCodes.has(r.material_code)
+      );
 
       const materialCodes = Array.from(new Set(rows.map((r) => r.material_code)));
       const descriptionMap = new Map<string, string>();

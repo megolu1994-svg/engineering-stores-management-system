@@ -17,6 +17,9 @@ export async function getMaterials(): Promise<Material[]> {
       .from("material_master")
       .select("*")
       .eq("is_active", true)
+      // Blocked materials are hidden from reports - they are only meant
+      // to be seen in Material Master (where they can be unblocked).
+      .eq("is_blocked", false)
       .order("material_code")
       .range(from, to);
 
@@ -49,22 +52,27 @@ function escapeIlikeValue(value: string): string {
 }
 
 /**
- * Single, reusable server-side material search used by both Material
- * Master and Material Allocation (via MaterialSearch). Searches
- * material_code, short_description, and material_group directly in
- * Supabase, returns only the columns the UI needs, and is paginated via
- * `.range()` so it stays fast even with 100,000+ materials.
+ * Single, reusable server-side material search used by Material Master,
+ * Material Allocation (via MaterialSearch), RFID and other pickers.
+ * Searches material_code, short_description, and material_group directly
+ * in Supabase, returns only the columns the UI needs, and is paginated
+ * via `.range()` so it stays fast even with 100,000+ materials.
  *
  * - `query` empty -> returns the first page of active materials
  *   (ordered by material_code), useful for an initial/browse view.
  * - `query` non-empty -> returns up to `pageSize` active materials whose
  *   material_code, short_description, or material_group contains the
  *   query (case insensitive).
+ * - `includeBlocked` (default false) -> blocked materials are hidden from
+ *   every picker/search. Material Master passes `true` so blocked codes
+ *   stay visible there (and can be unblocked); everywhere else defaults
+ *   to hiding them.
  */
 export async function searchMaterials(
   query: string,
   page: number = 0,
-  pageSize: number = 20
+  pageSize: number = 20,
+  includeBlocked: boolean = false
 ): Promise<Material[]> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
@@ -75,6 +83,10 @@ export async function searchMaterials(
     .eq("is_active", true)
     .order("material_code")
     .range(from, to);
+
+  if (!includeBlocked) {
+    request = request.eq("is_blocked", false);
+  }
 
   const trimmed = query.trim();
 

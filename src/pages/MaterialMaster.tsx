@@ -317,7 +317,9 @@ export default function MaterialMaster() {
       const currentRequestId = ++requestId.current;
 
       const [data, count] = await Promise.all([
-        searchMaterials(query, page, pageSize),
+        // Material Master is the ONLY place blocked materials stay
+        // visible - that is where they can be unblocked.
+        searchMaterials(query, page, pageSize, true),
         getMaterialsCount(query),
       ]);
 

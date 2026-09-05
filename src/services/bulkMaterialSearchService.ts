@@ -1,5 +1,6 @@
 import { supabase } from "../config/supabase";
 import { normalizeMaterialCode } from "../utils/materialCode";
+import { getBlockedMaterialCodes } from "./materialService";
 
 const UNALLOCATED_LOCATION = "UNALLOCATED";
 const CHUNK_SIZE = 100;
@@ -150,11 +151,21 @@ export async function bulkSearchMaterialsByCodes(
 
   const notFound = codes.filter((code) => !materialMap.has(code));
 
+  // Blocked materials are hidden from every screen, including bulk
+  // pick-list searches.
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // Fall through - blocked materials would only be visible briefly.
+  }
+
   const rows: BulkMaterialSearchRow[] = [];
 
   for (const code of codes) {
     const info = materialMap.get(code);
     if (!info) continue;
+    if (blockedCodes.has(code)) continue;
 
     let totalStock = 0;
     let unallocatedQty = 0;

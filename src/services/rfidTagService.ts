@@ -1,4 +1,5 @@
 import { supabase } from "../config/supabase";
+import { getBlockedMaterialCodes } from "./materialService";
 
 /** Get the current authenticated user's ID. */
 async function getCurrentUserId(): Promise<string> {
@@ -382,10 +383,20 @@ export async function getRfidStockSummary(): Promise<RfidStockRow[]> {
     );
   }
 
+  // Blocked materials are hidden from every screen, including the RFID
+  // stock summary.
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // Fall through - blocked materials would only be visible briefly.
+  }
+
   // Group by material_code
   const grouped: Record<string, RfidStockRow> = {};
   for (const tag of allTags) {
     const mc = tag.material_code!;
+    if (blockedCodes.has(mc)) continue;
     if (!grouped[mc]) {
       const mat = materialMap[mc];
       grouped[mc] = {

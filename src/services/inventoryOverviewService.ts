@@ -1,5 +1,6 @@
 import { supabase } from "../config/supabase";
 import type { InventoryTransactionType } from "./inventoryTransactionService";
+import { getBlockedMaterialCodes } from "./materialService";
 
 /* =========================================================================
  * Inventory Overview (Current Stock tab)
@@ -130,6 +131,16 @@ export async function getRecentActivity(
   excludeMaterialCodes: string[] = []
 ): Promise<RecentActivityPage> {
   const excluded = new Set(excludeMaterialCodes);
+
+  // Blocked materials are hidden from every screen, including the
+  // recent-activity feed.
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // Fall through - blocked materials would only be visible briefly.
+  }
+
   const latestByMaterial = new Map<string, TransactionRow>();
 
   let nextCursor = cursor;
@@ -172,7 +183,11 @@ export async function getRecentActivity(
     for (const row of rows) {
       nextCursor = row.created_at;
 
-      if (excluded.has(row.material_code) || latestByMaterial.has(row.material_code)) {
+      if (
+        excluded.has(row.material_code) ||
+        blockedCodes.has(row.material_code) ||
+        latestByMaterial.has(row.material_code)
+      ) {
         continue;
       }
 
@@ -366,7 +381,16 @@ export async function searchInventory(
     merged.set(m.material_code, m)
   );
 
-  const materialCodes = Array.from(merged.keys());
+  let materialCodes = Array.from(merged.keys());
+
+  // Blocked materials are hidden from search results everywhere.
+  try {
+    const blockedCodes = await getBlockedMaterialCodes();
+    materialCodes = materialCodes.filter((code) => !blockedCodes.has(code));
+  } catch {
+    // Fall through - blocked materials would only be visible briefly.
+  }
+
   const stockMap = await getCurrentStockForMaterials(materialCodes);
 
   return materialCodes.map((code) => {
