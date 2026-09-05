@@ -1761,8 +1761,8 @@ export default function MaterialReceipt() {
                   {form.package_details.map((row, index) => (
                     <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 0.75, p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
                       <TextField label="Qty" placeholder="e.g. 10" size="small" value={row.quantity} onChange={(e) => updatePackageRow(index, "quantity", e.target.value)} sx={{ width: { xs: "100%", sm: 80 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <Autocomplete freeSolo options={packageTypeSuggestions} inputValue={row.package_type} onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")} renderInput={(params) => (<TextField {...params} label="Package Type" placeholder="e.g. Boxes, Drums" size="small" sx={{ width: { xs: "100%", sm: 180 }, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />)} sx={{ width: { xs: "100%", sm: 180 }, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <TextField label="Description" placeholder="Optional" size="small" fullWidth value={row.description} onChange={(e) => updatePackageRow(index, "description", e.target.value)} sx={{ minWidth: 200, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <Autocomplete freeSolo options={packageTypeSuggestions} inputValue={row.package_type} onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")} renderInput={(params) => (<TextField {...params} label="Package Type" placeholder="e.g. Boxes, Drums" size="small" sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <TextField label="Description" placeholder="Optional" size="small" fullWidth value={row.description} onChange={(e) => updatePackageRow(index, "description", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                       <IconButton size="small" onClick={() => removePackageRow(index)} aria-label="Delete row" sx={{ flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } }}>
                         <DeleteIcon fontSize="small" color="error" />
                       </IconButton>
@@ -1807,7 +1807,15 @@ export default function MaterialReceipt() {
                     <TextField label="Challan No." size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                     <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
                   </Box>
-
+                  {/* E-Way Bill & Lorry Receipt */}
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <TextField label="E-Way Bill No." size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="E-Way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
+                  </Box>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <TextField label="Lorry Receipt No." size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="Lorry Receipt Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
+                  </Box>
                 </Box>
               </Card>
 
