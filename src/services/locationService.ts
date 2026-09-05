@@ -3,16 +3,47 @@ import type { Location } from "../types/location";
 import { type BulkImportReportRow } from "../utils/bulkImportReport";
 import { recordAndDownloadBulkImportReport } from "./bulkImportHistoryService";
 
+/**
+ * Page size for the paginated location fetch below. Matches PostgREST's
+ * default max response size, so each request returns a full page.
+ */
+const GET_LOCATIONS_PAGE_SIZE = 1000;
+
+/**
+ * Every active location, ordered by location_code.
+ *
+ * Paginated via `.range()` so it isn't silently capped at PostgREST's
+ * default 1000-row response limit no matter how large location_master
+ * grows. Without this, locations that sort beyond the first 1000 rows
+ * (typically the most recently added codes) would be missing from every
+ * screen that resolves a location code to its description - e.g. the
+ * "Allocated Locations" table in Material Details would show "-" for
+ * them. Requires an explicit `.order()` alongside `.range()` so separate
+ * paginated requests come back in a stable order (same guard as
+ * fetchAllActiveLocationCodes in materialAllocationService.ts).
+ */
 export async function getLocations(): Promise<Location[]> {
-  const { data, error } = await supabase
-    .from("location_master")
-    .select("*")
-    .eq("is_active", true)
-    .order("location_code");
+  const locations: Location[] = [];
+  let from = 0;
 
-  if (error) throw error;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("location_master")
+      .select("*")
+      .eq("is_active", true)
+      .order("location_code")
+      .range(from, from + GET_LOCATIONS_PAGE_SIZE - 1);
 
-  return data as Location[];
+    if (error) throw error;
+
+    const page = (data ?? []) as Location[];
+    locations.push(...page);
+
+    if (page.length < GET_LOCATIONS_PAGE_SIZE) break;
+    from += GET_LOCATIONS_PAGE_SIZE;
+  }
+
+  return locations;
 }
 
 const LOCATION_SEARCH_COLUMNS = "location_code, location_description, is_active";
