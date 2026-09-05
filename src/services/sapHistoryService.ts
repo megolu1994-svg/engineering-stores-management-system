@@ -1468,17 +1468,22 @@ function toSapStockReview(row: Record<string, unknown>): SapStockReview {
 }
 
 export async function getSapReconciliationReviews(): Promise<SapStockReview[]> {
-  const { data, error } = await supabase
-    .from("stock_reconciliation_reviews")
-    .select(REVIEW_COLUMNS)
-    .order("created_at", { ascending: false });
+  const [reviewResult, blockedCodes] = await Promise.all([
+    supabase
+      .from("stock_reconciliation_reviews")
+      .select(REVIEW_COLUMNS)
+      .order("created_at", { ascending: false }),
+    getBlockedMaterialCodes().catch(() => new Set<string>()),
+  ]);
 
-  if (error) {
-    console.error(error);
+  if (reviewResult.error) {
+    console.error(reviewResult.error);
     return [];
   }
 
-  return ((data ?? []) as Record<string, unknown>[]).map(toSapStockReview);
+  return ((reviewResult.data ?? []) as Record<string, unknown>[])
+    .filter((row) => !blockedCodes.has(row.material_code as string))
+    .map(toSapStockReview);
 }
 
 export interface SapStockPageResult {
@@ -1589,19 +1594,25 @@ export async function getSapStorageLocations(): Promise<string[]> {
   ).sort();
 }
 
-/** Count of open reconciliation reviews (for the banner). */
+/** Count of open reconciliation reviews (for the banner). Blocked
+ *  materials' reviews are excluded so the count matches what is shown. */
 export async function getOpenSapReviewCount(): Promise<number> {
-  const { count, error } = await supabase
-    .from("stock_reconciliation_reviews")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "open");
+  const [reviewResult, blockedCodes] = await Promise.all([
+    supabase
+      .from("stock_reconciliation_reviews")
+      .select("material_code")
+      .eq("status", "open"),
+    getBlockedMaterialCodes().catch(() => new Set<string>()),
+  ]);
 
-  if (error) {
-    console.error(error);
+  if (reviewResult.error) {
+    console.error(reviewResult.error);
     return 0;
   }
 
-  return count ?? 0;
+  return ((reviewResult.data ?? []) as { material_code: string }[]).filter(
+    (row) => !blockedCodes.has(row.material_code)
+  ).length;
 }
 
 /**
@@ -1619,6 +1630,15 @@ export async function getSapStockForMaterial(
   locations: { storage_location: string; quantity: number }[];
   review: SapStockReview | null;
 } | null> {
+  // Blocked materials are invisible everywhere - return null so no SAP
+  // strip is rendered for them.
+  try {
+    const blocked = await getBlockedMaterialCodes();
+    if (blocked.has(materialCode)) return null;
+  } catch {
+    // Fall through - the views/screens will still hide blocked data.
+  }
+
   const [distribution, review] = await Promise.all([
     supabase
       .from("sap_stock_distribution")
@@ -1810,7 +1830,7 @@ export async function getSapDistinctValues(
 ): Promise<string[]> {
   let query = supabase
     .from("sap_material_documents")
-    .select(column)
+    .select(`material_code, ${column}`)
     .not(column, "is", null);
 
   if (materialCode) query = query.eq("material_code", materialCode);
@@ -1821,9 +1841,18 @@ export async function getSapDistinctValues(
     return [];
   }
 
+  let blockedCodes = new Set<string>();
+  try {
+    blockedCodes = await getBlockedMaterialCodes();
+  } catch {
+    // Fall through - the dropdown may briefly include blocked values.
+  }
+
   return Array.from(
     new Set(
-      ((data ?? []) as Record<string, string>[]).map((row) => row[column])
+      ((data ?? []) as Record<string, string>[])
+        .filter((row) => !blockedCodes.has(row.material_code as string))
+        .map((row) => row[column])
     )
   ).sort();
 }
