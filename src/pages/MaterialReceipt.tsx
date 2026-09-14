@@ -1222,85 +1222,6 @@ export default function MaterialReceipt() {
     }
   }
 
-  // One-click apply 105 as GRN
-  async function handleApply105AsGrn(
-    receipt: ReceiptHeader,
-    doc105: string,
-    doc105Date?: string | null
-  ) {
-    try {
-      const dateToUse = doc105Date || todayIso();
-      const updated = await updateReceipt(
-        receipt.id,
-        {
-          receipt_mode: receipt.receipt_mode,
-          vehicle_number: receipt.vehicle_number || "",
-          package_details: receipt.package_details,
-          vendor_name: receipt.vendor_name,
-          sap_po_number: receipt.sap_po_number || "",
-          sap_po_date: receipt.sap_po_date || "",
-          gem_order_number: receipt.gem_order_number || "",
-          gem_order_date: receipt.gem_order_date || "",
-          invoice_number: receipt.invoice_number || "",
-          invoice_date: receipt.invoice_date || "",
-          challan_number: receipt.challan_number || "",
-          challan_date: receipt.challan_date || "",
-          eway_bill_number: receipt.eway_bill_number || "",
-          eway_bill_date: receipt.eway_bill_date || "",
-          lorry_receipt_number: receipt.lorry_receipt_number || "",
-          lorry_receipt_date: receipt.lorry_receipt_date || "",
-          weightment_slip_number: receipt.weightment_slip_number || "",
-          gross_weight: receipt.gross_weight !== null ? String(receipt.gross_weight) : "",
-          tare_weight: receipt.tare_weight !== null ? String(receipt.tare_weight) : "",
-          net_weight: receipt.net_weight !== null ? String(receipt.net_weight) : "",
-          purpose: receipt.purpose || "",
-          driver_name: receipt.driver_name || "",
-          tax_invoice_value: receipt.tax_invoice_value !== null ? String(receipt.tax_invoice_value) : "",
-          msme_type: receipt.msme_type || "",
-          important_note: receipt.important_note || "",
-          delivery_location: receipt.delivery_location || "",
-          vim_approval: receipt.vim_approval || "",
-          remarks: receipt.remarks || "",
-        },
-        [],
-        receipt.photo_urls,
-        [],
-        receipt.attachment_paths || []
-      );
-
-      // Update 105 columns, mark status Closed and inspection_status "GRN created"
-      const { data: updatedHeader, error } = await supabase
-        .from("receipt_header")
-        .update({
-          grn_number: doc105,
-          grn_date: dateToUse,
-          sap_105_doc: doc105,
-          sap_105_date: dateToUse,
-          status: "Closed",
-          inspection_status: "GRN created",
-          closed_date: new Date().toISOString(),
-        })
-        .eq("id", receipt.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.warn("Could not set 105 columns directly:", error.message);
-      }
-
-      const finalReceipt = (updatedHeader as ReceiptHeader) || updated;
-      setViewReceipt(finalReceipt);
-      await refreshAll();
-      showSnackbar(
-        `Applied SAP 105 (${doc105}) as GRN Number for ${receipt.drc_number}. Status updated to GRN created.`,
-        "success"
-      );
-    } catch (err) {
-      console.error("handleApply105AsGrn error:", err);
-      showSnackbar("Failed to apply SAP 105 as GRN.", "error");
-    }
-  }
-
   // ---------------- Mail (AI-assisted draft - copy only, never sent from
   // this app; the operator pastes it into whatever mail client they use) ----------------
   const [mailDialogOpen, setMailDialogOpen] = useState(false);
@@ -2935,266 +2856,291 @@ export default function MaterialReceipt() {
             </DialogTitle>
 
             <DialogContent dividers sx={{ p: { xs: 1.5, sm: 2 } }}>
-              {/* ---- SAP MB51 & 2-Step Goods Receipt Workflow Panel ---- */}
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  mb: 2,
-                  borderRadius: 2.5,
-                  border: "1px solid",
-                  borderColor: "primary.light",
-                  bgcolor: "grey.50",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 1,
-                    mb: 1.5,
-                    pb: 1,
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <SyncIcon color="primary" />
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "primary.dark" }}>
-                        SAP MB51 History & 2-Step Goods Receipt
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        PO: <strong>{viewReceipt.sap_po_number || "-"}</strong> | Invoice: <strong>{viewReceipt.invoice_number || "-"}</strong>
-                      </Typography>
-                    </Box>
-                  </Box>
+              {/* ---- SAP Movement Status (103 & 105) ---- */}
+              {(() => {
+                const has103 = Boolean(
+                  viewReceipt.sap_103_doc ||
+                    viewSapLookup?.has103 ||
+                    viewSapLookup?.primary103Doc
+                );
+                const doc103 =
+                  viewReceipt.sap_103_doc ||
+                  viewSapLookup?.primary103Doc ||
+                  "-";
+                const date103 = formatDate(
+                  viewReceipt.sap_103_date ||
+                    viewSapLookup?.primary103Date ||
+                    null
+                );
 
-                  <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={viewSapLoading ? <CircularProgress size={14} /> : <SyncIcon fontSize="small" />}
-                      onClick={() => checkSapForView(viewReceipt)}
-                      disabled={viewSapLoading}
-                      sx={{ fontWeight: 600, textTransform: "none", borderRadius: 2 }}
-                    >
-                      Check MB51
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<WarehouseIcon fontSize="small" />}
-                      onClick={() => handleOpenBinAllocation(viewReceipt)}
-                      sx={{ fontWeight: 700, textTransform: "none", borderRadius: 2 }}
-                    >
-                      Allocate Bins
-                    </Button>
-                  </Box>
-                </Box>
+                const has105 = Boolean(
+                  viewReceipt.sap_105_doc ||
+                    viewReceipt.grn_number ||
+                    viewSapLookup?.has105 ||
+                    viewSapLookup?.primary105Doc
+                );
+                const doc105 =
+                  viewReceipt.sap_105_doc ||
+                  viewReceipt.grn_number ||
+                  viewSapLookup?.primary105Doc ||
+                  "-";
+                const date105 = formatDate(
+                  viewReceipt.sap_105_date ||
+                    viewReceipt.grn_date ||
+                    viewSapLookup?.primary105Date ||
+                    null
+                );
 
-                {/* 4-Step Visual Workflow Grid */}
-                <Grid container spacing={1.5}>
-                  {/* Step 1: 103 GR Blocked Stock */}
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Paper
-                      elevation={0}
+                return (
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      mb: 2,
+                      borderRadius: 2,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      bgcolor: "grey.50",
+                    }}
+                  >
+                    <Box
                       sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: "background.paper",
-                        border: "1px solid",
-                        borderColor: (viewReceipt.sap_103_doc || viewSapLookup?.has103) ? "info.light" : "divider",
-                        height: "100%",
                         display: "flex",
-                        flexDirection: "column",
                         justifyContent: "space-between",
+                        alignItems: "center",
+                        mb: 1.5,
                       }}
                     >
-                      <Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                          <Typography variant="caption" sx={{ fontWeight: 700, color: "info.dark" }}>
-                            STEP 1: 103 GR BLOCKED STOCK
-                          </Typography>
-                          {(viewReceipt.sap_103_doc || viewSapLookup?.has103) ? (
-                            <Chip size="small" color="info" label="103 In SAP" sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700 }} />
-                          ) : (
-                            <Chip size="small" variant="outlined" label="Pending 103" sx={{ height: 20, fontSize: "0.65rem" }} />
-                          )}
-                        </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          Doc: {viewReceipt.sap_103_doc || viewSapLookup?.primary103Doc || "Not Linked"}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          Date: {viewReceipt.sap_103_date || viewSapLookup?.primary103Date || "-"}
-                        </Typography>
-                      </Box>
-
-                      {(!viewReceipt.package_details || !viewReceipt.package_details.some((p) => p.material_code)) && (
-                        <Button
-                          size="small"
-                          variant="text"
-                          startIcon={<SyncIcon fontSize="small" />}
-                          onClick={() => handleOpenSapLookupForReceipt(viewReceipt)}
-                          sx={{ textTransform: "none", fontWeight: 600, p: 0, mt: 1, justifyContent: "flex-start" }}
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <SyncIcon color="primary" fontSize="small" />
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 700, color: "text.primary" }}
                         >
-                          Fetch / Map 103 Materials
-                        </Button>
-                      )}
-                    </Paper>
-                  </Grid>
-
-                  {/* Step 2: Inspection & Counting */}
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: "background.paper",
-                        border: "1px solid",
-                        borderColor: viewReceipt.status === "Pending GRN" || viewReceipt.status === "Closed" ? "success.light" : "divider",
-                        height: "100%",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                          <Typography variant="caption" sx={{ fontWeight: 700, color: "text.primary" }}>
-                            STEP 2: INSPECTION & COUNTING
-                          </Typography>
-                          <Chip
-                            size="small"
-                            color={
-                              viewReceipt.inspection_status?.toLowerCase().includes("hold")
-                                ? "error"
-                                : viewReceipt.inspection_status?.toLowerCase().includes("cleared") || viewReceipt.inspection_by || (viewReceipt.grn_number || viewReceipt.sap_105_doc)
-                                ? "success"
-                                : "warning"
-                            }
-                            label={
-                              viewReceipt.inspection_status?.toLowerCase().includes("hold")
-                                ? "Inspection on hold"
-                                : viewReceipt.inspection_status?.toLowerCase().includes("cleared") || viewReceipt.inspection_by || (viewReceipt.grn_number || viewReceipt.sap_105_doc)
-                                ? "Inspection cleared"
-                                : "Pending inspection"
-                            }
-                            sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700 }}
-                          />
-                        </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {viewReceipt.inspection_by ? `By: ${viewReceipt.inspection_by}` : (viewReceipt.grn_number || viewReceipt.sap_105_doc) ? "Cleared (105 Posted)" : "Pending inspection"}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          {viewReceipt.inspection_date ? formatDate(viewReceipt.inspection_date) : "Department check in progress"}
+                          SAP MB51 Status
                         </Typography>
                       </Box>
-                    </Paper>
-                  </Grid>
-
-                  {/* Step 3: 105 GR Release (GRN) */}
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: "background.paper",
-                        border: "1px solid",
-                        borderColor: (viewReceipt.grn_number || viewReceipt.sap_105_doc || viewSapLookup?.has105) ? "success.light" : "divider",
-                        height: "100%",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                          <Typography variant="caption" sx={{ fontWeight: 700, color: "success.dark" }}>
-                            STEP 3: 105 GR RELEASE (GRN)
-                          </Typography>
-                          {(viewReceipt.grn_number || viewReceipt.sap_105_doc || viewSapLookup?.has105) ? (
-                            <Chip size="small" color="success" label="105 Posted" sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700 }} />
-                          ) : (
-                            <Chip size="small" variant="outlined" label="Awaiting 105" sx={{ height: 20, fontSize: "0.65rem" }} />
-                          )}
-                        </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          GRN: {viewReceipt.grn_number || viewReceipt.sap_105_doc || viewSapLookup?.primary105Doc || "Pending"}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          Date: {viewReceipt.grn_date || viewReceipt.sap_105_date || viewSapLookup?.primary105Date || "-"}
-                        </Typography>
-                      </Box>
-
-                      {viewSapLookup?.primary105Doc && !viewReceipt.grn_number && (
-                        <Button
-                          size="small"
-                          variant="text"
-                          color="success"
-                          startIcon={<TaskAltIcon fontSize="small" />}
-                          onClick={() => handleApply105AsGrn(viewReceipt, viewSapLookup.primary105Doc!, viewSapLookup.primary105Date)}
-                          sx={{ textTransform: "none", fontWeight: 600, p: 0, mt: 1, justifyContent: "flex-start" }}
-                        >
-                          Apply 105 ({viewSapLookup.primary105Doc}) as DRC GRN
-                        </Button>
-                      )}
-                    </Paper>
-                  </Grid>
-
-                  {/* Step 4: Bin Location Allocation */}
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: "background.paper",
-                        border: "1px solid",
-                        borderColor: (viewReceipt.package_details && viewReceipt.package_details.length > 0 && viewReceipt.package_details.every((p) => p.bin_allocated)) ? "success.light" : "divider",
-                        height: "100%",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Box>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                          <Typography variant="caption" sx={{ fontWeight: 700, color: "primary.dark" }}>
-                            STEP 4: BIN ALLOCATION (OPTIONAL)
-                          </Typography>
-                          {(viewReceipt.package_details && viewReceipt.package_details.length > 0 && viewReceipt.package_details.every((p) => p.bin_allocated)) ? (
-                            <Chip size="small" color="success" label="All Bins Allocated" sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700 }} />
-                          ) : (
-                            <Chip size="small" color="default" variant="outlined" label="Optional / Unallocated" sx={{ height: 20, fontSize: "0.65rem" }} />
-                          )}
-                        </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          Status: {viewReceipt.package_details && viewReceipt.package_details.filter((p) => p.bin_allocated).length} of {viewReceipt.package_details?.length || 0} Allocated
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          Physical stock putaway in warehouse (optional - can also be done via MB52 upload in Inventory module)
-                        </Typography>
-                      </Box>
-
                       <Button
                         size="small"
-                        variant="text"
-                        color="primary"
-                        startIcon={<WarehouseIcon fontSize="small" />}
-                        onClick={() => handleOpenBinAllocation(viewReceipt)}
-                        sx={{ textTransform: "none", fontWeight: 600, p: 0, mt: 1, justifyContent: "flex-start" }}
+                        variant="outlined"
+                        startIcon={
+                          viewSapLoading ? (
+                            <CircularProgress size={12} />
+                          ) : (
+                            <SyncIcon fontSize="small" />
+                          )
+                        }
+                        onClick={() => checkSapForView(viewReceipt)}
+                        disabled={viewSapLoading}
+                        sx={{
+                          textTransform: "none",
+                          fontWeight: 600,
+                          fontSize: "0.75rem",
+                          borderRadius: 1.5,
+                          py: 0.25,
+                          px: 1.25,
+                        }}
                       >
-                        Allocate Bins (Optional)
+                        {viewSapLoading ? "Checking..." : "Re-check SAP"}
                       </Button>
-                    </Paper>
-                  </Grid>
-                </Grid>
-              </Paper>
+                    </Box>
+
+                    <Grid container spacing={1.5}>
+                      {/* 103 Movement Status */}
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 1.5,
+                            bgcolor: "background.paper",
+                            border: "1px solid",
+                            borderColor: has103 ? "info.light" : "divider",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              mb: 1,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{ fontWeight: 700, color: "info.dark" }}
+                            >
+                              103 MOVEMENT
+                            </Typography>
+                            <Chip
+                              size="small"
+                              color={has103 ? "success" : "default"}
+                              variant={has103 ? "filled" : "outlined"}
+                              label={
+                                has103
+                                  ? "103 Fetched Successfully"
+                                  : "103 Not Fetched"
+                              }
+                              sx={{
+                                height: 22,
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                              }}
+                            />
+                          </Box>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Material Document No.:
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                {doc103}
+                              </Typography>
+                            </Box>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Document Date:
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{ fontWeight: 600 }}
+                              >
+                                {date103}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Paper>
+                      </Grid>
+
+                      {/* 105 Movement Status (GRN completed) */}
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 1.5,
+                            bgcolor: "background.paper",
+                            border: "1px solid",
+                            borderColor: has105 ? "success.light" : "divider",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              mb: 1,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{ fontWeight: 700, color: "success.dark" }}
+                            >
+                              105 MOVEMENT
+                            </Typography>
+                            <Chip
+                              size="small"
+                              color={has105 ? "success" : "default"}
+                              variant={has105 ? "filled" : "outlined"}
+                              label={
+                                has105
+                                  ? "105 Fetched Successfully (GRN completed)"
+                                  : "105 Not Fetched"
+                              }
+                              sx={{
+                                height: 22,
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                              }}
+                            />
+                          </Box>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Material Document No.:
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                {doc105}
+                              </Typography>
+                            </Box>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Document Date:
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{ fontWeight: 600 }}
+                              >
+                                {date105}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                );
+              })()}
 
               <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 1.5, alignItems: "center" }}>
                 {viewReceipt.inspection_by && (
