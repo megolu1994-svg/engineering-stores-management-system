@@ -2481,10 +2481,16 @@ export default function MaterialReceipt() {
         </DialogTitle>
 
         <DialogContent dividers sx={{ p: { xs: 1.5, sm: 3 } }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1fr 1fr 1fr 1fr" }, gap: 2, alignItems: "start" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "3fr 1fr" }, gap: 2, alignItems: "start" }}>
 
-            {/* ====== COLUMN 1 ====== */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: { xs: "span 1", sm: "span 2", lg: "span 1" } }}>
+            {/* ====== LEFT AREA: COLUMNS 1, 2, 3 (GENERAL INFO, TRANSPORT, PURCHASE, WEIGHBRIDGE, INVOICE & CHALLAN, PACKAGE DETAILS) ====== */}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+
+              {/* Top Row: Column 1 and Columns 2 & 3 */}
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 2fr" }, gap: 2, alignItems: "start" }}>
+
+                {/* ====== COLUMN 1 (GENERAL INFO & TRANSPORT) ====== */}
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
 
               {/* --- General Info --- */}
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
@@ -2589,181 +2595,64 @@ export default function MaterialReceipt() {
                 </Box>
               </Card>
 
-              {/* --- Package Details (Physical Packages Received at Gate) --- */}
-              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                    <Inventory2Icon fontSize="small" sx={{ color: "primary.main" }} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      PACKAGE DETAILS (Physical Packages Received)
-                    </Typography>
-                  </Box>
-                  <Button size="small" startIcon={<AddIcon fontSize="small" />} onClick={addPackageRow} sx={{ fontWeight: 600, textTransform: "none" }}>
-                    Add Package
-                  </Button>
-                </Box>
-                <Box sx={{ px: 1.5, pt: 1, pb: 0.5 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                    Enter physically verifiable packages received at security gate (e.g., C/Box, W/Box, Container, Drum). Actual material codes fetched from SAP 103/105 are kept separate.
-                  </Typography>
-                </Box>
-                <Box sx={{ p: 1.5, pt: 0.5, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {form.package_details.map((row, index) => (
-                    <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 0.75, p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
-                      <TextField
-                        label="No. of Pkgs"
-                        placeholder="e.g. 1"
-                        size="small"
-                        value={row.quantity}
-                        onChange={(e) => updatePackageRow(index, "quantity", e.target.value)}
-                        sx={{ width: { xs: "100%", sm: 90 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                      />
-                      <Autocomplete
-                        freeSolo
-                        options={packageTypeSuggestions}
-                        inputValue={row.package_type}
-                        onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Package Type"
-                            placeholder="e.g. C/Box, W/Box"
-                            size="small"
-                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, minWidth: { sm: 160 } }}
-                          />
-                        )}
-                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                      />
-                      <TextField
-                        label="Package Remarks / Content Description"
-                        placeholder="Optional details (e.g. Valves, hardware)"
-                        size="small"
-                        fullWidth
-                        value={row.description}
-                        onChange={(e) => updatePackageRow(index, "description", e.target.value)}
-                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                      />
-                      <IconButton
-                        size="small"
-                        onClick={() => removePackageRow(index)}
-                        aria-label="Delete package row"
-                        sx={{ flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } }}
-                      >
-                        <DeleteIcon fontSize="small" color="error" />
-                      </IconButton>
-                    </Box>
-                  ))}
-                </Box>
-              </Card>
-
-              {/* --- SAP 103 / 105 Material Items (Separated from Physical Packages) --- */}
-              {form.sap_items && form.sap_items.length > 0 && (
-                <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "info.light", bgcolor: "info.50" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                      <TaskAltIcon fontSize="small" color="info" />
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "info.dark" }}>
-                        SAP 103 / 105 MATERIAL ITEMS ({form.sap_items.length} Materials)
-                      </Typography>
-                    </Box>
-                    <Chip
-                      size="small"
-                      color="info"
-                      label="SAP MB51 Synced"
-                      sx={{ fontWeight: 700, fontSize: "0.7rem", height: 22 }}
-                    />
-                  </Box>
-                  <Box sx={{ px: 1.5, pt: 1, pb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Actual material codes and quantities received inside the physical packages above.
-                    </Typography>
-                  </Box>
-                  <Box sx={{ p: 1.5, pt: 0.5 }}>
-                    <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 1.5, border: "1px solid", borderColor: "divider" }}>
-                      <Table size="small">
-                        <TableHead sx={{ bgcolor: "grey.100" }}>
-                          <TableRow>
-                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Material Code</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }} align="right">Qty</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>UoM</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>SAP Movements</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Bin Location</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {form.sap_items.map((item, idx) => (
-                            <TableRow key={idx} hover>
-                              <TableCell sx={{ fontWeight: 700, fontFamily: "monospace", fontSize: "0.75rem" }}>
-                                {item.material_code || "-"}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>{item.description || "-"}</TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
-                                {item.quantity}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>{item.uom || item.package_type || "NOS"}</TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                {item.sap_103_doc && `103: ${item.sap_103_doc}`}
-                                {item.sap_105_doc && ` 105: ${item.sap_105_doc}`}
-                                {!item.sap_103_doc && !item.sap_105_doc && "-"}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                {item.bin_location ? (
-                                  <Chip size="small" label={item.bin_location} color="success" sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }} />
-                                ) : (
-                                  <Typography variant="caption" color="text.secondary">Unallocated</Typography>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </Box>
-                </Card>
-              )}
-
             </Box>
 
-            {/* ====== COLUMN 2 ====== */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: { xs: "span 1", sm: "span 2", lg: "span 1" } }}>
+                {/* ====== COLUMNS 2 & 3 (PURCHASE DETAILS, WEIGHBRIDGE DATA & COMPRESSED INVOICE & CHALLAN) ====== */}
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
 
-              {/* --- Purchase Details --- */}
-              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-                  <LocalOfferIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>PURCHASE DETAILS</Typography>
-                </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  <TextField label="SAP PO Number" size="small" fullWidth value={form.sap_po_number} onChange={(e) => updateField("sap_po_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <DateTextField label="SAP PO Date" value={form.sap_po_date} onChange={(iso) => updateField("sap_po_date", iso)} />
-                  <TextField label="GeM Order Number" size="small" fullWidth value={form.gem_order_number} onChange={(e) => updateField("gem_order_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <DateTextField label="GeM Order Date" value={form.gem_order_date} onChange={(iso) => updateField("gem_order_date", iso)} />
-                </Box>
-              </Card>
+              {/* Top Row: Purchase Details & Weighbridge Data side by side */}
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2, alignItems: "stretch" }}>
+                {/* --- Purchase Details --- */}
+                <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "100%" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                    <LocalOfferIcon fontSize="small" sx={{ color: "primary.main" }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>PURCHASE DETAILS</Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
+                    <TextField label="SAP PO Number" size="small" fullWidth value={form.sap_po_number} onChange={(e) => updateField("sap_po_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="SAP PO Date" value={form.sap_po_date} onChange={(iso) => updateField("sap_po_date", iso)} />
+                    <TextField label="GeM Order Number" size="small" fullWidth value={form.gem_order_number} onChange={(e) => updateField("gem_order_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="GeM Order Date" value={form.gem_order_date} onChange={(iso) => updateField("gem_order_date", iso)} />
+                  </Box>
+                </Card>
 
-              {/* --- Invoice & Challan --- */}
-              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                {/* --- Weighbridge Data --- */}
+                <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "100%" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                    <ScaleIcon fontSize="small" sx={{ color: "primary.main" }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>WEIGHBRIDGE DATA</Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
+                    <TextField label="Weightment Slip Number" size="small" fullWidth value={form.weightment_slip_number} onChange={(e) => updateField("weightment_slip_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <TextField label="Gross Weight" type="number" size="small" fullWidth value={form.gross_weight} onChange={(e) => updateField("gross_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <TextField label="Tare Weight" type="number" size="small" fullWidth value={form.tare_weight} onChange={(e) => updateField("tare_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <TextField label="Net Weight" type="number" size="small" fullWidth value={form.net_weight} onChange={(e) => updateField("net_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  </Box>
+                </Card>
+              </Box>
+
+              {/* --- Invoice & Challan (Compressed upwards with uniform equal tab size) --- */}
+              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "fit-content" }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                   <ReceiptLongIcon fontSize="small" sx={{ color: "primary.main" }} />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>INVOICE & CHALLAN</Typography>
                 </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  <Box sx={{ display: "flex", gap: 1 }}>
+                <Box sx={{ p: 1.25, display: "flex", flexDirection: "column", gap: 1.25 }}>
+                  {/* Row 1: Invoice Details (Equal 3-column tabs) */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
                     <TextField label="Invoice No." size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                     <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
                     <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                   </Box>
-                  <Box sx={{ display: "flex", gap: 1 }}>
+                  {/* Row 2: Challan & E-Way (Equal 3-column tabs) */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
                     <TextField label="Challan No." size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                     <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
-                  </Box>
-                  {/* E-Way Bill & Lorry Receipt */}
-                  <Box sx={{ display: "flex", gap: 1 }}>
                     <TextField label="E-Way Bill No." size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    <DateTextField label="E-Way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
                   </Box>
-                  <Box sx={{ display: "flex", gap: 1 }}>
+                  {/* Row 3: E-Way Date & Lorry Receipt (Equal 3-column tabs) */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
+                    <DateTextField label="E-Way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
                     <TextField label="Lorry Receipt No." size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                     <DateTextField label="Lorry Receipt Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
                   </Box>
@@ -2772,129 +2661,244 @@ export default function MaterialReceipt() {
 
             </Box>
 
-            {/* ====== COLUMN 3 ====== */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: { xs: "span 1", sm: "span 2", lg: "span 1" } }}>
+          </Box>
 
-              {/* --- Weighbridge Data --- */}
-              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-                  <ScaleIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>WEIGHBRIDGE DATA</Typography>
-                </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  <TextField label="Weightment Slip Number" size="small" fullWidth value={form.weightment_slip_number} onChange={(e) => updateField("weightment_slip_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <TextField label="Gross Weight" type="number" size="small" fullWidth value={form.gross_weight} onChange={(e) => updateField("gross_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <TextField label="Tare Weight" type="number" size="small" fullWidth value={form.tare_weight} onChange={(e) => updateField("tare_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <TextField label="Net Weight" type="number" size="small" fullWidth value={form.net_weight} onChange={(e) => updateField("net_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                </Box>
-              </Card>
-
+          {/* ====== EXTENDED PACKAGE DETAILS (BELOW TRANSPORT AND INVOICE & CHALLAN ACROSS ALL 3 COLUMNS) ====== */}
+          <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                <Inventory2Icon fontSize="small" sx={{ color: "primary.main" }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  PACKAGE DETAILS
+                </Typography>
+              </Box>
+              <Button size="small" startIcon={<AddIcon fontSize="small" />} onClick={addPackageRow} sx={{ fontWeight: 600, textTransform: "none" }}>
+                Add Package
+              </Button>
             </Box>
-
-            {/* ====== COLUMN 4 ====== */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: { xs: "span 1", sm: "span 2", lg: "span 1" } }}>
-
-              {/* --- Remarks & Attachments --- */}
-              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-                  <DriveFileRenameOutlineIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>REMARKS & ATTACHMENTS</Typography>
-                </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                  <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  {purposeSuggestions.length > 0 && (
-                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                      {purposeSuggestions.slice(0, 4).map((suggestion) => (
-                        <Chip key={suggestion} label={suggestion} size="small" variant="outlined" onClick={() => updateField("purpose", suggestion)} sx={{ cursor: "pointer", fontSize: "0.7rem", height: 24 }} />
-                      ))}
-                    </Box>
-                  )}
-                  <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
-                    <MenuItem value="">None</MenuItem>
-                    <MenuItem value="MSME">MSME</MenuItem>
-                    <MenuItem value="General">General</MenuItem>
-                  </TextField>
-                  <TextField label="Location" size="small" fullWidth placeholder="e.g. Ware House" value={form.delivery_location} onChange={(e) => updateField("delivery_location", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <TextField label="Important Note" size="small" fullWidth value={form.important_note} onChange={(e) => updateField("important_note", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                  <TextField label="VIM Approval" size="small" fullWidth value={form.vim_approval} onChange={(e) => updateField("vim_approval", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-
-                  {/* Photo upload */}
-                  <Box>
-                    <input ref={photoInputRef} type="file" accept="image/*" multiple hidden onChange={handlePhotoSelect} />
-                    <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" hidden onChange={handleCameraCapture} />
-                    <Button variant="contained" startIcon={capturingPhoto ? <CircularProgress size={16} color="inherit" /> : <AddPhotoAlternateIcon fontSize="small" />} onClick={openPhotoMenu} disabled={capturingPhoto} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
-                      Add Photo
-                    </Button>
-                    <Menu anchorEl={photoMenuAnchor} open={!!photoMenuAnchor} onClose={closePhotoMenu}>
-                      <MenuItem onClick={handleTakePhoto}><PhotoCameraIcon fontSize="small" sx={{ mr: 1 }} />Take Photo</MenuItem>
-                      <MenuItem onClick={handleChooseFromGallery}><PhotoLibraryIcon fontSize="small" sx={{ mr: 1 }} />Choose From Gallery</MenuItem>
-                    </Menu>
-                    {(keptPhotoUrls.length > 0 || newPhotoPreviews.length > 0) && (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
-                        {keptPhotoUrls.map((url, index) => (
-                          <Box key={`kept-${index}`} sx={{ position: "relative" }}>
-                            <Avatar src={url} variant="rounded" sx={{ width: 64, height: 64 }} />
-                            <IconButton size="small" onClick={() => removeKeptPhoto(index)} sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", boxShadow: 1, width: 22, height: 22 }}>
-                              <DeleteIcon sx={{ fontSize: 14 }} color="error" />
-                            </IconButton>
-                          </Box>
-                        ))}
-                        {newPhotoPreviews.map((url, index) => (
-                          <Box key={`new-${index}`} sx={{ position: "relative" }}>
-                            <Avatar src={url} variant="rounded" sx={{ width: 64, height: 64 }} />
-                            <IconButton size="small" onClick={() => removeNewPhoto(index)} sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", boxShadow: 1, width: 22, height: 22 }}>
-                              <DeleteIcon sx={{ fontSize: 14 }} color="error" />
-                            </IconButton>
-                          </Box>
-                        ))}
-                      </Box>
+            <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+              {form.package_details.map((row, index) => (
+                <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 1, p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
+                  <TextField
+                    label="No. of Pkgs"
+                    placeholder="e.g. 1"
+                    size="small"
+                    value={row.quantity}
+                    onChange={(e) => updatePackageRow(index, "quantity", e.target.value)}
+                    sx={{ width: { xs: "100%", sm: 110 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                  <Autocomplete
+                    freeSolo
+                    options={packageTypeSuggestions}
+                    inputValue={row.package_type}
+                    onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Package Type"
+                        placeholder="e.g. C/Box, W/Box"
+                        size="small"
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, minWidth: { sm: 180 } }}
+                      />
                     )}
-                  </Box>
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, width: { xs: "100%", sm: 200 }, flexShrink: 0 }}
+                  />
+                  <TextField
+                    label="Package Remarks / Content Description"
+                    placeholder="Optional details (e.g. Valves, hardware, bearings)"
+                    size="small"
+                    fullWidth
+                    value={row.description}
+                    onChange={(e) => updatePackageRow(index, "description", e.target.value)}
+                    sx={{ flex: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => removePackageRow(index)}
+                    aria-label="Delete package row"
+                    disabled={form.package_details.length <= 1}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    <DeleteIcon fontSize="small" color={form.package_details.length <= 1 ? "disabled" : "error"} />
+                  </IconButton>
                 </Box>
-              </Card>
-
-              {/* --- Documents --- */}
-              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-                  <NoteAddIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>DOCUMENTS</Typography>
-                </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                    <TextField select label="Type" size="small" value={documentTypeSelection} onChange={(e) => setDocumentTypeSelection(e.target.value as DocumentType)} sx={{ minWidth: 140, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
-                      {DOCUMENT_TYPES.map((type) => (
-                        <MenuItem key={type} value={type}>{type}</MenuItem>
-                      ))}
-                    </TextField>
-                    <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" multiple hidden onChange={handleDocumentSelect} />
-                    <Button variant="contained" startIcon={<AttachFileIcon fontSize="small" />} onClick={() => documentInputRef.current?.click()} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
-                      Upload {documentTypeSelection}
-                    </Button>
-                  </Box>
-                  {(keptAttachments.length > 0 || newDocumentUploads.length > 0) && (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                      {keptAttachments.map((doc, index) => (
-                        <Box key={`kept-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 1, p: 0.75, borderRadius: 2, bgcolor: "grey.50" }}>
-                          <DescriptionIcon fontSize="small" color="action" />
-                          <Chip size="small" label={doc.document_type ?? "Other"} sx={{ fontWeight: 600, flexShrink: 0 }} />
-                          <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap component="a" href={doc.url} target="_blank" rel="noreferrer">{doc.name}</Typography>
-                          <IconButton size="small" onClick={() => removeKeptAttachment(index)} aria-label="Remove document"><DeleteIcon sx={{ fontSize: 16 }} color="error" /></IconButton>
-                        </Box>
-                      ))}
-                      {newDocumentUploads.map((upload, index) => (
-                        <Box key={`new-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 1, p: 0.75, borderRadius: 2, bgcolor: "grey.50" }}>
-                          <DescriptionIcon fontSize="small" color="action" />
-                          <Chip size="small" label={upload.documentType} sx={{ fontWeight: 600, flexShrink: 0 }} />
-                          <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>{upload.file.name}</Typography>
-                          <IconButton size="small" onClick={() => removeNewDocument(index)} aria-label="Remove document"><DeleteIcon sx={{ fontSize: 16 }} color="error" /></IconButton>
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-                </Box>
-              </Card>
-
+              ))}
             </Box>
+          </Card>
+
+          {/* ====== SAP 103 / 105 MATERIAL ITEMS (SPANS ACROSS ALL 3 COLUMNS IF PRESENT) ====== */}
+          {form.sap_items && form.sap_items.length > 0 && (
+            <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "info.light", bgcolor: "info.50" }}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <TaskAltIcon fontSize="small" color="info" />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "info.dark" }}>
+                    SAP 103 / 105 MATERIAL ITEMS ({form.sap_items.length} Materials)
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  color="info"
+                  label="SAP MB51 Synced"
+                  sx={{ fontWeight: 700, fontSize: "0.7rem", height: 22 }}
+                />
+              </Box>
+              <Box sx={{ px: 1.5, pt: 1, pb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Actual material codes and quantities received inside the physical packages above.
+                </Typography>
+              </Box>
+              <Box sx={{ p: 1.5, pt: 0.5 }}>
+                <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 1.5, border: "1px solid", borderColor: "divider" }}>
+                  <Table size="small">
+                    <TableHead sx={{ bgcolor: "grey.100" }}>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Material Code</TableCell>
+                        <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Description</TableCell>
+                        <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }} align="right">Qty</TableCell>
+                        <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>UoM</TableCell>
+                        <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>SAP Movements</TableCell>
+                        <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Bin Location</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {form.sap_items.map((item, idx) => (
+                        <TableRow key={idx} hover>
+                          <TableCell sx={{ fontWeight: 700, fontFamily: "monospace", fontSize: "0.75rem" }}>
+                            {item.material_code || "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>{item.description || "-"}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                            {item.quantity}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>{item.uom || item.package_type || "NOS"}</TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            {item.sap_103_doc && `103: ${item.sap_103_doc}`}
+                            {item.sap_105_doc && ` 105: ${item.sap_105_doc}`}
+                            {!item.sap_103_doc && !item.sap_105_doc && "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            {item.bin_location ? (
+                              <Chip size="small" label={item.bin_location} color="success" sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }} />
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">Unallocated</Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            </Card>
+          )}
+
+        </Box>
+
+        {/* ====== COLUMN 4: REMARKS & ATTACHMENTS, DOCUMENTS (LAST IN SEQUENCE) ====== */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+
+          {/* --- Remarks & Attachments --- */}
+          <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+              <DriveFileRenameOutlineIcon fontSize="small" sx={{ color: "primary.main" }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>REMARKS & ATTACHMENTS</Typography>
+            </Box>
+            <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+              {purposeSuggestions.length > 0 && (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                  {purposeSuggestions.slice(0, 4).map((suggestion) => (
+                    <Chip key={suggestion} label={suggestion} size="small" variant="outlined" onClick={() => updateField("purpose", suggestion)} sx={{ cursor: "pointer", fontSize: "0.7rem", height: 24 }} />
+                  ))}
+                </Box>
+              )}
+              <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
+                <MenuItem value="">None</MenuItem>
+                <MenuItem value="MSME">MSME</MenuItem>
+                <MenuItem value="General">General</MenuItem>
+              </TextField>
+              <TextField label="Location" size="small" fullWidth placeholder="e.g. Ware House" value={form.delivery_location} onChange={(e) => updateField("delivery_location", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+              <TextField label="Important Note" size="small" fullWidth value={form.important_note} onChange={(e) => updateField("important_note", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+              <TextField label="VIM Approval" size="small" fullWidth value={form.vim_approval} onChange={(e) => updateField("vim_approval", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+
+              {/* Photo upload */}
+              <Box>
+                <input ref={photoInputRef} type="file" accept="image/*" multiple hidden onChange={handlePhotoSelect} />
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" hidden onChange={handleCameraCapture} />
+                <Button variant="contained" startIcon={capturingPhoto ? <CircularProgress size={16} color="inherit" /> : <AddPhotoAlternateIcon fontSize="small" />} onClick={openPhotoMenu} disabled={capturingPhoto} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
+                  Add Photo
+                </Button>
+                <Menu anchorEl={photoMenuAnchor} open={!!photoMenuAnchor} onClose={closePhotoMenu}>
+                  <MenuItem onClick={handleTakePhoto}><PhotoCameraIcon fontSize="small" sx={{ mr: 1 }} />Take Photo</MenuItem>
+                  <MenuItem onClick={handleChooseFromGallery}><PhotoLibraryIcon fontSize="small" sx={{ mr: 1 }} />Choose From Gallery</MenuItem>
+                </Menu>
+                {(keptPhotoUrls.length > 0 || newPhotoPreviews.length > 0) && (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
+                    {keptPhotoUrls.map((url, index) => (
+                      <Box key={`kept-${index}`} sx={{ position: "relative" }}>
+                        <Avatar src={url} variant="rounded" sx={{ width: 64, height: 64 }} />
+                        <IconButton size="small" onClick={() => removeKeptPhoto(index)} sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", boxShadow: 1, width: 22, height: 22 }}>
+                          <DeleteIcon sx={{ fontSize: 14 }} color="error" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                    {newPhotoPreviews.map((url, index) => (
+                      <Box key={`new-${index}`} sx={{ position: "relative" }}>
+                        <Avatar src={url} variant="rounded" sx={{ width: 64, height: 64 }} />
+                        <IconButton size="small" onClick={() => removeNewPhoto(index)} sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", boxShadow: 1, width: 22, height: 22 }}>
+                          <DeleteIcon sx={{ fontSize: 14 }} color="error" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </Card>
+
+          {/* --- Documents --- */}
+          <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+              <NoteAddIcon fontSize="small" sx={{ color: "primary.main" }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>DOCUMENTS</Typography>
+            </Box>
+            <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                <TextField select label="Type" size="small" value={documentTypeSelection} onChange={(e) => setDocumentTypeSelection(e.target.value as DocumentType)} sx={{ minWidth: 140, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
+                  {DOCUMENT_TYPES.map((type) => (
+                    <MenuItem key={type} value={type}>{type}</MenuItem>
+                  ))}
+                </TextField>
+                <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" multiple hidden onChange={handleDocumentSelect} />
+                <Button variant="contained" startIcon={<AttachFileIcon fontSize="small" />} onClick={() => documentInputRef.current?.click()} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
+                  Upload {documentTypeSelection}
+                </Button>
+              </Box>
+              {(keptAttachments.length > 0 || newDocumentUploads.length > 0) && (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {keptAttachments.map((doc, index) => (
+                    <Box key={`kept-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 1, p: 0.75, borderRadius: 2, bgcolor: "grey.50" }}>
+                      <DescriptionIcon fontSize="small" color="action" />
+                      <Chip size="small" label={doc.document_type ?? "Other"} sx={{ fontWeight: 600, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap component="a" href={doc.url} target="_blank" rel="noreferrer">{doc.name}</Typography>
+                      <IconButton size="small" onClick={() => removeKeptAttachment(index)} aria-label="Remove document"><DeleteIcon sx={{ fontSize: 16 }} color="error" /></IconButton>
+                    </Box>
+                  ))}
+                  {newDocumentUploads.map((upload, index) => (
+                    <Box key={`new-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 1, p: 0.75, borderRadius: 2, bgcolor: "grey.50" }}>
+                      <DescriptionIcon fontSize="small" color="action" />
+                      <Chip size="small" label={upload.documentType} sx={{ fontWeight: 600, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>{upload.file.name}</Typography>
+                      <IconButton size="small" onClick={() => removeNewDocument(index)} aria-label="Remove document"><DeleteIcon sx={{ fontSize: 16 }} color="error" /></IconButton>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          </Card>
+
+        </Box>
 
           </Box>
         </DialogContent>
