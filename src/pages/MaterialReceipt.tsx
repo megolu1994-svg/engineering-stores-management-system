@@ -371,7 +371,7 @@ function DateTextField({ label, value, onChange, required, disabled }: DateTextF
       onChange={handleChange}
       onBlur={() => setTouched(true)}
       error={showError}
-      helperText={showError ? "Enter a valid date (DD.MM.YYYY)" : " "}
+      helperText={showError ? "Enter a valid date (DD.MM.YYYY)" : undefined}
       placeholder="DD.MM.YYYY"
       slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 10 } }}
       sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
@@ -2453,6 +2453,13 @@ export default function MaterialReceipt() {
         fullScreen={mobile}
         fullWidth
         maxWidth={mobile ? "sm" : "xl"}
+        sx={{
+          "& .MuiDialog-paper": {
+            maxHeight: "97vh",
+            m: { xs: 0.5, sm: 1 },
+            borderRadius: 2,
+          },
+        }}
       >
         <DialogTitle
           sx={{
@@ -2460,48 +2467,67 @@ export default function MaterialReceipt() {
             alignItems: "center",
             justifyContent: "space-between",
             fontWeight: 800,
-            fontSize: "1.1rem",
+            fontSize: "0.95rem",
             letterSpacing: 0.5,
-            py: 1.75,
+            py: 0.75,
+            px: 2,
             background: "linear-gradient(135deg, #6C2BD9 0%, #8B5CF6 100%)",
             color: "#FFFFFF",
           }}
         >
           {editingReceipt ? `Edit DRC - ${editingReceipt.drc_number}` : "CREATE DRC"}
-          <IconButton onClick={closeForm} size="small" sx={{ color: "#FFFFFF" }}>
+          <IconButton onClick={closeForm} size="small" sx={{ color: "#FFFFFF", p: 0.5 }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
 
-        <DialogContent dividers sx={{ p: { xs: 1.5, sm: 3 } }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "3fr 1fr" }, gap: 2, alignItems: "start" }}>
+        <DialogContent
+          dividers
+          sx={{
+            py: 1,
+            px: { xs: 1, sm: 1.5 },
+            overflowY: "auto",
+            "& .MuiInputBase-root": {
+              fontSize: "0.8125rem",
+              borderRadius: 1.5,
+            },
+            "& .MuiInputBase-input": {
+              py: "5.5px !important",
+              fontSize: "0.8125rem",
+            },
+            "& .MuiInputLabel-root": {
+              fontSize: "0.8125rem",
+            },
+          }}
+        >
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "3fr 1.15fr" }, gap: 1.25, alignItems: "start" }}>
 
             {/* ====== LEFT AREA: COLUMNS 1, 2, 3 (GENERAL INFO, TRANSPORT, PURCHASE, WEIGHBRIDGE, INVOICE & CHALLAN, PACKAGE DETAILS) ====== */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
 
               {/* Top Row: Column 1 and Columns 2 & 3 */}
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 2fr" }, gap: 2, alignItems: "start" }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 2fr" }, gap: 1.25, alignItems: "start" }}>
 
                 {/* ====== COLUMN 1 (GENERAL INFO & TRANSPORT) ====== */}
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
 
               {/* --- General Info --- */}
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
                   <BusinessIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>GENERAL INFO</Typography>
-                  <InfoOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1, fontSize: "0.78rem" }}>GENERAL INFO</Typography>
+                  <InfoOutlinedIcon sx={{ color: "text.secondary", fontSize: 16 }} />
                 </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
+                <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.85 }}>
                   {/* DRC No. & Date */}
                   {!editingReceipt && (
                     <Box>
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>DRC No.</Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.25 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600, fontSize: "0.72rem" }}>DRC No.</Typography>
                         <FormControlLabel
                           sx={{ mr: 0 }}
                           control={<Switch size="small" checked={manualDrcEntry} onChange={handleManualDrcToggle} />}
-                          label={<Typography variant="caption" sx={{ fontWeight: 600 }}>Manual</Typography>}
+                          label={<Typography variant="caption" sx={{ fontWeight: 600, fontSize: "0.72rem" }}>Manual</Typography>}
                         />
                       </Box>
                       <TextField
@@ -2519,18 +2545,18 @@ export default function MaterialReceipt() {
                             ) : undefined,
                           },
                         }}
-                      helperText={manualDrcEntry ? " " : "Auto - previous DRC No. + 1"}
-                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-                    />
-                    <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-                      <DateTextField label="Date" value={drcDate} onChange={setDrcDate} required={manualDrcEntry} disabled={!manualDrcEntry} />
-                    </Box>
+                        helperText={manualDrcEntry ? undefined : "Auto - previous DRC No. + 1"}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}
+                      />
+                      <Box sx={{ display: "flex", gap: 1, mt: 0.75 }}>
+                        <DateTextField label="Date" value={drcDate} onChange={setDrcDate} required={manualDrcEntry} disabled={!manualDrcEntry} />
+                      </Box>
                     </Box>
                   )}
                   {editingReceipt && (
                     <Box>
-                      <Typography variant="caption" sx={{ fontWeight: 600 }}>DRC No.</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{editingReceipt.drc_number}</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 600, fontSize: "0.72rem" }}>DRC No.</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.82rem" }}>{editingReceipt.drc_number}</Typography>
                     </Box>
                   )}
 
@@ -2541,27 +2567,28 @@ export default function MaterialReceipt() {
                     inputValue={form.vendor_name}
                     onInputChange={(_e, value) => updateField("vendor_name", value ?? "")}
                     renderInput={(params) => (
-                      <TextField {...params} label="Vendor Name (Supplier)" size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <TextField {...params} label="Vendor Name (Supplier) *" size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     )}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}
                   />
                 </Box>
               </Card>
 
               {/* --- Transport --- */}
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
                   <LocalShippingIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>TRANSPORT</Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>TRANSPORT</Typography>
                 </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.75 }}>
                   <RadioGroup
                     row
                     value={form.receipt_mode}
                     onChange={(e) => updateField("receipt_mode", e.target.value as ReceiptMode)}
+                    sx={{ my: -0.25 }}
                   >
-                    <FormControlLabel value="Vehicle" control={<Radio size="small" />} label="By Vehicle" />
-                    <FormControlLabel value="Hand" control={<Radio size="small" />} label="By Hand" />
+                    <FormControlLabel value="Vehicle" control={<Radio size="small" />} label={<Typography variant="body2" sx={{ fontSize: "0.8rem" }}>By Vehicle</Typography>} />
+                    <FormControlLabel value="Hand" control={<Radio size="small" />} label={<Typography variant="body2" sx={{ fontSize: "0.8rem" }}>By Hand</Typography>} />
                   </RadioGroup>
                   {form.receipt_mode === "Vehicle" && (
                     <Autocomplete
@@ -2570,9 +2597,9 @@ export default function MaterialReceipt() {
                       inputValue={form.vehicle_number}
                       onInputChange={(_e, value) => updateField("vehicle_number", value ?? "")}
                       renderInput={(params) => (
-                        <TextField {...params} label="Vehicle Number" size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                        <TextField {...params} label="Vehicle Number" size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                       )}
-                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}
                     />
                   )}
                   <Autocomplete
@@ -2581,9 +2608,9 @@ export default function MaterialReceipt() {
                     inputValue={form.driver_name}
                     onInputChange={(_e, value) => updateField("driver_name", value ?? "")}
                     renderInput={(params) => (
-                      <TextField {...params} label={form.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name (carrying by hand)"} size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                      <TextField {...params} label={form.receipt_mode === "Vehicle" ? "Driver Name" : "Person Name (carrying by hand)"} size="small" required sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     )}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}
                   />
                 </Box>
               </Card>
@@ -2591,65 +2618,65 @@ export default function MaterialReceipt() {
             </Box>
 
                 {/* ====== COLUMNS 2 & 3 (PURCHASE DETAILS, WEIGHBRIDGE DATA & COMPRESSED INVOICE & CHALLAN) ====== */}
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
 
               {/* Top Row: Purchase Details & Weighbridge Data side by side */}
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2, alignItems: "stretch" }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25, alignItems: "stretch" }}>
                 {/* --- Purchase Details --- */}
                 <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "100%" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
                     <LocalOfferIcon fontSize="small" sx={{ color: "primary.main" }} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>PURCHASE DETAILS</Typography>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>PURCHASE DETAILS</Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                    <TextField label="SAP PO Number" size="small" fullWidth value={form.sap_po_number} onChange={(e) => updateField("sap_po_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.75 }}>
+                    <TextField label="SAP PO Number" size="small" fullWidth value={form.sap_po_number} onChange={(e) => updateField("sap_po_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     <DateTextField label="SAP PO Date" value={form.sap_po_date} onChange={(iso) => updateField("sap_po_date", iso)} />
-                    <TextField label="GeM Order Number" size="small" fullWidth value={form.gem_order_number} onChange={(e) => updateField("gem_order_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <TextField label="GeM Order Number" size="small" fullWidth value={form.gem_order_number} onChange={(e) => updateField("gem_order_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     <DateTextField label="GeM Order Date" value={form.gem_order_date} onChange={(iso) => updateField("gem_order_date", iso)} />
                   </Box>
                 </Card>
 
                 {/* --- Weighbridge Data --- */}
                 <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "100%" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
                     <ScaleIcon fontSize="small" sx={{ color: "primary.main" }} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>WEIGHBRIDGE DATA</Typography>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>WEIGHBRIDGE DATA</Typography>
                   </Box>
-                  <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-                    <TextField label="Weightment Slip Number" size="small" fullWidth value={form.weightment_slip_number} onChange={(e) => updateField("weightment_slip_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    <TextField label="Gross Weight" type="number" size="small" fullWidth value={form.gross_weight} onChange={(e) => updateField("gross_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    <TextField label="Tare Weight" type="number" size="small" fullWidth value={form.tare_weight} onChange={(e) => updateField("tare_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    <TextField label="Net Weight" type="number" size="small" fullWidth value={form.net_weight} onChange={(e) => updateField("net_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.75 }}>
+                    <TextField label="Weightment Slip Number" size="small" fullWidth value={form.weightment_slip_number} onChange={(e) => updateField("weightment_slip_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
+                    <TextField label="Gross Weight" type="number" size="small" fullWidth value={form.gross_weight} onChange={(e) => updateField("gross_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
+                    <TextField label="Tare Weight" type="number" size="small" fullWidth value={form.tare_weight} onChange={(e) => updateField("tare_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
+                    <TextField label="Net Weight" type="number" size="small" fullWidth value={form.net_weight} onChange={(e) => updateField("net_weight", e.target.value)} slotProps={{ htmlInput: { inputMode: "decimal" } }} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                   </Box>
                 </Card>
               </Box>
 
               {/* --- Invoice & Challan --- */}
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "fit-content" }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
                   <ReceiptLongIcon fontSize="small" sx={{ color: "primary.main" }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>INVOICE & CHALLAN</Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>INVOICE & CHALLAN</Typography>
                 </Box>
-                <Box sx={{ p: 1.25, display: "flex", flexDirection: "column", gap: 1.25 }}>
+                <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.75 }}>
                   {/* Row 1: Invoice number - invoice date - invoice amount */}
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
-                    <TextField label="Invoice Number" size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1 }}>
+                    <TextField label="Invoice Number" size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
-                    <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                   </Box>
                   {/* Row 2: Challan number - challan date */}
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
-                    <TextField label="Challan Number" size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+                    <TextField label="Challan Number" size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
                   </Box>
                   {/* Row 3: E-way bill number - E-way bill date */}
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
-                    <TextField label="E-way Bill Number" size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+                    <TextField label="E-way Bill Number" size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     <DateTextField label="E-way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
                   </Box>
                   {/* Row 4: LR number - LR date */}
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
-                    <TextField label="LR Number" size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+                    <TextField label="LR Number" size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
                     <DateTextField label="LR Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
                   </Box>
                 </Box>
@@ -2661,27 +2688,27 @@ export default function MaterialReceipt() {
 
           {/* ====== EXTENDED PACKAGE DETAILS (BELOW TRANSPORT AND INVOICE & CHALLAN ACROSS ALL 3 COLUMNS) ====== */}
           <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                 <Inventory2Icon fontSize="small" sx={{ color: "primary.main" }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>
                   PACKAGE DETAILS
                 </Typography>
               </Box>
-              <Button size="small" startIcon={<AddIcon fontSize="small" />} onClick={addPackageRow} sx={{ fontWeight: 600, textTransform: "none" }}>
+              <Button size="small" startIcon={<AddIcon fontSize="small" />} onClick={addPackageRow} sx={{ fontWeight: 600, textTransform: "none", py: 0.25, fontSize: "0.75rem" }}>
                 Add Package
               </Button>
             </Box>
-            <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+            <Box sx={{ p: 0.75, display: "flex", flexDirection: "column", gap: 0.5 }}>
               {form.package_details.map((row, index) => (
-                <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 1, p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
+                <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 0.75, p: 0.75, borderRadius: 1.5, bgcolor: "grey.50" }}>
                   <TextField
                     label="No. of Pkgs"
                     placeholder="e.g. 1"
                     size="small"
                     value={row.quantity}
                     onChange={(e) => updatePackageRow(index, "quantity", e.target.value)}
-                    sx={{ width: { xs: "100%", sm: 110 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    sx={{ width: { xs: "100%", sm: 100 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}
                   />
                   <Autocomplete
                     freeSolo
@@ -2694,10 +2721,10 @@ export default function MaterialReceipt() {
                         label="Package Type"
                         placeholder="e.g. C/Box, W/Box"
                         size="small"
-                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, minWidth: { sm: 180 } }}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 }, minWidth: { sm: 170 } }}
                       />
                     )}
-                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, width: { xs: "100%", sm: 200 }, flexShrink: 0 }}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 }, width: { xs: "100%", sm: 190 }, flexShrink: 0 }}
                   />
                   <TextField
                     label="Package Remarks / Content Description"
@@ -2706,14 +2733,14 @@ export default function MaterialReceipt() {
                     fullWidth
                     value={row.description}
                     onChange={(e) => updatePackageRow(index, "description", e.target.value)}
-                    sx={{ flex: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    sx={{ flex: 1, "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}
                   />
                   <IconButton
                     size="small"
                     onClick={() => removePackageRow(index)}
                     aria-label="Delete package row"
                     disabled={form.package_details.length <= 1}
-                    sx={{ flexShrink: 0 }}
+                    sx={{ flexShrink: 0, p: 0.5 }}
                   >
                     <DeleteIcon fontSize="small" color={form.package_details.length <= 1 ? "disabled" : "error"} />
                   </IconButton>
@@ -2792,30 +2819,30 @@ export default function MaterialReceipt() {
         </Box>
 
         {/* ====== COLUMN 4: REMARKS & ATTACHMENTS, DOCUMENTS (LAST IN SEQUENCE) ====== */}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
 
           {/* --- Remarks & Attachments --- */}
           <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
               <DriveFileRenameOutlineIcon fontSize="small" sx={{ color: "primary.main" }} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>REMARKS & ATTACHMENTS</Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>REMARKS & ATTACHMENTS</Typography>
             </Box>
-            <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="Enter Purpose" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-              <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
+            <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.75 }}>
+              <TextField label="Purpose" size="small" fullWidth multiline minRows={2} placeholder="Enter Purpose" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
+              <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}>
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="MSME">MSME</MenuItem>
                 <MenuItem value="General">General</MenuItem>
               </TextField>
-              <TextField label="Location" size="small" fullWidth placeholder="e.g. Ware House" value={form.delivery_location} onChange={(e) => updateField("delivery_location", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-              <TextField label="Important Note" size="small" fullWidth value={form.important_note} onChange={(e) => updateField("important_note", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-              <TextField label="VIM Approval" size="small" fullWidth value={form.vim_approval} onChange={(e) => updateField("vim_approval", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+              <TextField label="Location" size="small" fullWidth placeholder="e.g. Ware House" value={form.delivery_location} onChange={(e) => updateField("delivery_location", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
+              <TextField label="Important Note" size="small" fullWidth value={form.important_note} onChange={(e) => updateField("important_note", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
+              <TextField label="VIM Approval" size="small" fullWidth value={form.vim_approval} onChange={(e) => updateField("vim_approval", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }} />
 
               {/* Photo upload */}
               <Box>
                 <input ref={photoInputRef} type="file" accept="image/*" multiple hidden onChange={handlePhotoSelect} />
                 <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" hidden onChange={handleCameraCapture} />
-                <Button variant="contained" startIcon={capturingPhoto ? <CircularProgress size={16} color="inherit" /> : <AddPhotoAlternateIcon fontSize="small" />} onClick={openPhotoMenu} disabled={capturingPhoto} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
+                <Button variant="contained" startIcon={capturingPhoto ? <CircularProgress size={14} color="inherit" /> : <AddPhotoAlternateIcon sx={{ fontSize: 16 }} />} onClick={openPhotoMenu} disabled={capturingPhoto} sx={{ minHeight: 32, py: 0.5, borderRadius: 1.5, fontWeight: 600, fontSize: "0.8rem", width: "100%" }}>
                   Add Photo
                 </Button>
                 <Menu anchorEl={photoMenuAnchor} open={!!photoMenuAnchor} onClose={closePhotoMenu}>
@@ -2823,20 +2850,20 @@ export default function MaterialReceipt() {
                   <MenuItem onClick={handleChooseFromGallery}><PhotoLibraryIcon fontSize="small" sx={{ mr: 1 }} />Choose From Gallery</MenuItem>
                 </Menu>
                 {(keptPhotoUrls.length > 0 || newPhotoPreviews.length > 0) && (
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.75 }}>
                     {keptPhotoUrls.map((url, index) => (
                       <Box key={`kept-${index}`} sx={{ position: "relative" }}>
-                        <Avatar src={url} variant="rounded" sx={{ width: 64, height: 64 }} />
-                        <IconButton size="small" onClick={() => removeKeptPhoto(index)} sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", boxShadow: 1, width: 22, height: 22 }}>
-                          <DeleteIcon sx={{ fontSize: 14 }} color="error" />
+                        <Avatar src={url} variant="rounded" sx={{ width: 44, height: 44 }} />
+                        <IconButton size="small" onClick={() => removeKeptPhoto(index)} sx={{ position: "absolute", top: -6, right: -6, bgcolor: "background.paper", boxShadow: 1, width: 18, height: 18 }}>
+                          <DeleteIcon sx={{ fontSize: 12 }} color="error" />
                         </IconButton>
                       </Box>
                     ))}
                     {newPhotoPreviews.map((url, index) => (
                       <Box key={`new-${index}`} sx={{ position: "relative" }}>
-                        <Avatar src={url} variant="rounded" sx={{ width: 64, height: 64 }} />
-                        <IconButton size="small" onClick={() => removeNewPhoto(index)} sx={{ position: "absolute", top: -8, right: -8, bgcolor: "background.paper", boxShadow: 1, width: 22, height: 22 }}>
-                          <DeleteIcon sx={{ fontSize: 14 }} color="error" />
+                        <Avatar src={url} variant="rounded" sx={{ width: 44, height: 44 }} />
+                        <IconButton size="small" onClick={() => removeNewPhoto(index)} sx={{ position: "absolute", top: -6, right: -6, bgcolor: "background.paper", boxShadow: 1, width: 18, height: 18 }}>
+                          <DeleteIcon sx={{ fontSize: 12 }} color="error" />
                         </IconButton>
                       </Box>
                     ))}
@@ -2848,38 +2875,38 @@ export default function MaterialReceipt() {
 
           {/* --- Documents --- */}
           <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderBottom: "1px solid", borderColor: "divider" }}>
               <NoteAddIcon fontSize="small" sx={{ color: "primary.main" }} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>DOCUMENTS</Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: "0.78rem" }}>DOCUMENTS</Typography>
             </Box>
-            <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
-              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                <TextField select label="Type" size="small" value={documentTypeSelection} onChange={(e) => setDocumentTypeSelection(e.target.value as DocumentType)} sx={{ minWidth: 140, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
+            <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.75 }}>
+              <Box sx={{ display: "flex", gap: 0.75, alignItems: "center" }}>
+                <TextField select label="Type" size="small" value={documentTypeSelection} onChange={(e) => setDocumentTypeSelection(e.target.value as DocumentType)} sx={{ flex: 1, minWidth: 90, "& .MuiOutlinedInput-root": { borderRadius: 1.5 } }}>
                   {DOCUMENT_TYPES.map((type) => (
                     <MenuItem key={type} value={type}>{type}</MenuItem>
                   ))}
                 </TextField>
                 <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" multiple hidden onChange={handleDocumentSelect} />
-                <Button variant="contained" startIcon={<AttachFileIcon fontSize="small" />} onClick={() => documentInputRef.current?.click()} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 600 }}>
-                  Upload {documentTypeSelection}
+                <Button variant="contained" startIcon={<AttachFileIcon sx={{ fontSize: 16 }} />} onClick={() => documentInputRef.current?.click()} sx={{ minHeight: 32, py: 0.5, borderRadius: 1.5, fontWeight: 600, fontSize: "0.78rem", whiteSpace: "nowrap" }}>
+                  Upload
                 </Button>
               </Box>
               {(keptAttachments.length > 0 || newDocumentUploads.length > 0) && (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                   {keptAttachments.map((doc, index) => (
-                    <Box key={`kept-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 1, p: 0.75, borderRadius: 2, bgcolor: "grey.50" }}>
+                    <Box key={`kept-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 0.75, p: 0.5, borderRadius: 1.5, bgcolor: "grey.50" }}>
                       <DescriptionIcon fontSize="small" color="action" />
-                      <Chip size="small" label={doc.document_type ?? "Other"} sx={{ fontWeight: 600, flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap component="a" href={doc.url} target="_blank" rel="noreferrer">{doc.name}</Typography>
-                      <IconButton size="small" onClick={() => removeKeptAttachment(index)} aria-label="Remove document"><DeleteIcon sx={{ fontSize: 16 }} color="error" /></IconButton>
+                      <Chip size="small" label={doc.document_type ?? "Other"} sx={{ fontWeight: 600, flexShrink: 0, height: 18, fontSize: "0.68rem" }} />
+                      <Typography variant="caption" sx={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }} noWrap component="a" href={doc.url} target="_blank" rel="noreferrer">{doc.name}</Typography>
+                      <IconButton size="small" onClick={() => removeKeptAttachment(index)} aria-label="Remove document" sx={{ p: 0.25 }}><DeleteIcon sx={{ fontSize: 14 }} color="error" /></IconButton>
                     </Box>
                   ))}
                   {newDocumentUploads.map((upload, index) => (
-                    <Box key={`new-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 1, p: 0.75, borderRadius: 2, bgcolor: "grey.50" }}>
+                    <Box key={`new-doc-${index}`} sx={{ display: "flex", alignItems: "center", gap: 0.75, p: 0.5, borderRadius: 1.5, bgcolor: "grey.50" }}>
                       <DescriptionIcon fontSize="small" color="action" />
-                      <Chip size="small" label={upload.documentType} sx={{ fontWeight: 600, flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>{upload.file.name}</Typography>
-                      <IconButton size="small" onClick={() => removeNewDocument(index)} aria-label="Remove document"><DeleteIcon sx={{ fontSize: 16 }} color="error" /></IconButton>
+                      <Chip size="small" label={upload.documentType} sx={{ fontWeight: 600, flexShrink: 0, height: 18, fontSize: "0.68rem" }} />
+                      <Typography variant="caption" sx={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }} noWrap>{upload.file.name}</Typography>
+                      <IconButton size="small" onClick={() => removeNewDocument(index)} aria-label="Remove document" sx={{ p: 0.25 }}><DeleteIcon sx={{ fontSize: 14 }} color="error" /></IconButton>
                     </Box>
                   ))}
                 </Box>
@@ -2894,24 +2921,29 @@ export default function MaterialReceipt() {
 
         <DialogActions
           sx={{
-            p: { xs: 1.5, sm: 2 },
+            py: 0.75,
+            px: { xs: 1.5, sm: 2 },
             gap: 1,
             position: mobile ? "sticky" : "static",
             bottom: 0,
             bgcolor: "background.paper",
+            borderTop: "1px solid",
+            borderColor: "divider",
           }}
         >
           <Button
             onClick={closeForm}
             disabled={saving}
-            sx={{ minHeight: 44, borderRadius: 2 }}
+            size="small"
+            sx={{ minHeight: 34, py: 0.5, borderRadius: 1.5, fontSize: "0.82rem" }}
           >
             Cancel
           </Button>
           <Button
             onClick={handleReset}
             disabled={saving}
-            sx={{ minHeight: 44, borderRadius: 2 }}
+            size="small"
+            sx={{ minHeight: 34, py: 0.5, borderRadius: 1.5, fontSize: "0.82rem" }}
           >
             Reset
           </Button>
@@ -2919,8 +2951,9 @@ export default function MaterialReceipt() {
             variant="contained"
             onClick={handleSave}
             disabled={saving}
-            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : null}
-            sx={{ minHeight: { xs: 44, sm: 48 }, borderRadius: 2, fontWeight: 700, flex: 1 }}
+            size="small"
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
+            sx={{ minHeight: 34, py: 0.5, borderRadius: 1.5, fontWeight: 700, fontSize: "0.85rem", flex: 1 }}
           >
             Save DRC
           </Button>
