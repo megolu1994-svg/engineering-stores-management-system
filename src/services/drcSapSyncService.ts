@@ -789,37 +789,38 @@ export async function allocateDrcMaterialsToBins(
   }
 
   const nowIso = new Date().toISOString();
-  const currentPackageDetails: PackageDetailRow[] =
-    currentReceipt.package_details || [];
+  // Target items: prefer currentReceipt.sap_items; if empty, check if package_details has legacy material items
+  const currentSapItems: PackageDetailRow[] =
+    currentReceipt.sap_items && currentReceipt.sap_items.length > 0
+      ? currentReceipt.sap_items
+      : (currentReceipt.package_details || []).filter((p: PackageDetailRow) => Boolean(p.material_code));
 
-  // Update or append allocated lines in package_details
-  const updatedPackageDetails: PackageDetailRow[] = currentPackageDetails.map(
-    (pkg) => {
-      const matCode = pkg.material_code?.trim() || "";
-      const allocInfo = matCode ? allocatedDetailsMap.get(matCode) : undefined;
-      if (allocInfo) {
-        return {
-          ...pkg,
-          bin_location: allocInfo.location_code,
-          bin_allocated: true,
-          allocated_qty: allocInfo.allocated_qty,
-          allocated_at: nowIso,
-          allocated_by: operatorName,
-          sap_103_doc: doc103 || pkg.sap_103_doc,
-          sap_105_doc: doc105 || pkg.sap_105_doc,
-        };
-      }
-      return pkg;
+  // Update or append allocated lines in sap_items
+  const updatedSapItems: PackageDetailRow[] = currentSapItems.map((item) => {
+    const matCode = item.material_code?.trim() || "";
+    const allocInfo = matCode ? allocatedDetailsMap.get(matCode) : undefined;
+    if (allocInfo) {
+      return {
+        ...item,
+        bin_location: allocInfo.location_code,
+        bin_allocated: true,
+        allocated_qty: allocInfo.allocated_qty,
+        allocated_at: nowIso,
+        allocated_by: operatorName,
+        sap_103_doc: doc103 || item.sap_103_doc,
+        sap_105_doc: doc105 || item.sap_105_doc,
+      };
     }
-  );
+    return item;
+  });
 
-  // If there are valid allocations that weren't already represented in package_details, add them
+  // If there are valid allocations that weren't already represented in sap_items, add them
   for (const item of validAllocations) {
-    const exists = updatedPackageDetails.some(
+    const exists = updatedSapItems.some(
       (p) => p.material_code?.trim() === item.material_code.trim()
     );
     if (!exists) {
-      updatedPackageDetails.push({
+      updatedSapItems.push({
         quantity: String(item.quantity),
         package_type: item.uom || "NOS",
         description: item.material_description || item.material_code,
@@ -837,11 +838,28 @@ export async function allocateDrcMaterialsToBins(
     }
   }
 
-  // 5. Update DRC header
+  // 5. Update DRC header: Store material bin allocations in sap_items
   const updatePayload: Record<string, unknown> = {
-    package_details: updatedPackageDetails,
+    sap_items: updatedSapItems,
     updated_at: nowIso,
   };
+
+  // If package_details had legacy material items, restore genuine physical packages
+  const currentPkgs: PackageDetailRow[] = currentReceipt.package_details || [];
+  if (currentPkgs.some((p) => p.material_code && p.material_code.trim())) {
+    const purePhysical = currentPkgs.filter((p) => !p.material_code || !p.material_code.trim());
+    if (purePhysical.length > 0) {
+      updatePayload.package_details = purePhysical;
+    } else {
+      updatePayload.package_details = [
+        {
+          quantity: String(currentReceipt.package_count || 1),
+          package_type: currentReceipt.package_type || "C/Box",
+          description: "",
+        },
+      ];
+    }
+  }
 
   if (doc105) {
     updatePayload.grn_number = doc105;
@@ -860,13 +878,12 @@ export async function allocateDrcMaterialsToBins(
     result.drcClosed = true;
   }
 
-  // Attempt to save to receipt_header including migration 0024 columns if available
+  // Attempt to save to receipt_header
   const extendedPayload: Record<string, unknown> = {
     ...updatePayload,
     sap_103_doc: doc103 || null,
     sap_105_doc: doc105 || null,
     sap_105_date: doc105Date || null,
-    sap_items: updatedPackageDetails,
   };
 
   let updateRes = await supabase
@@ -1021,39 +1038,49 @@ export async function syncSingleDrcWithSap(
     }
   }
 
-  // Update package details if line items found
+  // Store fetched SAP line items in sap_items (NEVER overwrite package_details)
   if (lookupResult.items.length > 0) {
-    const existingPkgs = receipt.package_details || [];
-    if (
-      existingPkgs.length === 0 ||
-      existingPkgs.every((p) => !p.material_code)
-    ) {
-      headerUpdate.package_details = convertSapItemsToPackageDetails(lookupResult.items);
-    } else {
-      // Enrich existing package items
-      let pkgChanged = false;
-      const updatedPkgs = existingPkgs.map((pkg) => {
-        const matched = lookupResult.items.find(
-          (it) =>
-            it.material_code &&
-            it.material_code.toLowerCase() === (pkg.material_code || "").toLowerCase()
-        );
-        if (matched) {
-          pkgChanged = true;
-          return {
-            ...pkg,
-            sap_103_doc: matched.sap_103_doc || pkg.sap_103_doc,
-            sap_103_date: matched.sap_103_date || pkg.sap_103_date,
-            sap_105_doc: matched.sap_105_doc || pkg.sap_105_doc,
-            sap_105_date: matched.sap_105_date || pkg.sap_105_date,
-            item_no: matched.item_no || pkg.item_no,
-            storage_location: matched.storage_location || pkg.storage_location,
-          };
-        }
-        return pkg;
-      });
-      if (pkgChanged) {
-        headerUpdate.package_details = updatedPkgs;
+    const fetchedSapItems = convertSapItemsToPackageDetails(lookupResult.items);
+    const existingSapItems: PackageDetailRow[] = receipt.sap_items || [];
+
+    // Merge fetched SAP items with existing sap_items to preserve any existing bin allocations
+    const mergedSapItems: PackageDetailRow[] = [...existingSapItems];
+    for (const item of fetchedSapItems) {
+      const idx = mergedSapItems.findIndex(
+        (m) =>
+          m.material_code &&
+          m.material_code.toLowerCase() === (item.material_code || "").toLowerCase()
+      );
+      if (idx >= 0) {
+        mergedSapItems[idx] = {
+          ...item,
+          bin_location: mergedSapItems[idx].bin_location || item.bin_location,
+          bin_allocated: mergedSapItems[idx].bin_allocated ?? item.bin_allocated,
+          allocated_qty: mergedSapItems[idx].allocated_qty ?? item.allocated_qty,
+          allocated_at: mergedSapItems[idx].allocated_at || item.allocated_at,
+          allocated_by: mergedSapItems[idx].allocated_by || item.allocated_by,
+        };
+      } else {
+        mergedSapItems.push(item);
+      }
+    }
+    headerUpdate.sap_items = mergedSapItems;
+
+    // Check if package_details was previously polluted with material codes; if so, restore it
+    const currentPkgs = receipt.package_details || [];
+    if (currentPkgs.some((p) => Boolean(p.material_code && p.material_code.trim()))) {
+      const purePhysical = currentPkgs.filter((p) => !p.material_code || !p.material_code.trim());
+      if (purePhysical.length > 0) {
+        headerUpdate.package_details = purePhysical;
+      } else {
+        // Reconstruct physical package from count and type (e.g. 1 x C/Box)
+        headerUpdate.package_details = [
+          {
+            quantity: String(receipt.package_count || 1),
+            package_type: receipt.package_type || "C/Box",
+            description: "",
+          },
+        ];
       }
     }
   }

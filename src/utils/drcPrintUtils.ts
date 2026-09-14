@@ -51,10 +51,12 @@ export function formatPrintDateTime(isoDate?: string | null): string {
   }
 }
 
-/** Generate package details summary */
+/** Generate package details summary (Strictly physical packages received at gate) */
 export function getPackagePrintSummary(receipt: ReceiptHeader): string {
-  if (receipt.package_details && receipt.package_details.length > 0) {
-    return receipt.package_details
+  // Filter only physical package rows (excluding SAP material code rows)
+  const pkgs = (receipt.package_details || []).filter((p) => !p.material_code || !p.material_code.trim());
+  if (pkgs.length > 0) {
+    return pkgs
       .map(
         (p) =>
           `${p.quantity} x ${p.package_type}${p.description ? ` (${p.description})` : ""}`
@@ -736,6 +738,54 @@ export function buildFullDrcDocumentHtml(receipt: ReceiptHeader): string {
     )
     .join("");
 
+  const sapItems =
+    receipt.sap_items && receipt.sap_items.length > 0
+      ? receipt.sap_items
+      : (receipt.package_details || []).filter((p) => p.material_code);
+
+  const sapItemsHtml =
+    sapItems.length > 0
+      ? `
+      <div style="margin-top: 20px;">
+        <h3 style="font-size: 14px; text-transform: uppercase; margin: 0 0 8px 0; color: #1e293b; letter-spacing: 0.5px;">
+          SAP 103 / 105 Material Items & Bin Allocations (${sapItems.length} Items)
+        </h3>
+        <table style="border-collapse: collapse; width: 100%; font-size: 12px;">
+          <thead>
+            <tr style="background: #f1f5f9; text-align: left;">
+              <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: 700;">Material Code</th>
+              <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: 700;">Description</th>
+              <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: 700;">Qty</th>
+              <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: 700;">UoM</th>
+              <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: 700;">SAP Movement</th>
+              <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: 700;">Bin Location</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sapItems
+              .map(
+                (item) => `
+              <tr>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-family: monospace; font-weight: 700;">${item.material_code || "-"}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${item.description || "-"}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: 700;">${item.quantity || "1"}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1;">${item.uom || item.package_type || "NOS"}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">
+                  ${item.sap_103_doc ? `103: ${item.sap_103_doc} ` : ""}
+                  ${item.sap_105_doc ? `105: ${item.sap_105_doc}` : ""}
+                  ${!item.sap_103_doc && !item.sap_105_doc ? "-" : ""}
+                </td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: 700;">${item.bin_location || "Unallocated"}</td>
+              </tr>
+            `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+      : "";
+
   return `
     <!DOCTYPE html>
     <html>
@@ -761,6 +811,7 @@ export function buildFullDrcDocumentHtml(receipt: ReceiptHeader): string {
           </div>
         </div>
         <table>${rowsHtml}</table>
+        ${sapItemsHtml}
       </body>
     </html>
   `;

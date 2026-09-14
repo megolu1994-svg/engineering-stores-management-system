@@ -96,9 +96,13 @@ export const DrcBinAllocationModal: React.FC<DrcBinAllocationModalProps> = ({
         if (!isMounted) return;
         setLocations(locList);
 
-        // Extract material items from receipt.package_details
-        const pkgs = receipt.package_details || [];
-        const materialCodes = pkgs
+        // Extract material items: prioritize receipt.sap_items, fallback to legacy package_details with material_code
+        const sapItems =
+          receipt.sap_items && receipt.sap_items.length > 0
+            ? receipt.sap_items
+            : (receipt.package_details || []).filter((p) => Boolean(p.material_code && p.material_code.trim()));
+
+        const materialCodes = sapItems
           .map((p) => (p.material_code || "").trim())
           .filter(Boolean);
 
@@ -115,8 +119,8 @@ export const DrcBinAllocationModal: React.FC<DrcBinAllocationModalProps> = ({
           allocMap.set(ea.material_code, list);
         }
 
-        // Build editable allocation rows
-        const initialRows: EditableAllocationRow[] = pkgs.map((pkg, idx) => {
+        // Build editable allocation rows from SAP items
+        const initialRows: EditableAllocationRow[] = sapItems.map((pkg, idx) => {
           const matCode = (pkg.material_code || "").trim();
           const desc = pkg.description || `Item ${idx + 1}`;
           const qty = Number(pkg.quantity) || 1;

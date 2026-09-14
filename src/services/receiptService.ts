@@ -184,6 +184,7 @@ export interface ReceiptFormInput {
   receipt_mode: ReceiptMode;
   vehicle_number: string;
   package_details: PackageDetailRow[];
+  sap_items?: PackageDetailRow[] | null;
   vendor_name: string;
   sap_po_number: string;
   sap_po_date: string;
@@ -238,6 +239,28 @@ function toNullableNumber(value: string): number | null {
 }
 
 /**
+ * Cleans physical package details (e.g. C/Box, W/Box, Container, Drum):
+ * Keeps strictly physical package rows without SAP material codes.
+ */
+export function cleanPhysicalPackageDetails(rows: PackageDetailRow[]): PackageDetailRow[] {
+  return (rows || [])
+    .map((row) => ({
+      quantity: (row.quantity || "").trim(),
+      package_type: (row.package_type || "").trim(),
+      description: (row.description || "").trim(),
+    }))
+    .filter((row) => row.quantity || row.package_type || row.description);
+}
+
+/**
+ * Cleans SAP 103/105 material items: preserves material codes, descriptions,
+ * UoM, movement document numbers, dates, and bin allocations.
+ */
+export function cleanSapItems(rows: PackageDetailRow[]): PackageDetailRow[] {
+  return cleanPackageDetails(rows);
+}
+
+/**
  * Cleans up a Package Details table: drops fully-empty rows and trims text
  * fields. Quantity is free text (e.g. "10" or "Uncountable"), so it is kept
  * as-is rather than coerced to a number.
@@ -281,7 +304,9 @@ function sumPackageQuantities(rows: PackageDetailRow[]): number {
 }
 
 function buildPayload(input: ReceiptFormInput) {
-  const packageDetails = cleanPackageDetails(input.package_details);
+  // Ensure physical packages are strictly separated from SAP material line items
+  const packageDetails = cleanPhysicalPackageDetails(input.package_details);
+  const sapItems = input.sap_items !== undefined ? (input.sap_items ? cleanSapItems(input.sap_items) : []) : undefined;
 
   const sapPoNumber = toNullable(input.sap_po_number);
   const sapPoDate = toNullable(input.sap_po_date);
@@ -294,6 +319,7 @@ function buildPayload(input: ReceiptFormInput) {
       input.receipt_mode === "Vehicle" ? toNullable(input.vehicle_number) : null,
 
     package_details: packageDetails,
+    ...(sapItems !== undefined ? { sap_items: sapItems } : {}),
     // Legacy columns, derived for backward compatibility with anything
     // still reading package_count / package_type directly.
     package_count:
@@ -862,6 +888,7 @@ export function getDrcDisplayStatus(receipt: {
   grn_number?: string | null;
   sap_105_doc?: string | null;
   package_details?: PackageDetailRow[] | null;
+  sap_items?: PackageDetailRow[] | null;
 }): DrcDisplayStatusInfo {
   const rawStatus = (receipt.inspection_status || "").trim().toLowerCase();
   const rawHeaderStatus = String(receipt.status || "").trim().toLowerCase();
@@ -875,6 +902,12 @@ export function getDrcDisplayStatus(receipt: {
     rawStatus === "closed" ||
     Boolean(receipt.grn_number && String(receipt.grn_number).trim() !== "") ||
     Boolean(receipt.sap_105_doc && String(receipt.sap_105_doc).trim() !== "") ||
+    Boolean(
+      receipt.sap_items &&
+        receipt.sap_items.some(
+          (p) => Boolean(p.sap_105_doc && String(p.sap_105_doc).trim())
+        )
+    ) ||
     Boolean(
       receipt.package_details &&
         receipt.package_details.some(
@@ -953,6 +986,98 @@ export function getDrcDisplayStatus(receipt: {
     inspectedBy: null,
     inspectionDate: null,
   };
+}
+
+/**
+ * Automatically inspects receipts and separates physical package details from
+ * SAP 103/105 material line items.
+ *
+ * If a receipt had its package_details overwritten by 103 fetching (containing material_code),
+ * this function:
+ * 1. Moves those material code items into `sap_items` (preserving bin allocations).
+ * 2. Recovers the physical package details from package_count and package_type (e.g. "1 x C/Box").
+ * 3. Persists the fix to the Supabase database.
+ */
+export async function separateAndRecoverPackageDetails(
+  receipts: ReceiptHeader[]
+): Promise<{ recoveredCount: number; updatedReceipts: ReceiptHeader[] }> {
+  let recoveredCount = 0;
+  const updatedReceipts: ReceiptHeader[] = [];
+
+  for (const receipt of receipts) {
+    const pkgs = receipt.package_details || [];
+    const hasPollutedPackageDetails = pkgs.some((p) => Boolean(p.material_code && p.material_code.trim()));
+
+    if (!hasPollutedPackageDetails) {
+      updatedReceipts.push(receipt);
+      continue;
+    }
+
+    // 1. Extract the SAP items from polluted package_details
+    const sapItemsFromPkgs = pkgs.filter((p) => Boolean(p.material_code && p.material_code.trim()));
+    const existingSapItems = receipt.sap_items || [];
+
+    // Merge to preserve existing bin allocations
+    const mergedSapItems: PackageDetailRow[] = [...existingSapItems];
+    for (const item of sapItemsFromPkgs) {
+      const idx = mergedSapItems.findIndex(
+        (m) => m.material_code && m.material_code.trim() === item.material_code?.trim()
+      );
+      if (idx >= 0) {
+        mergedSapItems[idx] = {
+          ...item,
+          bin_location: mergedSapItems[idx].bin_location || item.bin_location,
+          bin_allocated: mergedSapItems[idx].bin_allocated ?? item.bin_allocated,
+          allocated_qty: mergedSapItems[idx].allocated_qty ?? item.allocated_qty,
+        };
+      } else {
+        mergedSapItems.push(item);
+      }
+    }
+
+    // 2. Extract or reconstruct genuine physical packages
+    let cleanPhysicalPackages = pkgs.filter((p) => !p.material_code || !p.material_code.trim());
+
+    if (cleanPhysicalPackages.length === 0) {
+      // Reconstruct from package_count and package_type (e.g. 1 x C/Box, 2 x W/Box)
+      const count = receipt.package_count || 1;
+      const type = (receipt.package_type && String(receipt.package_type).trim()) || "C/Box";
+      cleanPhysicalPackages = [
+        {
+          quantity: String(count),
+          package_type: type,
+          description: "",
+        },
+      ];
+    }
+
+    // 3. Update database
+    try {
+      await supabase
+        .from("receipt_header")
+        .update({
+          package_details: cleanPhysicalPackages,
+          sap_items: mergedSapItems,
+          package_count: sumPackageQuantities(cleanPhysicalPackages),
+          package_type: cleanPhysicalPackages[0]?.package_type || receipt.package_type || "C/Box",
+        })
+        .eq("id", receipt.id);
+
+      recoveredCount++;
+      updatedReceipts.push({
+        ...receipt,
+        package_details: cleanPhysicalPackages,
+        sap_items: mergedSapItems,
+        package_count: sumPackageQuantities(cleanPhysicalPackages),
+        package_type: cleanPhysicalPackages[0]?.package_type || receipt.package_type || "C/Box",
+      });
+    } catch (err) {
+      console.error(`Failed to separate package details for DRC #${receipt.id}:`, err);
+      updatedReceipts.push(receipt);
+    }
+  }
+
+  return { recoveredCount, updatedReceipts };
 }
 
 /**

@@ -95,6 +95,8 @@ import {
   uploadReceiptPhotos,
   getNextDrcNumberSuggestion,
   getDrcDisplayStatus,
+  separateAndRecoverPackageDetails,
+  cleanPhysicalPackageDetails,
   // Sprint 2
   submitInspection,
   getInspectionHistory,
@@ -149,6 +151,7 @@ const emptyForm: ReceiptFormInput = {
   receipt_mode: "Vehicle",
   vehicle_number: "",
   package_details: [{ ...emptyPackageRow }],
+  sap_items: [],
   vendor_name: "",
   sap_po_number: "",
   sap_po_date: "",
@@ -461,7 +464,9 @@ export default function MaterialReceipt() {
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
       });
-      setReceipts(data);
+      // Automatically recover physical package details for any DRCs whose package data was previously overwritten
+      const { updatedReceipts } = await separateAndRecoverPackageDetails(data);
+      setReceipts(updatedReceipts);
     } catch {
       showSnackbar("Failed to load the receipt register.", "error");
     } finally {
@@ -558,11 +563,25 @@ export default function MaterialReceipt() {
   }, [previousDrcs]);
 
   const packageTypeSuggestions = useMemo(() => {
+    const defaults = [
+      "C/Box",
+      "W/Box",
+      "Wooden Box",
+      "Corrugated Box",
+      "Container",
+      "Drum",
+      "Bag",
+      "Bundle",
+      "Pallet",
+      "Crate",
+      "Loose",
+      "Other",
+    ];
     const values = previousDrcs
       .flatMap((r) => r.package_details ?? [])
       .map((p) => p.package_type)
       .filter((v): v is string => !!v && v.trim() !== '');
-    return [...new Set(values)];
+    return [...new Set([...defaults, ...values])];
   }, [previousDrcs]);
 
   const purposeSuggestions = useMemo(() => {
@@ -719,13 +738,31 @@ export default function MaterialReceipt() {
 
   function openEditForm(receipt: ReceiptHeader) {
     setEditingReceipt(receipt);
+
+    // Extract physical packages, restoring them if previously overwritten
+    const physicalPkgs = cleanPhysicalPackageDetails(receipt.package_details);
+    const restoredPhysicalPkgs =
+      physicalPkgs.length > 0
+        ? physicalPkgs
+        : [
+            {
+              quantity: String(receipt.package_count || 1),
+              package_type: receipt.package_type || "C/Box",
+              description: "",
+            },
+          ];
+
+    // Extract SAP material items
+    const existingSapItems =
+      receipt.sap_items && receipt.sap_items.length > 0
+        ? receipt.sap_items
+        : (receipt.package_details || []).filter((p) => Boolean(p.material_code && p.material_code.trim()));
+
     setForm({
       receipt_mode: receipt.receipt_mode,
       vehicle_number: receipt.vehicle_number ?? "",
-      package_details:
-        receipt.package_details && receipt.package_details.length > 0
-          ? receipt.package_details
-          : [{ ...emptyPackageRow }],
+      package_details: restoredPhysicalPkgs,
+      sap_items: existingSapItems,
       vendor_name: receipt.vendor_name,
       sap_po_number: receipt.sap_po_number ?? "",
       sap_po_date: receipt.sap_po_date ?? "",
@@ -1097,14 +1134,14 @@ export default function MaterialReceipt() {
     const convertedRows = convertSapItemsToPackageDetails(items);
     setForm((prev) => ({
       ...prev,
-      package_details: convertedRows,
+      sap_items: convertedRows, // Keep strictly in sap_items, leave physical package_details intact!
       vendor_name: prev.vendor_name || meta.vendor || "",
       sap_po_date: prev.sap_po_date || meta.poDate || "",
       sap_po_number: prev.sap_po_number || meta.po || "",
       invoice_number: prev.invoice_number || meta.invoice || "",
     }));
     showSnackbar(
-      `Successfully mapped ${items.length} material(s) from SAP MB51 into DRC form.`,
+      `Successfully mapped ${items.length} material(s) from SAP MB51 into SAP Material Items. Physical Package Details kept separate.`,
       "success"
     );
   }
@@ -1128,10 +1165,24 @@ export default function MaterialReceipt() {
         receipt.gem_order_number ||
         (isCurrentPoGem ? (receipt.gem_order_number || currentSapPo || currentPo) : "");
 
+      // Extract physical packages, restoring them if previously overwritten
+      const physicalPkgs = cleanPhysicalPackageDetails(receipt.package_details);
+      const restoredPackageDetails =
+        physicalPkgs.length > 0
+          ? physicalPkgs
+          : [
+              {
+                quantity: String(receipt.package_count || 1),
+                package_type: receipt.package_type || "C/Box",
+                description: "",
+              },
+            ];
+
       const updateData: ReceiptFormInput = {
         receipt_mode: receipt.receipt_mode || "Vehicle",
         vehicle_number: receipt.vehicle_number || "",
-        package_details: convertedRows,
+        package_details: restoredPackageDetails,
+        sap_items: convertedRows,
         vendor_name: receipt.vendor_name || lookupResult.vendorName || "Unknown Vendor",
         sap_po_number: finalSapPo,
         sap_po_date: receipt.sap_po_date || lookupResult.primary103Date || "",
@@ -2538,39 +2589,139 @@ export default function MaterialReceipt() {
                 </Box>
               </Card>
 
-              {/* --- Package Details --- */}
+              {/* --- Package Details (Physical Packages Received at Gate) --- */}
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                     <Inventory2Icon fontSize="small" sx={{ color: "primary.main" }} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>PACKAGE DETAILS / MATERIALS</Typography>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      PACKAGE DETAILS (Physical Packages Received)
+                    </Typography>
                   </Box>
                   <Button size="small" startIcon={<AddIcon fontSize="small" />} onClick={addPackageRow} sx={{ fontWeight: 600, textTransform: "none" }}>
-                    Add Row
+                    Add Package
                   </Button>
                 </Box>
-                <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box sx={{ px: 1.5, pt: 1, pb: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                    Enter physically verifiable packages received at security gate (e.g., C/Box, W/Box, Container, Drum). Actual material codes fetched from SAP 103/105 are kept separate.
+                  </Typography>
+                </Box>
+                <Box sx={{ p: 1.5, pt: 0.5, display: "flex", flexDirection: "column", gap: 1 }}>
                   {form.package_details.map((row, index) => (
                     <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 0.75, p: 1, borderRadius: 2, bgcolor: "grey.50" }}>
-                      {row.material_code && (
-                        <Chip
-                          size="small"
-                          color="info"
-                          variant="outlined"
-                          label={row.material_code}
-                          sx={{ fontWeight: 700, fontFamily: "monospace", height: 28, flexShrink: 0 }}
-                        />
-                      )}
-                      <TextField label="Qty" placeholder="e.g. 10" size="small" value={row.quantity} onChange={(e) => updatePackageRow(index, "quantity", e.target.value)} sx={{ width: { xs: "100%", sm: 80 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <Autocomplete freeSolo options={packageTypeSuggestions} inputValue={row.package_type} onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")} renderInput={(params) => (<TextField {...params} label="Package Type" placeholder="e.g. Boxes, Drums" size="small" sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <TextField label="Description" placeholder="Optional" size="small" fullWidth value={row.description} onChange={(e) => updatePackageRow(index, "description", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                      <IconButton size="small" onClick={() => removePackageRow(index)} aria-label="Delete row" sx={{ flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } }}>
+                      <TextField
+                        label="No. of Pkgs"
+                        placeholder="e.g. 1"
+                        size="small"
+                        value={row.quantity}
+                        onChange={(e) => updatePackageRow(index, "quantity", e.target.value)}
+                        sx={{ width: { xs: "100%", sm: 90 }, flexShrink: 0, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      />
+                      <Autocomplete
+                        freeSolo
+                        options={packageTypeSuggestions}
+                        inputValue={row.package_type}
+                        onInputChange={(_e, value) => updatePackageRow(index, "package_type", value ?? "")}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Package Type"
+                            placeholder="e.g. C/Box, W/Box"
+                            size="small"
+                            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, minWidth: { sm: 160 } }}
+                          />
+                        )}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      />
+                      <TextField
+                        label="Package Remarks / Content Description"
+                        placeholder="Optional details (e.g. Valves, hardware)"
+                        size="small"
+                        fullWidth
+                        value={row.description}
+                        onChange={(e) => updatePackageRow(index, "description", e.target.value)}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => removePackageRow(index)}
+                        aria-label="Delete package row"
+                        sx={{ flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } }}
+                      >
                         <DeleteIcon fontSize="small" color="error" />
                       </IconButton>
                     </Box>
                   ))}
                 </Box>
               </Card>
+
+              {/* --- SAP 103 / 105 Material Items (Separated from Physical Packages) --- */}
+              {form.sap_items && form.sap_items.length > 0 && (
+                <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "info.light", bgcolor: "info.50" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                      <TaskAltIcon fontSize="small" color="info" />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "info.dark" }}>
+                        SAP 103 / 105 MATERIAL ITEMS ({form.sap_items.length} Materials)
+                      </Typography>
+                    </Box>
+                    <Chip
+                      size="small"
+                      color="info"
+                      label="SAP MB51 Synced"
+                      sx={{ fontWeight: 700, fontSize: "0.7rem", height: 22 }}
+                    />
+                  </Box>
+                  <Box sx={{ px: 1.5, pt: 1, pb: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Actual material codes and quantities received inside the physical packages above.
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 1.5, pt: 0.5 }}>
+                    <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 1.5, border: "1px solid", borderColor: "divider" }}>
+                      <Table size="small">
+                        <TableHead sx={{ bgcolor: "grey.100" }}>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Material Code</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Description</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }} align="right">Qty</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>UoM</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>SAP Movements</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.75rem" }}>Bin Location</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {form.sap_items.map((item, idx) => (
+                            <TableRow key={idx} hover>
+                              <TableCell sx={{ fontWeight: 700, fontFamily: "monospace", fontSize: "0.75rem" }}>
+                                {item.material_code || "-"}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>{item.description || "-"}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                                {item.quantity}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>{item.uom || item.package_type || "NOS"}</TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {item.sap_103_doc && `103: ${item.sap_103_doc}`}
+                                {item.sap_105_doc && ` 105: ${item.sap_105_doc}`}
+                                {!item.sap_103_doc && !item.sap_105_doc && "-"}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {item.bin_location ? (
+                                  <Chip size="small" label={item.bin_location} color="success" sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }} />
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary">Unallocated</Typography>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                </Card>
+              )}
 
             </Box>
 
@@ -3180,94 +3331,162 @@ export default function MaterialReceipt() {
                 ))}
               </Box>
 
-              {viewReceipt.package_details && viewReceipt.package_details.length > 0 && (
-                <>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.75 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      Materials & Bin Allocations ({viewReceipt.package_details.length} Items)
-                    </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<WarehouseIcon fontSize="small" />}
-                      onClick={() => handleOpenBinAllocation(viewReceipt)}
-                      sx={{ textTransform: "none", fontWeight: 600, fontSize: "0.75rem" }}
-                    >
-                      Update Bins
-                    </Button>
-                  </Box>
-                  <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                    <Table size="small">
-                      <TableHead sx={{ bgcolor: "grey.100" }}>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 700 }}>Material Code</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Description</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }} align="right">Qty</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>UoM</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>SAP Movements</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Bin Location</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {viewReceipt.package_details.map((row, index) => (
-                          <TableRow key={index} hover>
-                            <TableCell sx={{ fontWeight: 700, fontFamily: "monospace" }}>
-                              {row.material_code || "-"}
-                            </TableCell>
-                            <TableCell>{row.description || "-"}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>{row.quantity}</TableCell>
-                            <TableCell>{row.uom || row.package_type || "NOS"}</TableCell>
-                            <TableCell>
-                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-                                {row.sap_103_doc && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    103: {row.sap_103_doc}
-                                  </Typography>
-                                )}
-                                {(row.sap_105_doc || viewReceipt.grn_number) && (
-                                  <Typography variant="caption" color="success.main" sx={{ fontWeight: 600 }}>
-                                    105: {row.sap_105_doc || viewReceipt.grn_number}
-                                  </Typography>
-                                )}
-                                {!row.sap_103_doc && !row.sap_105_doc && !viewReceipt.grn_number && (
-                                  <Typography variant="caption" color="text.secondary">-</Typography>
-                                )}
-                              </Box>
-                            </TableCell>
-                            <TableCell>
-                              {row.bin_allocated && row.bin_location ? (
-                                <Chip
-                                  size="small"
-                                  color="success"
-                                  icon={<WarehouseIcon fontSize="small" />}
-                                  label={row.bin_location}
-                                  sx={{ fontWeight: 700, height: 24, fontSize: "0.75rem" }}
-                                />
-                              ) : row.bin_location ? (
-                                <Chip
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                  label={row.bin_location}
-                                  sx={{ fontWeight: 600, height: 24, fontSize: "0.75rem" }}
-                                />
-                              ) : (
-                                <Chip
-                                  size="small"
-                                  variant="outlined"
-                                  label="Unallocated"
-                                  onClick={() => handleOpenBinAllocation(viewReceipt)}
-                                  sx={{ cursor: "pointer", height: 24, fontSize: "0.75rem" }}
-                                />
-                              )}
-                            </TableCell>
+              {/* --- 1. PHYSICAL PACKAGE DETAILS (At Gate Receipt) --- */}
+              {(() => {
+                const physicalPkgs = cleanPhysicalPackageDetails(viewReceipt.package_details);
+                const displayPkgs =
+                  physicalPkgs.length > 0
+                    ? physicalPkgs
+                    : viewReceipt.package_count || viewReceipt.package_type
+                    ? [
+                        {
+                          quantity: String(viewReceipt.package_count || 1),
+                          package_type: viewReceipt.package_type || "C/Box",
+                          description: "",
+                        },
+                      ]
+                    : [];
+
+                if (displayPkgs.length === 0) return null;
+
+                return (
+                  <>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Box sx={{ mb: 0.75, display: "flex", alignItems: "center", gap: 1 }}>
+                      <Inventory2Icon fontSize="small" color="primary" />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        Physical Package Details (At Gate Receipt)
+                      </Typography>
+                    </Box>
+                    <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 1.5 }}>
+                      <Table size="small">
+                        <TableHead sx={{ bgcolor: "grey.100" }}>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>#</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>No. of Packages (Qty)</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Package Type</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Package Remarks / Content Description</TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </>
-              )}
+                        </TableHead>
+                        <TableBody>
+                          {displayPkgs.map((row, index) => (
+                            <TableRow key={index} hover>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{row.quantity}</TableCell>
+                              <TableCell>
+                                <Chip size="small" variant="outlined" label={row.package_type || "Package"} sx={{ fontWeight: 600 }} />
+                              </TableCell>
+                              <TableCell>{row.description || "-"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </>
+                );
+              })()}
+
+              {/* --- 2. SAP 103 / 105 MATERIAL ITEMS & BIN ALLOCATIONS --- */}
+              {(() => {
+                const sapItems =
+                  viewReceipt.sap_items && viewReceipt.sap_items.length > 0
+                    ? viewReceipt.sap_items
+                    : (viewReceipt.package_details || []).filter((p) => Boolean(p.material_code && p.material_code.trim()));
+
+                if (sapItems.length === 0) return null;
+
+                return (
+                  <>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.75 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <TaskAltIcon fontSize="small" color="info" />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          SAP 103 / 105 Material Items & Bin Allocations ({sapItems.length} Items)
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        startIcon={<WarehouseIcon fontSize="small" />}
+                        onClick={() => handleOpenBinAllocation(viewReceipt)}
+                        sx={{ textTransform: "none", fontWeight: 600, fontSize: "0.75rem" }}
+                      >
+                        Update Bins
+                      </Button>
+                    </Box>
+                    <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                      <Table size="small">
+                        <TableHead sx={{ bgcolor: "grey.100" }}>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>Material Code</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Description</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }} align="right">Qty</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>UoM</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>SAP Movements</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Bin Location</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {sapItems.map((row, index) => (
+                            <TableRow key={index} hover>
+                              <TableCell sx={{ fontWeight: 700, fontFamily: "monospace" }}>
+                                {row.material_code || "-"}
+                              </TableCell>
+                              <TableCell>{row.description || "-"}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 700 }}>{row.quantity}</TableCell>
+                              <TableCell>{row.uom || row.package_type || "NOS"}</TableCell>
+                              <TableCell>
+                                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                                  {row.sap_103_doc && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      103: {row.sap_103_doc}
+                                    </Typography>
+                                  )}
+                                  {(row.sap_105_doc || viewReceipt.grn_number) && (
+                                    <Typography variant="caption" color="success.main" sx={{ fontWeight: 600 }}>
+                                      105: {row.sap_105_doc || viewReceipt.grn_number}
+                                    </Typography>
+                                  )}
+                                  {!row.sap_103_doc && !row.sap_105_doc && !viewReceipt.grn_number && (
+                                    <Typography variant="caption" color="text.secondary">-</Typography>
+                                  )}
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                {row.bin_allocated && row.bin_location ? (
+                                  <Chip
+                                    size="small"
+                                    color="success"
+                                    icon={<WarehouseIcon fontSize="small" />}
+                                    label={row.bin_location}
+                                    sx={{ fontWeight: 700, height: 24, fontSize: "0.75rem" }}
+                                  />
+                                ) : row.bin_location ? (
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    label={row.bin_location}
+                                    sx={{ fontWeight: 600, height: 24, fontSize: "0.75rem" }}
+                                  />
+                                ) : (
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    label="Unallocated"
+                                    onClick={() => handleOpenBinAllocation(viewReceipt)}
+                                    sx={{ cursor: "pointer", height: 24, fontSize: "0.75rem" }}
+                                  />
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </>
+                );
+              })()}
 
               {viewReceipt.photo_urls.length > 0 && (
                 <>
