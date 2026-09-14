@@ -2293,34 +2293,14 @@ export default function MaterialReceipt() {
                       ) : null}
                     </Box>
                     <Box sx={{ display: "flex", gap: 0.5 }}>
-                      <Tooltip title="Fetch from SAP MB51">
+                      <Tooltip title="Edit DRC">
                         <IconButton
                           size="small"
-                          onClick={() => handleOpenSapLookupForReceipt(r)}
-                          aria-label="Fetch from SAP MB51"
-                          sx={{ color: "info.main" }}
-                        >
-                          <SyncIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Allocate Bins">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenBinAllocation(r)}
-                          aria-label="Allocate Bins"
+                          onClick={() => openEditForm(r)}
+                          aria-label="Edit DRC"
                           sx={{ color: "primary.main" }}
                         >
-                          <WarehouseIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Print DRC & File Strap">
-                        <IconButton
-                          size="small"
-                          onClick={(e) => handleOpenPrintMenu(e, r)}
-                          aria-label="Print DRC & File Strap"
-                          sx={{ color: "action.active" }}
-                        >
-                          <PrintIcon fontSize="small" />
+                          <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Box>
@@ -2400,35 +2380,15 @@ export default function MaterialReceipt() {
                         <DrcStatusChip receipt={r} />
                       </TableCell>
                       <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5 }}>
-                          <Tooltip title="Fetch from SAP MB51">
+                        <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                          <Tooltip title="Edit DRC">
                             <IconButton
                               size="small"
-                              onClick={() => handleOpenSapLookupForReceipt(r)}
-                              aria-label="Fetch from SAP MB51"
-                              sx={{ color: "info.main" }}
-                            >
-                              <SyncIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Allocate Bin Locations">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenBinAllocation(r)}
-                              aria-label="Allocate Bin Locations"
+                              onClick={() => openEditForm(r)}
+                              aria-label="Edit DRC"
                               sx={{ color: "primary.main" }}
                             >
-                              <WarehouseIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Print DRC & File Strap">
-                            <IconButton
-                              size="small"
-                              onClick={(e) => handleOpenPrintMenu(e, r)}
-                              aria-label="Print DRC & File Strap"
-                              sx={{ color: "action.active" }}
-                            >
-                              <PrintIcon fontSize="small" />
+                              <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         </Box>
@@ -3967,6 +3927,14 @@ export default function MaterialReceipt() {
                   sx={{ borderRadius: 2, fontWeight: 700, textTransform: "none" }}
                 >
                   Allocate Bins
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<PrintIcon fontSize="small" />}
+                  onClick={(e) => handleOpenPrintMenu(e, viewReceipt)}
+                  sx={{ borderRadius: 2, fontWeight: 600, textTransform: "none" }}
+                >
+                  Print DRC / Strap
                 </Button>
               </Box>
               <Button
