@@ -584,13 +584,6 @@ export default function MaterialReceipt() {
     return [...new Set([...defaults, ...values])];
   }, [previousDrcs]);
 
-  const purposeSuggestions = useMemo(() => {
-    const values = previousDrcs
-      .map((r) => r.purpose ?? r.remarks)
-      .filter((v): v is string => !!v && v.trim() !== '');
-    return [...new Set(values)];
-  }, [previousDrcs]);
-
   // Compute the next DRC number from already-loaded previousDrcs data.
   // This is the primary source — no RPC or extra DB query needed.
   const computedNextDrc = useMemo(() => {
@@ -2631,30 +2624,33 @@ export default function MaterialReceipt() {
                 </Card>
               </Box>
 
-              {/* --- Invoice & Challan (Compressed upwards with uniform equal tab size) --- */}
+              {/* --- Invoice & Challan --- */}
               <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider", height: "fit-content" }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.5, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                   <ReceiptLongIcon fontSize="small" sx={{ color: "primary.main" }} />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>INVOICE & CHALLAN</Typography>
                 </Box>
                 <Box sx={{ p: 1.25, display: "flex", flexDirection: "column", gap: 1.25 }}>
-                  {/* Row 1: Invoice Details (Equal 3-column tabs) */}
+                  {/* Row 1: Invoice number - invoice date - invoice amount */}
                   <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
-                    <TextField label="Invoice No." size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <TextField label="Invoice Number" size="small" fullWidth value={form.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                     <DateTextField label="Invoice Date" value={form.invoice_date} onChange={(iso) => updateField("invoice_date", iso)} />
                     <TextField label="Invoice Amount" size="small" fullWidth type="number" placeholder="Enter Amount" value={form.tax_invoice_value} onChange={(e) => updateField("tax_invoice_value", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                   </Box>
-                  {/* Row 2: Challan & E-Way (Equal 3-column tabs) */}
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
-                    <TextField label="Challan No." size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                  {/* Row 2: Challan number - challan date */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
+                    <TextField label="Challan Number" size="small" fullWidth value={form.challan_number} onChange={(e) => updateField("challan_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                     <DateTextField label="Challan Date" value={form.challan_date} onChange={(iso) => updateField("challan_date", iso)} />
-                    <TextField label="E-Way Bill No." size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
                   </Box>
-                  {/* Row 3: E-Way Date & Lorry Receipt (Equal 3-column tabs) */}
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 1.25 }}>
-                    <DateTextField label="E-Way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
-                    <TextField label="Lorry Receipt No." size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-                    <DateTextField label="Lorry Receipt Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
+                  {/* Row 3: E-way bill number - E-way bill date */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
+                    <TextField label="E-way Bill Number" size="small" fullWidth value={form.eway_bill_number} onChange={(e) => updateField("eway_bill_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="E-way Bill Date" value={form.eway_bill_date} onChange={(iso) => updateField("eway_bill_date", iso)} />
+                  </Box>
+                  {/* Row 4: LR number - LR date */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.25 }}>
+                    <TextField label="LR Number" size="small" fullWidth value={form.lorry_receipt_number} onChange={(e) => updateField("lorry_receipt_number", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
+                    <DateTextField label="LR Date" value={form.lorry_receipt_date} onChange={(iso) => updateField("lorry_receipt_date", iso)} />
                   </Box>
                 </Box>
               </Card>
@@ -2805,14 +2801,7 @@ export default function MaterialReceipt() {
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>REMARKS & ATTACHMENTS</Typography>
             </Box>
             <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="e.g. UNLOADING AT OXO PLANT, DUMAD" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
-              {purposeSuggestions.length > 0 && (
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                  {purposeSuggestions.slice(0, 4).map((suggestion) => (
-                    <Chip key={suggestion} label={suggestion} size="small" variant="outlined" onClick={() => updateField("purpose", suggestion)} sx={{ cursor: "pointer", fontSize: "0.7rem", height: 24 }} />
-                  ))}
-                </Box>
-              )}
+              <TextField label="Purpose" size="small" fullWidth multiline minRows={4} placeholder="Enter Purpose" value={form.purpose} onChange={(e) => updateField("purpose", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }} />
               <TextField select label="MSME / Non MSME" size="small" fullWidth value={form.msme_type} onChange={(e) => updateField("msme_type", e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}>
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="MSME">MSME</MenuItem>
