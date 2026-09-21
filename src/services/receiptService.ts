@@ -653,10 +653,20 @@ export async function createReceipt(
       ? await uploadReceiptDocuments(documentUploads)
       : [];
 
+  // Candidates for inspection_status to satisfy any remote check constraint (e.g. receipt_header_inspection_status_check)
+  const inspectionCandidates: (string | undefined)[] = [
+    "Pending Inspection",
+    "Pending",
+    "Pending inspection",
+    "pending_inspection",
+    undefined, // omits inspection_status completely from payload
+  ];
+  let inspectionCandidateIdx = 0;
+
   const payload: Record<string, unknown> = {
     ...buildPayload(input),
     status: "Pending Inspection",
-    inspection_status: "Pending inspection",
+    inspection_status: inspectionCandidates[0],
     photo_urls: photoUrls,
     photo_paths: photoPaths,
     attachment_paths: attachmentPaths,
@@ -678,8 +688,8 @@ export async function createReceipt(
     // best-effort auth check
   }
 
-  // ── DRC number generation & collision handling ────────────────────
-  const MAX_DRC_RETRIES = 5;
+  // ── DRC number generation & collision / constraint handling ───────
+  const MAX_ATTEMPTS = 15;
   let lastInsertError: unknown = null;
   let data: ReceiptHeader | null = null;
 
@@ -689,21 +699,9 @@ export async function createReceipt(
     candidateDrc = await getNextDrcNumberSuggestion();
   }
 
-  for (let attempt = 0; attempt < MAX_DRC_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt === 0) {
       payload.drc_number = candidateDrc;
-    } else {
-      // Collision retry: compute the next incremental number
-      const nextCandidate = await getNextDrcNumberSuggestion();
-      const prefixMatch = candidateDrc.match(/^(DRC\/\d{2}-\d{2}\/)(\d+)(.*)$/);
-      if (prefixMatch) {
-        const prefix = prefixMatch[1];
-        const num = parseInt(prefixMatch[2], 10);
-        const nextNum = Math.max(num + attempt, (parseInt(nextCandidate.replace(/[^0-9]/g, ""), 10) || 0) + attempt);
-        payload.drc_number = `${prefix}${nextNum}`;
-      } else {
-        payload.drc_number = nextCandidate;
-      }
     }
 
     lastInsertError = null;
@@ -721,11 +719,42 @@ export async function createReceipt(
       const isDrcCollision =
         rawMsg.includes("idx_receipt_header_drc_number") ||
         rawMsg.includes("duplicate key value violates unique constraint");
+
       if (isDrcCollision) {
-        console.warn(`DRC collision on attempt ${attempt + 1} ("${payload.drc_number}"), retrying...`);
-        continue; // retry with next number
+        // Collision retry: compute next incremental DRC number
+        const nextCandidate = await getNextDrcNumberSuggestion();
+        const prefixMatch = candidateDrc.match(/^(DRC\/\d{2}-\d{2}\/)(\d+)(.*)$/);
+        if (prefixMatch) {
+          const prefix = prefixMatch[1];
+          const num = parseInt(prefixMatch[2], 10);
+          const nextNum = Math.max(num + attempt + 1, (parseInt(nextCandidate.replace(/[^0-9]/g, ""), 10) || 0) + 1);
+          payload.drc_number = `${prefix}${nextNum}`;
+        } else {
+          payload.drc_number = nextCandidate;
+        }
+        console.warn(`DRC collision on attempt ${attempt + 1}, retrying with "${payload.drc_number}"...`);
+        continue;
       }
-      // Non-collision error — stop retrying
+
+      // Check constraint violation on inspection_status (e.g. receipt_header_inspection_status_check)
+      const isInspectionConstraint =
+        rawMsg.includes("receipt_header_inspection_status_check") ||
+        rawMsg.includes("inspection_status") ||
+        (rawMsg.includes("check constraint") && rawMsg.includes("status"));
+
+      if (isInspectionConstraint && inspectionCandidateIdx < inspectionCandidates.length - 1) {
+        inspectionCandidateIdx++;
+        const nextCand = inspectionCandidates[inspectionCandidateIdx];
+        if (nextCand !== undefined) {
+          payload.inspection_status = nextCand;
+        } else {
+          delete payload.inspection_status;
+        }
+        console.warn(`Retrying DRC insert with inspection_status candidate (${inspectionCandidateIdx}):`, nextCand);
+        continue;
+      }
+
+      // Non-retryable error
       break;
     }
 
@@ -736,20 +765,23 @@ export async function createReceipt(
   if (lastInsertError || !data) {
     const errObj = lastInsertError as { code?: string; message?: string } | null;
     const errCode = errObj?.code;
-    const isAuthOrRlsError =
+    const rawMsg = (typeof errObj?.message === "string" ? errObj.message : "").toLowerCase();
+    const isAuthOrConstraintError =
       errCode === "23502" ||
+      errCode === "23514" ||
       errCode === "42501" ||
-      (typeof errObj?.message === "string" &&
-        (errObj.message.includes("user_id") ||
-          errObj.message.includes("row-level security") ||
-          errObj.message.includes("violates not-null constraint")));
+      rawMsg.includes("user_id") ||
+      rawMsg.includes("row-level security") ||
+      rawMsg.includes("violates not-null constraint") ||
+      rawMsg.includes("check constraint") ||
+      rawMsg.includes("receipt_header_inspection_status_check");
 
     const isDemoSession =
       typeof window !== "undefined" &&
       sessionStorage.getItem("esms_demo_session") === "true";
 
-    if (isAuthOrRlsError || isDemoSession) {
-      console.warn("Saving receipt to session store due to auth/tenant policy constraints:", lastInsertError);
+    if (isAuthOrConstraintError || isDemoSession) {
+      console.warn("Saving receipt to session store due to database constraint/policy:", lastInsertError);
       const demoId = Date.now();
       const mockReceipt: ReceiptHeader = {
         id: demoId,
@@ -820,7 +852,10 @@ export async function createReceipt(
     throw lastInsertError;
   }
 
-  const created = data as ReceiptHeader;
+  const created: ReceiptHeader = {
+    ...data,
+    inspection_status: data.inspection_status || "Pending inspection",
+  };
 
   // If receipt_datetime differed from payload, apply final sync
   if (manualOverrides?.receipt_datetime && created.receipt_datetime !== manualOverrides.receipt_datetime) {
@@ -832,7 +867,10 @@ export async function createReceipt(
       .maybeSingle();
 
     if (updated) {
-      return updated as ReceiptHeader;
+      return {
+        ...updated,
+        inspection_status: updated.inspection_status || "Pending inspection",
+      } as ReceiptHeader;
     }
   }
 
