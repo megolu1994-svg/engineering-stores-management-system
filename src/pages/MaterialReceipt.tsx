@@ -398,18 +398,50 @@ function todayIso(): string {
 /** Combines a manually-chosen calendar date with the current time of
  * day, so a manual DRC Date still sorts/behaves like a normal
  * timestamp rather than always landing on midnight. */
-function combineDateWithNow(dateIso: string): string {
-  const [y, m, d] = dateIso.split("-").map(Number);
+function combineDateWithNow(dateStr: string): string {
+  if (!dateStr || typeof dateStr !== "string") {
+    return new Date().toISOString();
+  }
+  const clean = dateStr.trim();
+  let y = 0, m = 0, d = 0;
+  if (clean.includes("-")) {
+    const parts = clean.split("-").map(Number);
+    if (parts[0] > 1000) {
+      [y, m, d] = parts;
+    } else {
+      [d, m, y] = parts;
+    }
+  } else if (clean.includes(".")) {
+    const parts = clean.split(".").map(Number);
+    if (parts[0] > 1000) {
+      [y, m, d] = parts;
+    } else {
+      [d, m, y] = parts;
+    }
+  } else if (clean.includes("/")) {
+    const parts = clean.split("/").map(Number);
+    if (parts[0] > 1000) {
+      [y, m, d] = parts;
+    } else {
+      [d, m, y] = parts;
+    }
+  }
   const now = new Date();
-  return new Date(
-    y,
-    m - 1,
-    d,
-    now.getHours(),
-    now.getMinutes(),
-    now.getSeconds(),
-    now.getMilliseconds()
-  ).toISOString();
+  if (y && m && d && !isNaN(y) && !isNaN(m) && !isNaN(d)) {
+    const dt = new Date(
+      y,
+      m - 1,
+      d,
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds()
+    );
+    if (!isNaN(dt.getTime())) {
+      return dt.toISOString();
+    }
+  }
+  return new Date().toISOString();
 }
 
 export default function MaterialReceipt() {
@@ -939,14 +971,13 @@ export default function MaterialReceipt() {
         );
         showSnackbar(`DRC ${updated.drc_number} updated.`, "success");
       } else {
-        const finalDrcNumber = drcNumber.trim() || computedNextDrc || undefined;
         const finalReceiptDatetime = combineDateWithNow(drcDate || todayIso());
         const created = await createReceipt(
           form,
           newPhotoFiles,
           newDocumentUploads,
           {
-            drc_number: finalDrcNumber,
+            drc_number: manualDrcEntry && drcNumber.trim() ? drcNumber.trim() : undefined,
             receipt_datetime: finalReceiptDatetime,
           }
         );
@@ -962,7 +993,8 @@ export default function MaterialReceipt() {
       if (createdReceipt) {
         openMailDialog(createdReceipt, "Security Gate Entry");
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      console.error("DRC save error:", err);
       const isDuplicateDrcNumber =
         !editingReceipt &&
         typeof err === "object" &&
@@ -973,10 +1005,15 @@ export default function MaterialReceipt() {
             ((err as { message: string }).message.includes("idx_receipt_header_drc_number") ||
               (err as { message: string }).message.includes("duplicate key value"))));
 
+      const errMsg =
+        typeof err === "object" && err !== null && "message" in err && typeof (err as { message?: unknown }).message === "string"
+          ? (err as { message: string }).message
+          : "Something went wrong while saving the DRC.";
+
       showSnackbar(
         isDuplicateDrcNumber
           ? `DRC No. "${drcNumber.trim()}" already exists. Please use a different number.`
-          : "Something went wrong while saving the DRC.",
+          : errMsg,
         "error"
       );
     } finally {
