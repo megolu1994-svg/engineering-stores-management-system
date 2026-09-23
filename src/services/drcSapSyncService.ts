@@ -135,6 +135,7 @@ export function isInvoiceMatch(
 ): boolean {
   if (!targetInvoice) return false;
   const tClean = targetInvoice.trim().toLowerCase();
+  if (!tClean) return false;
   const tAlpha = cleanAlphaNum(targetInvoice);
   const tNorm = normalizeDocCode(targetInvoice).toLowerCase();
 
@@ -144,20 +145,37 @@ export function isInvoiceMatch(
   const rText = String(rowDocText || "").trim().toLowerCase();
   const rTextAlpha = cleanAlphaNum(rowDocText);
 
-  // Exact match
-  if (rInv && (rInv === tClean || rNorm === tNorm)) return true;
+  // 1. Direct exact equality
+  if (rInv && (rInv === tClean || (rNorm && rNorm === tNorm))) return true;
 
-  // Alphanumeric canonical match (handles "H-16189" vs "H16189" vs "H 16189" vs "H/16189")
+  // 2. Alphanumeric canonical match (handles "H-16189" vs "H16189" vs "H 16189" vs "H/16189")
   if (tAlpha && rAlpha && tAlpha === rAlpha) return true;
 
-  // Substring matching when at least 4 alphanumeric characters (e.g. "16189" in "H-16189")
-  if (tAlpha.length >= 4 && rAlpha.length >= 4) {
-    if (rAlpha.includes(tAlpha) || tAlpha.includes(rAlpha)) return true;
+  // 3. Exact digits match when prefix was omitted (e.g. "GJ3742" vs "3742" where digits >= 4)
+  const tDigits = tClean.replace(/\D/g, "");
+  const rDigits = rInv.replace(/\D/g, "");
+  if (tDigits.length >= 4 && rDigits.length >= 4 && tDigits === rDigits) {
+    return true;
   }
 
-  // Check document header text
-  if (rText && (rText === tClean || rText.includes(tClean))) return true;
-  if (tAlpha.length >= 4 && (rTextAlpha === tAlpha || rTextAlpha.includes(tAlpha))) return true;
+  // 4. Check document header text with boundary checks (prevents partial false matches)
+  if (rText) {
+    if (rText === tClean) return true;
+    if (tAlpha && rTextAlpha === tAlpha) return true;
+
+    // Check if header text contains the target invoice as a distinct token
+    if (tClean.length >= 3 && rText.includes(tClean)) {
+      const escaped = tClean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`(^|[^a-zA-Z0-9])${escaped}([^a-zA-Z0-9]|$)`, "i");
+      if (regex.test(rText)) return true;
+    }
+
+    if (tAlpha.length >= 4 && rTextAlpha.includes(tAlpha)) {
+      const escapedAlpha = tAlpha.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regexAlpha = new RegExp(`(^|[^a-zA-Z0-9])${escapedAlpha}([^a-zA-Z0-9]|$)`, "i");
+      if (regexAlpha.test(rText)) return true;
+    }
+  }
 
   return false;
 }
@@ -268,17 +286,15 @@ export async function findSapDocumentsForDrc(
     // Helper to enrich matched rows with corresponding 105 movements on the same SAP PO
     const enrichWithPoMovements = async (
       matchedDirectRows: typeof rows,
-      targetPo?: string | null
+      targetPo?: string | null,
+      targetInv?: string | null
     ): Promise<typeof rows> => {
       const matched103Docs = new Set<string>();
-      const matchedMaterials = new Set<string>();
 
       for (const r of matchedDirectRows) {
         const mvt = extractMovementCode(r.movement_type);
         const doc = String(r.material_document || "").trim();
-        const mat = String(r.material_code || "").trim().toLowerCase();
         if (mvt === "103" && doc) matched103Docs.add(doc);
-        if (mat) matchedMaterials.add(mat);
       }
 
       // Check if we need to query additional movements for this PO from the database
@@ -317,24 +333,22 @@ export async function findSapDocumentsForDrc(
       for (const r of poolOfPoRows) {
         const mvt = extractMovementCode(r.movement_type);
         if (mvt === "105" || mvt === "106" || mvt === "101" || mvt === "102") {
-          const mat = String(r.material_code || "").trim().toLowerCase();
           const text = String(r.document_header_text || "");
           const invField = String(r.invoice_number || "");
 
           let matchesThisDelivery = false;
-          if (cleanInv && isInvoiceMatch(cleanInv, r.invoice_number, r.document_header_text)) {
+          // 1. Explicit invoice match on this 105 record
+          if (targetInv && isInvoiceMatch(targetInv, r.invoice_number, r.document_header_text)) {
             matchesThisDelivery = true;
           }
+          // 2. Document header text or invoice references the matched 103 material document
           for (const d103 of matched103Docs) {
             if (text.includes(d103) || invField.includes(d103)) {
-              matchesThisDelivery = true;
+              // Ensure it does not have a conflicting different invoice
+              if (!targetInv || !r.invoice_number || isInvoiceMatch(targetInv, r.invoice_number, r.document_header_text)) {
+                matchesThisDelivery = true;
+              }
             }
-          }
-          if (matchedMaterials.has(mat)) {
-            matchesThisDelivery = true;
-          }
-          if (matched103Docs.size > 0 && poolOfPoRows.length <= 6) {
-            matchesThisDelivery = true;
           }
 
           if (matchesThisDelivery) {
@@ -357,7 +371,7 @@ export async function findSapDocumentsForDrc(
 
       if (directInvRows.length > 0) {
         invoiceMatched = true;
-        selectedRows = await enrichWithPoMovements(directInvRows, cleanPo);
+        selectedRows = await enrichWithPoMovements(directInvRows, cleanPo, cleanInv);
       } else {
         // Fallback: check if invoice matches any rows across the entire MB51 history
         // (Handles GeM orders where DRC recorded GeM contract number, but SAP recorded internal SAP PO)
@@ -367,15 +381,17 @@ export async function findSapDocumentsForDrc(
         if (invRows.length > 0) {
           invoiceMatched = true;
           const discoveredPo = invRows.find((r) => r.purchase_order)?.purchase_order;
-          selectedRows = await enrichWithPoMovements(invRows, discoveredPo);
-        } else if (poRows.length > 0) {
-          // If invoice didn't match anything, fall back to PO match
-          selectedRows = poRows;
+          selectedRows = await enrichWithPoMovements(invRows, discoveredPo, cleanInv);
         } else {
+          // CRITICAL FIX: If invoice was provided on DRC, we MUST NEVER fall back to other deliveries on this PO!
+          // A single PO often has multiple deliveries/invoices across weeks/months.
+          // Falling back to PO alone when the invoice doesn't exist in SAP would incorrectly attach
+          // 103/105 document numbers from PREVIOUS invoices (as happened with DRC/26-27/114 and invoice GJ3742).
           selectedRows = [];
         }
       }
     } else if (cleanPo) {
+      // Only when NO invoice was provided on the DRC can we match by PO alone
       selectedRows = rows.filter((r) => isPoMatch(cleanPo, r.purchase_order));
     } else if (cleanInv) {
       const invRows = rows.filter((r) =>
@@ -384,7 +400,7 @@ export async function findSapDocumentsForDrc(
       if (invRows.length > 0) {
         invoiceMatched = true;
         const discoveredPo = invRows.find((r) => r.purchase_order)?.purchase_order;
-        selectedRows = await enrichWithPoMovements(invRows, discoveredPo);
+        selectedRows = await enrichWithPoMovements(invRows, discoveredPo, cleanInv);
       } else {
         selectedRows = [];
       }
@@ -941,6 +957,7 @@ export function convertSapItemsToPackageDetails(
 
 export interface DrcSyncOutcome {
   updated: boolean;
+  unlinked?: boolean;
   drcNumber: string;
   receiptId: number;
   doc103: string | null;
@@ -953,11 +970,87 @@ export interface DrcSyncOutcome {
 export interface BatchDrcSyncResult {
   totalProcessed: number;
   updatedCount: number;
+  unlinkedCount: number;
   grnClosedCount: number;
   doc103Count: number;
   alreadySyncedCount: number;
   noMatchCount: number;
   outcomes: DrcSyncOutcome[];
+}
+
+/**
+ * Automatically inspects loaded DRCs and detects any DRC whose attached
+ * sap_103_doc / sap_105_doc does not belong to its invoice in MB51 history.
+ * If a mismatch is detected (e.g. DRC/26-27/114 with invoice GJ3742 falsely
+ * linked to previous delivery documents on PO 72600695), it immediately unlinks
+ * the erroneous documents and reverts the DRC to "Pending Inspection".
+ */
+export async function reconcileAndFixMismatchedDrcs(
+  receipts: ReceiptHeader[]
+): Promise<{ fixedCount: number; updatedReceipts: ReceiptHeader[] }> {
+  let fixedCount = 0;
+  const updatedReceipts: ReceiptHeader[] = [];
+
+  for (const r of receipts) {
+    const inv = (r.invoice_number || "").trim();
+    const po = (r.sap_po_number || r.po_number || "").trim();
+    const hasAttachedSap = Boolean(
+      r.sap_103_doc ||
+        r.sap_105_doc ||
+        r.grn_number ||
+        r.inspection_status === "GRN created" ||
+        (r.status === "Closed" && !r.grn_number)
+    );
+
+    if (!inv || !hasAttachedSap) {
+      updatedReceipts.push(r);
+      continue;
+    }
+
+    try {
+      const lookup = await findSapDocumentsForDrc(po, inv);
+      // If invoice has NO matches in SAP MB51 history at all, yet the DRC has SAP docs:
+      if (!lookup.hasMatches) {
+        fixedCount++;
+        console.warn(
+          `Auto-reconciling DRC ${r.drc_number}: invoice ${inv} has no SAP MB51 records, clearing false 103/105 data.`
+        );
+        const cleanupData = {
+          sap_103_doc: null,
+          sap_103_date: null,
+          sap_105_doc: null,
+          sap_105_date: null,
+          grn_number: null,
+          grn_date: null,
+          status: "Pending Inspection" as const,
+          inspection_status: "Pending inspection" as const,
+          closed_date: null,
+          closed_by: null,
+          sap_items: [],
+        };
+        const repairedReceipt: ReceiptHeader = {
+          ...r,
+          ...cleanupData,
+        };
+
+        // Persist to database in background
+        supabase
+          .from("receipt_header")
+          .update(cleanupData)
+          .eq("id", r.id)
+          .then();
+
+        updatedReceipts.push(repairedReceipt);
+        continue;
+      }
+    } catch (e) {
+      console.warn(`Error during reconcile of DRC ${r.drc_number}:`, e);
+    }
+
+    updatedReceipts.push(r);
+  }
+
+  return { fixedCount, updatedReceipts };
 }
 
 /**
@@ -985,6 +1078,56 @@ export async function syncSingleDrcWithSap(
 
   const lookupResult = await findSapDocumentsForDrc(po, inv);
   if (!lookupResult.hasMatches) {
+    // If DRC previously had false SAP documents attached that do not match its invoice:
+    const hasErroneousSapData =
+      Boolean(receipt.sap_103_doc) ||
+      Boolean(receipt.sap_105_doc) ||
+      Boolean(receipt.grn_number) ||
+      receipt.inspection_status === "GRN created" ||
+      receipt.status === "Closed";
+
+    if (hasErroneousSapData && inv) {
+      console.warn(
+        `Cleaning up mismatched SAP documents from DRC ${receipt.drc_number}: invoice ${inv} has no SAP transactions.`
+      );
+      const cleanupUpdate: Record<string, unknown> = {
+        sap_103_doc: null,
+        sap_103_date: null,
+        sap_105_doc: null,
+        sap_105_date: null,
+        grn_number: null,
+        grn_date: null,
+        status: "Pending Inspection",
+        inspection_status: "Pending inspection",
+        closed_date: null,
+        closed_by: null,
+        sap_items: [],
+      };
+
+      try {
+        const { data: cleanedHeader } = await supabase
+          .from("receipt_header")
+          .update(cleanupUpdate)
+          .eq("id", receipt.id)
+          .select()
+          .single();
+
+        return {
+          updated: true,
+          unlinked: true,
+          drcNumber: receipt.drc_number,
+          receiptId: receipt.id,
+          doc103: null,
+          doc105: null,
+          isGrnClosed: false,
+          reason: "Un-linked mismatched SAP documents (no SAP transaction for this invoice)",
+          updatedReceipt: (cleanedHeader as ReceiptHeader) || undefined,
+        };
+      } catch (e) {
+        console.warn("Could not clean up receipt in database:", e);
+      }
+    }
+
     return {
       updated: false,
       drcNumber: receipt.drc_number,
@@ -1245,6 +1388,7 @@ export async function syncAllDrcsWithSap(
       return {
         totalProcessed: 0,
         updatedCount: 0,
+        unlinkedCount: 0,
         grnClosedCount: 0,
         doc103Count: 0,
         alreadySyncedCount: 0,
@@ -1264,6 +1408,7 @@ export async function syncAllDrcsWithSap(
 
   const outcomes: DrcSyncOutcome[] = [];
   let updatedCount = 0;
+  let unlinkedCount = 0;
   let grnClosedCount = 0;
   let doc103Count = 0;
   let alreadySyncedCount = 0;
@@ -1280,6 +1425,7 @@ export async function syncAllDrcsWithSap(
       outcomes.push(res);
       if (res.updated) {
         updatedCount++;
+        if (res.unlinked) unlinkedCount++;
         if (res.isGrnClosed) grnClosedCount++;
         else if (res.doc103) doc103Count++;
       } else if (res.reason === "Already up to date") {
@@ -1295,6 +1441,7 @@ export async function syncAllDrcsWithSap(
   return {
     totalProcessed: eligible.length,
     updatedCount,
+    unlinkedCount,
     grnClosedCount,
     doc103Count,
     alreadySyncedCount,

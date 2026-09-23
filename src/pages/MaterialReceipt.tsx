@@ -83,6 +83,7 @@ import {
   findSapDocumentsForDrc,
   convertSapItemsToPackageDetails,
   syncAllDrcsWithSap,
+  reconcileAndFixMismatchedDrcs,
   type DrcSapLookupResult,
   type SapMatchedLineItem,
 } from "../services/drcSapSyncService";
@@ -488,6 +489,11 @@ export default function MaterialReceipt() {
     });
   }, [receipts, statusFilter]);
 
+  const loadSummary = useCallback(async () => {
+    const data = await getReceiptSummary();
+    setSummary(data);
+  }, []);
+
   const loadReceipts = useCallback(async () => {
     setLoading(true);
     try {
@@ -497,19 +503,20 @@ export default function MaterialReceipt() {
         toDate: toDate || undefined,
       });
       // Automatically recover physical package details for any DRCs whose package data was previously overwritten
-      const { updatedReceipts } = await separateAndRecoverPackageDetails(data);
+      const { updatedReceipts: pkgsCleaned } = await separateAndRecoverPackageDetails(data);
+      // Automatically detect and un-link any DRCs whose attached SAP documents do not match their invoice
+      const { fixedCount, updatedReceipts } = await reconcileAndFixMismatchedDrcs(pkgsCleaned);
       setReceipts(updatedReceipts);
+      if (fixedCount > 0) {
+        // Re-load summary to immediately reflect the restored status count
+        loadSummary();
+      }
     } catch {
       showSnackbar("Failed to load the receipt register.", "error");
     } finally {
       setLoading(false);
     }
-  }, [search, fromDate, toDate]);
-
-  const loadSummary = useCallback(async () => {
-    const data = await getReceiptSummary();
-    setSummary(data);
-  }, []);
+  }, [search, fromDate, toDate, loadSummary]);
 
   useEffect(() => {
     loadSummary();
@@ -1084,16 +1091,10 @@ export default function MaterialReceipt() {
       );
       setViewSapLookup(res);
 
-      // If 105 GRN is found in MB51, or if receipt already has grn_number / 105 doc,
-      // ensure the database header has status "Closed" and inspection_status "GRN created"
-      const doc105 = res.primary105Doc || receipt.grn_number || receipt.sap_105_doc;
-      if (
-        doc105 &&
-        (receipt.status !== "Closed" ||
-          receipt.inspection_status !== "GRN created" ||
-          !receipt.grn_number ||
-          !receipt.sap_105_doc)
-      ) {
+      // If 105 GRN is found in MB51 matching this invoice,
+      // update the database header to status "Closed" and inspection_status "GRN created"
+      if (res.hasMatches && res.primary105Doc) {
+        const doc105 = res.primary105Doc;
         const dateToUse = res.primary105Date || receipt.grn_date || todayIso();
         const { data: updatedHeader, error } = await supabase
           .from("receipt_header")
@@ -1118,6 +1119,46 @@ export default function MaterialReceipt() {
             )
           );
         }
+      } else if (
+        !res.hasMatches &&
+        receipt.invoice_number &&
+        (receipt.sap_105_doc ||
+          receipt.sap_103_doc ||
+          receipt.grn_number ||
+          receipt.inspection_status === "GRN created" ||
+          (receipt.status === "Closed" && !receipt.grn_number))
+      ) {
+        // Mismatch detected: no SAP movements exist for this invoice in MB51 history!
+        // Automatically clean up falsely attached SAP documents and restore to Pending Inspection.
+        const cleanupData = {
+          sap_103_doc: null,
+          sap_103_date: null,
+          sap_105_doc: null,
+          sap_105_date: null,
+          grn_number: null,
+          grn_date: null,
+          status: "Pending Inspection",
+          inspection_status: "Pending inspection",
+          closed_date: null,
+          closed_by: null,
+          sap_items: [],
+        };
+        const { data: repairedHeader, error } = await supabase
+          .from("receipt_header")
+          .update(cleanupData)
+          .eq("id", receipt.id)
+          .select()
+          .single();
+
+        if (!error && repairedHeader) {
+          setViewReceipt(repairedHeader as ReceiptHeader);
+          setReceipts((prev) =>
+            prev.map((r) =>
+              r.id === repairedHeader.id ? (repairedHeader as ReceiptHeader) : r
+            )
+          );
+          loadSummary();
+        }
       }
     } catch (err) {
       console.warn("checkSapForView error:", err);
@@ -1125,7 +1166,47 @@ export default function MaterialReceipt() {
     } finally {
       setViewSapLoading(false);
     }
-  }, []);
+  }, [loadSummary]);
+
+  async function handleUnlinkSapForReceipt(receipt: ReceiptHeader) {
+    try {
+      const cleanupData = {
+        sap_103_doc: null,
+        sap_103_date: null,
+        sap_105_doc: null,
+        sap_105_date: null,
+        grn_number: null,
+        grn_date: null,
+        status: "Pending Inspection" as const,
+        inspection_status: "Pending inspection" as const,
+        closed_date: null,
+        closed_by: null,
+        sap_items: [],
+      };
+      const { data: repairedHeader, error } = await supabase
+        .from("receipt_header")
+        .update(cleanupData)
+        .eq("id", receipt.id)
+        .select()
+        .single();
+
+      if (!error && repairedHeader) {
+        setViewReceipt(repairedHeader as ReceiptHeader);
+        setReceipts((prev) =>
+          prev.map((r) =>
+            r.id === repairedHeader.id ? (repairedHeader as ReceiptHeader) : r
+          )
+        );
+        loadSummary();
+        showSnackbar(
+          `Un-linked SAP documents for ${receipt.drc_number}. DRC restored to Pending Inspection.`,
+          "success"
+        );
+      }
+    } catch {
+      showSnackbar("Failed to unlink SAP data.", "error");
+    }
+  }
 
   useEffect(() => {
     if (viewReceipt) {
@@ -1750,6 +1831,9 @@ export default function MaterialReceipt() {
         }
         if (result.doc103Count > 0) {
           parts.push(`${result.doc103Count} linked with SAP 103`);
+        }
+        if (result.unlinkedCount > 0) {
+          parts.push(`${result.unlinkedCount} un-linked mismatched SAP data`);
         }
         showSnackbar(
           `Updated ${result.updatedCount} DRC(s) from SAP MB51${
@@ -3094,29 +3178,52 @@ export default function MaterialReceipt() {
                           SAP MB51 Status
                         </Typography>
                       </Box>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={
-                          viewSapLoading ? (
-                            <CircularProgress size={12} />
-                          ) : (
-                            <SyncIcon fontSize="small" />
-                          )
-                        }
-                        onClick={() => checkSapForView(viewReceipt)}
-                        disabled={viewSapLoading}
-                        sx={{
-                          textTransform: "none",
-                          fontWeight: 600,
-                          fontSize: "0.75rem",
-                          borderRadius: 1.5,
-                          py: 0.25,
-                          px: 1.25,
-                        }}
-                      >
-                        {viewSapLoading ? "Checking..." : "Re-check SAP"}
-                      </Button>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        {(viewReceipt.sap_103_doc ||
+                          viewReceipt.sap_105_doc ||
+                          viewReceipt.grn_number ||
+                          viewReceipt.inspection_status === "GRN created") && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="warning"
+                            onClick={() => handleUnlinkSapForReceipt(viewReceipt)}
+                            sx={{
+                              textTransform: "none",
+                              fontWeight: 600,
+                              fontSize: "0.75rem",
+                              borderRadius: 1.5,
+                              py: 0.25,
+                              px: 1.25,
+                            }}
+                          >
+                            Unlink SAP Data
+                          </Button>
+                        )}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={
+                            viewSapLoading ? (
+                              <CircularProgress size={12} />
+                            ) : (
+                              <SyncIcon fontSize="small" />
+                            )
+                          }
+                          onClick={() => checkSapForView(viewReceipt)}
+                          disabled={viewSapLoading}
+                          sx={{
+                            textTransform: "none",
+                            fontWeight: 600,
+                            fontSize: "0.75rem",
+                            borderRadius: 1.5,
+                            py: 0.25,
+                            px: 1.25,
+                          }}
+                        >
+                          {viewSapLoading ? "Checking..." : "Re-check SAP"}
+                        </Button>
+                      </Box>
                     </Box>
 
                     <Grid container spacing={1.5}>
