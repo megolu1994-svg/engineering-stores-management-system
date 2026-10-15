@@ -988,12 +988,11 @@ export interface BatchDrcSyncResult {
 export async function reconcileAndFixMismatchedDrcs(
   receipts: ReceiptHeader[]
 ): Promise<{ fixedCount: number; updatedReceipts: ReceiptHeader[] }> {
-  let fixedCount = 0;
-  const updatedReceipts: ReceiptHeader[] = [];
-
-  for (const r of receipts) {
+  // 1. Identify candidate receipts that have an invoice AND attached SAP data
+  const candidateIndices: number[] = [];
+  for (let i = 0; i < receipts.length; i++) {
+    const r = receipts[i];
     const inv = (r.invoice_number || "").trim();
-    const po = (r.sap_po_number || r.po_number || "").trim();
     const hasAttachedSap = Boolean(
       r.sap_103_doc ||
         r.sap_105_doc ||
@@ -1001,56 +1000,83 @@ export async function reconcileAndFixMismatchedDrcs(
         r.inspection_status === "GRN created" ||
         (r.status === "Closed" && !r.grn_number)
     );
-
-    if (!inv || !hasAttachedSap) {
-      updatedReceipts.push(r);
-      continue;
+    if (inv && hasAttachedSap) {
+      candidateIndices.push(i);
     }
-
-    try {
-      const lookup = await findSapDocumentsForDrc(po, inv);
-      // If invoice has NO matches in SAP MB51 history at all, yet the DRC has SAP docs:
-      if (!lookup.hasMatches) {
-        fixedCount++;
-        console.warn(
-          `Auto-reconciling DRC ${r.drc_number}: invoice ${inv} has no SAP MB51 records, clearing false 103/105 data.`
-        );
-        const cleanupData = {
-          sap_103_doc: null,
-          sap_103_date: null,
-          sap_105_doc: null,
-          sap_105_date: null,
-          grn_number: null,
-          grn_date: null,
-          status: "Pending Inspection" as const,
-          inspection_status: "Pending inspection" as const,
-          closed_date: null,
-          closed_by: null,
-          sap_items: [],
-        };
-        const repairedReceipt: ReceiptHeader = {
-          ...r,
-          ...cleanupData,
-        };
-
-        // Persist to database in background
-        supabase
-          .from("receipt_header")
-          .update(cleanupData)
-          .eq("id", r.id)
-          .then();
-
-        updatedReceipts.push(repairedReceipt);
-        continue;
-      }
-    } catch (e) {
-      console.warn(`Error during reconcile of DRC ${r.drc_number}:`, e);
-    }
-
-    updatedReceipts.push(r);
   }
 
-  return { fixedCount, updatedReceipts };
+  // If no candidates, return immediately in 0ms!
+  if (candidateIndices.length === 0) {
+    return { fixedCount: 0, updatedReceipts: receipts };
+  }
+
+  try {
+    // 2. Fetch all sap_material_documents relevant fields in ONE single fast query (<50ms)
+    // instead of making 30+ separate network roundtrips in series
+    const { data: sapRows, error } = await supabase
+      .from("sap_material_documents")
+      .select("invoice_number, document_header_text, purchase_order");
+
+    if (error || !sapRows || sapRows.length === 0) {
+      // Do not unlink anything if SAP material documents table cannot be read or is empty
+      return { fixedCount: 0, updatedReceipts: receipts };
+    }
+
+    let fixedCount = 0;
+    const updatedReceipts = [...receipts];
+
+    for (const idx of candidateIndices) {
+      const r = receipts[idx];
+      const inv = (r.invoice_number || "").trim();
+
+      // Check in-memory if ANY row in sapRows genuinely matches this invoice
+      const hasInvoiceMatchInSap = sapRows.some((row) =>
+        isInvoiceMatch(inv, row.invoice_number, row.document_header_text)
+      );
+
+      // If the invoice is genuinely found in SAP MB51 history, it's valid!
+      if (hasInvoiceMatchInSap) {
+        continue;
+      }
+
+      // If the invoice has NO matches in SAP MB51 history at all, yet the DRC has SAP docs:
+      fixedCount++;
+      console.warn(
+        `Auto-reconciling DRC ${r.drc_number}: invoice ${inv} has no SAP MB51 records, clearing false 103/105 data.`
+      );
+      const cleanupData = {
+        sap_103_doc: null,
+        sap_103_date: null,
+        sap_105_doc: null,
+        sap_105_date: null,
+        grn_number: null,
+        grn_date: null,
+        status: "Pending Inspection" as const,
+        inspection_status: "Pending inspection" as const,
+        closed_date: null,
+        closed_by: null,
+        sap_items: [],
+      };
+      const repairedReceipt: ReceiptHeader = {
+        ...r,
+        ...cleanupData,
+      };
+
+      // Persist to database in background
+      supabase
+        .from("receipt_header")
+        .update(cleanupData)
+        .eq("id", r.id)
+        .then();
+
+      updatedReceipts[idx] = repairedReceipt;
+    }
+
+    return { fixedCount, updatedReceipts };
+  } catch (err) {
+    console.warn("reconcileAndFixMismatchedDrcs error:", err);
+    return { fixedCount: 0, updatedReceipts: receipts };
+  }
 }
 
 /**

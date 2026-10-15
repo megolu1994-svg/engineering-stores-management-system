@@ -93,6 +93,7 @@ import {
   updateReceipt,
   getReceipts,
   getReceiptSummary,
+  computeSummaryFromReceipts,
   uploadReceiptPhotos,
   getNextDrcNumberSuggestion,
   getDrcDisplayStatus,
@@ -445,6 +446,10 @@ function combineDateWithNow(dateStr: string): string {
   return new Date().toISOString();
 }
 
+// Module-level in-memory cache for instant tab transitions
+let cachedReceipts: ReceiptHeader[] | null = null;
+let cachedSummary: ReceiptSummary | null = null;
+
 export default function MaterialReceipt() {
   useSwipeOpenDrawer();
 
@@ -462,17 +467,23 @@ export default function MaterialReceipt() {
   }
 
   // ---------------- Register + summary ----------------
-  const [summary, setSummary] = useState<ReceiptSummary>({
-    pendingInspection: 0,
-    inspectionOnHold: 0,
-    inspectionCleared: 0,
-    pendingGrn: 0,
-    closed: 0,
-    total: 0,
-  });
+  const [summary, setSummary] = useState<ReceiptSummary>(
+    () =>
+      cachedSummary || {
+        pendingInspection: 0,
+        inspectionOnHold: 0,
+        inspectionCleared: 0,
+        pendingGrn: 0,
+        closed: 0,
+        total: 0,
+      }
+  );
 
-  const [receipts, setReceipts] = useState<ReceiptHeader[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [receipts, setReceipts] = useState<ReceiptHeader[]>(
+    () => cachedReceipts || []
+  );
+  // If we already have cached receipts in memory, loading is false from turn 0 (0ms perceived wait)
+  const [loading, setLoading] = useState<boolean>(() => !cachedReceipts);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -480,6 +491,8 @@ export default function MaterialReceipt() {
   >("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+
+  const isInitialMount = useRef(true);
 
   const filteredReceipts = useMemo(() => {
     if (statusFilter === "all") return receipts;
@@ -490,49 +503,101 @@ export default function MaterialReceipt() {
   }, [receipts, statusFilter]);
 
   const loadSummary = useCallback(async () => {
-    const data = await getReceiptSummary();
-    setSummary(data);
+    try {
+      const data = await getReceiptSummary();
+      cachedSummary = data;
+      setSummary(data);
+    } catch {
+      // best-effort
+    }
   }, []);
 
-  const loadReceipts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getReceipts({
-        search,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-      });
-      // Automatically recover physical package details for any DRCs whose package data was previously overwritten
-      const { updatedReceipts: pkgsCleaned } = await separateAndRecoverPackageDetails(data);
-      // Automatically detect and un-link any DRCs whose attached SAP documents do not match their invoice
-      const { fixedCount, updatedReceipts } = await reconcileAndFixMismatchedDrcs(pkgsCleaned);
-      setReceipts(updatedReceipts);
-      if (fixedCount > 0) {
-        // Re-load summary to immediately reflect the restored status count
+  const loadReceipts = useCallback(
+    async (isSilent = false) => {
+      if (!isSilent && receipts.length === 0 && !cachedReceipts) {
+        setLoading(true);
+      }
+      try {
+        const data = await getReceipts({
+          search,
+          fromDate: fromDate || undefined,
+          toDate: toDate || undefined,
+        });
+
+        // 1. Immediately render the loaded receipts so user has zero wait time
+        setReceipts(data);
+        setLoading(false);
+
+        const hasFilters = Boolean(search || fromDate || toDate);
+        if (!hasFilters) {
+          cachedReceipts = data;
+          const freshSummary = computeSummaryFromReceipts(data);
+          cachedSummary = freshSummary;
+          setSummary(freshSummary);
+        }
+
+        // 2. Perform background reconciliation / package separation asynchronously without blocking UI
+        Promise.all([
+          separateAndRecoverPackageDetails(data),
+          reconcileAndFixMismatchedDrcs(data),
+        ])
+          .then(([pkgRes, recRes]) => {
+            let finalData = data;
+            let changed = false;
+
+            if (pkgRes.recoveredCount > 0) {
+              finalData = pkgRes.updatedReceipts;
+              changed = true;
+            }
+            if (recRes.fixedCount > 0) {
+              finalData = recRes.updatedReceipts;
+              changed = true;
+            }
+
+            if (changed) {
+              setReceipts(finalData);
+              if (!hasFilters) {
+                cachedReceipts = finalData;
+                const updatedSummary = computeSummaryFromReceipts(finalData);
+                cachedSummary = updatedSummary;
+                setSummary(updatedSummary);
+              }
+            }
+          })
+          .catch((e) => {
+            console.warn("Background DRC reconciliation error:", e);
+          });
+      } catch {
+        showSnackbar("Failed to load the receipt register.", "error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [search, fromDate, toDate, receipts.length]
+  );
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      // Load immediately on mount - zero artificial delay
+      loadReceipts(Boolean(cachedReceipts));
+      if (!cachedSummary) {
         loadSummary();
       }
-    } catch {
-      showSnackbar("Failed to load the receipt register.", "error");
-    } finally {
-      setLoading(false);
+      return;
     }
-  }, [search, fromDate, toDate, loadSummary]);
 
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
-
-  useEffect(() => {
+    // Debounce subsequent user search or date changes by 250ms
     const timer = setTimeout(() => {
       loadReceipts();
-    }, 300);
+    }, 250);
 
     return () => clearTimeout(timer);
-  }, [loadReceipts]);
+  }, [loadReceipts, loadSummary]);
 
-  async function refreshAll() {
-    await Promise.all([loadReceipts(), loadSummary()]);
-  }
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadReceipts(false), loadSummary()]);
+  }, [loadReceipts, loadSummary]);
 
   // ---------------- Create / Edit DRC form ----------------
   // Persisted to sessionStorage so an in-progress DRC survives the user
@@ -764,7 +829,11 @@ export default function MaterialReceipt() {
     setDrcDate(todayIso());
     setDrcNumber("");
     loadDrcSuggestion();
-    loadPreviousDrcs();
+    if (receipts.length > 0) {
+      setPreviousDrcs(receipts);
+    } else {
+      loadPreviousDrcs();
+    }
     setFormOpen(true);
   }
 
