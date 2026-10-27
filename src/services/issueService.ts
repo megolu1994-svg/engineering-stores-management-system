@@ -12,6 +12,10 @@ import { getAllocations } from "./materialAllocationService";
  * Inventory Transaction Engine's `applyStockMovement` (transactionType
  * "MATERIAL_ISSUE") - this file never writes to material_allocation or
  * inventory_transactions directly, so there is no duplicate stock logic.
+ *
+ * If Materials section is left empty, the Material Issue record is saved
+ * against the SAP reservation number & photograph without direct stock
+ * adjustments (stock reconciliation can be performed later).
  * ========================================================================= */
 
 export type IssueType = "Normal" | "Emergency" | "Returnable" | "Sample";
@@ -23,6 +27,20 @@ export const ISSUE_TYPES: IssueType[] = [
   "Sample",
 ];
 
+export const DEPARTMENTS = [
+  "Mechanical Maintenance MM",
+  "Electrical Maintenance EM",
+  "Instrument Maintenance IM",
+  "Production PN",
+  "Power & Utilities P&U",
+  "Human Resource HR",
+  "Fire & Safety F&S",
+] as const;
+
+export type DepartmentType = (typeof DEPARTMENTS)[number];
+
+const RECEIPT_PHOTOS_BUCKET = "receipt-photos";
+
 export interface IssueHeader {
   id: number;
   issue_number: string;
@@ -31,6 +49,8 @@ export interface IssueHeader {
   department: string;
   user_section: string | null;
   sap_reservation_number: string | null;
+  reservation_created_by?: string | null;
+  reservation_photo_url?: string | null;
   work_order_number: string | null;
   cost_center: string | null;
   issued_by: string;
@@ -78,20 +98,53 @@ export interface IssueMaterialInput {
 }
 
 export interface IssueHeaderInput {
-  issue_type: IssueType;
+  issue_type?: IssueType;
   department: string;
-  user_section: string;
-  sap_reservation_number: string;
-  work_order_number: string;
-  cost_center: string;
-  issued_by: string;
-  received_by: string;
-  remarks: string;
+  user_section?: string;
+  sap_reservation_number?: string;
+  reservation_created_by?: string;
+  reservation_photo_url?: string;
+  work_order_number?: string;
+  cost_center?: string;
+  issued_by?: string;
+  received_by?: string;
+  remarks?: string;
 }
 
-function toNullable(value: string): string | null {
+function toNullable(value: string | undefined | null): string | null {
+  if (!value) return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+/**
+ * Uploads a reservation slip photograph to Supabase Storage and returns
+ * the public URL.
+ */
+export async function uploadReservationPhoto(file: File): Promise<string> {
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+  const path = `reservation-photos/${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(RECEIPT_PHOTOS_BUCKET)
+    .upload(path, file);
+
+  if (uploadError) {
+    console.error("Reservation photo upload failed:", uploadError.message);
+    throw uploadError;
+  }
+
+  const { data } = supabase.storage
+    .from(RECEIPT_PHOTOS_BUCKET)
+    .getPublicUrl(path);
+
+  if (!data?.publicUrl) {
+    throw new Error("Could not retrieve public URL for uploaded photo.");
+  }
+
+  return data.publicUrl;
 }
 
 /**
@@ -109,16 +162,16 @@ export interface IssueValidationResult {
 }
 
 /**
- * Client-side validation matching the module's save rules: at least one
- * material, every material has at least one location, every issue
- * quantity is greater than zero, and no issue quantity exceeds the
- * available quantity at that location.
+ * Client-side validation: Materials section is optional (for quick reservation
+ * capture). If materials are added, each must have at least one location,
+ * positive issue quantity, and not exceed available stock.
  */
 export function validateIssue(
   materials: IssueMaterialInput[]
 ): IssueValidationResult {
-  if (materials.length === 0) {
-    return { valid: false, error: "Please add at least one material." };
+  // Materials section is optional: empty array is valid!
+  if (!materials || materials.length === 0) {
+    return { valid: true, error: null };
   }
 
   for (const material of materials) {
@@ -156,6 +209,10 @@ export interface IssueSummary {
 }
 
 export function summarizeIssue(materials: IssueMaterialInput[]): IssueSummary {
+  if (!materials || materials.length === 0) {
+    return { totalMaterials: 0, totalLocations: 0, totalQuantity: 0 };
+  }
+
   const totalMaterials = materials.length;
   const totalLocations = materials.reduce(
     (sum, m) => sum + m.locations.length,
@@ -170,108 +227,183 @@ export function summarizeIssue(materials: IssueMaterialInput[]): IssueSummary {
   return { totalMaterials, totalLocations, totalQuantity };
 }
 
+function parseIssueRow(row: any): IssueHeader {
+  let reservationBy = row.reservation_created_by || row.user_section || null;
+  let photoUrl = row.reservation_photo_url || null;
+
+  if (row.remarks) {
+    if (!photoUrl) {
+      const match = row.remarks.match(/Reservation Photo:\s*([^\s|]+)/i);
+      if (match) photoUrl = match[1];
+    }
+    if (!reservationBy) {
+      const match = row.remarks.match(/Reservation By:\s*([^|]+)/i);
+      if (match) reservationBy = match[1].trim();
+    }
+  }
+
+  return {
+    ...row,
+    reservation_created_by: reservationBy,
+    reservation_photo_url: photoUrl,
+  };
+}
+
 /**
- * Creates a Material Issue: one issue_header row, one issue_items row
- * per material, one issue_item_locations row per issued location, and -
- * for every issued location - one MATERIAL_ISSUE stock movement via the
- * Inventory Engine (which decreases material_allocation and logs the OUT
- * transaction). issue_number and issue_datetime are generated by the
- * database trigger.
+ * Creates a Material Issue: one issue_header row, optional issue_items row
+ * per material, optional issue_item_locations row per issued location, and
+ * stock movements via applyStockMovement when materials are included.
  */
 export async function createIssue(
   header: IssueHeaderInput,
-  materials: IssueMaterialInput[]
+  materials: IssueMaterialInput[] = []
 ): Promise<IssueHeader> {
   const validation = validateIssue(materials);
   if (!validation.valid) {
     throw new Error(validation.error ?? "Invalid issue.");
   }
 
-  // Blocked materials cannot be issued - check before creating the
-  // header so no orphaned issue rows are left behind.
-  for (const material of materials) {
-    await assertMaterialNotBlocked(material.material_code);
+  // Blocked materials cannot be issued - check before creating the header
+  if (materials.length > 0) {
+    for (const material of materials) {
+      await assertMaterialNotBlocked(material.material_code);
+    }
   }
 
   const { totalMaterials, totalLocations, totalQuantity } =
     summarizeIssue(materials);
 
-  const { data: headerData, error: headerError } = await supabase
+  const issueType = header.issue_type || "Normal";
+  const reservationBy = header.reservation_created_by?.trim() || null;
+  const photoUrl = header.reservation_photo_url?.trim() || null;
+  const rawRemarks = header.remarks?.trim() || "";
+
+  // Combine remarks for fallback storage if custom columns aren't in DB yet
+  const noteParts: string[] = [];
+  if (rawRemarks) noteParts.push(rawRemarks);
+  if (reservationBy) noteParts.push(`Reservation By: ${reservationBy}`);
+  if (photoUrl) noteParts.push(`Reservation Photo: ${photoUrl}`);
+  const combinedRemarks = noteParts.join(" | ") || null;
+
+  const fullPayload: Record<string, unknown> = {
+    issue_type: issueType,
+    department: header.department.trim(),
+    user_section: toNullable(reservationBy || header.user_section || ""),
+    sap_reservation_number: toNullable(header.sap_reservation_number || ""),
+    reservation_created_by: reservationBy,
+    reservation_photo_url: photoUrl,
+    work_order_number: toNullable(header.work_order_number || ""),
+    cost_center: toNullable(header.cost_center || ""),
+    issued_by: (header.issued_by || reservationBy || "System").trim(),
+    received_by: (header.received_by || header.department || "").trim(),
+    remarks: photoUrl ? combinedRemarks : toNullable(rawRemarks),
+    total_materials: totalMaterials,
+    total_locations: totalLocations,
+    total_quantity: totalQuantity,
+  };
+
+  let headerData: any;
+
+  const res = await supabase
     .from("issue_header")
-    .insert([
-      {
-        issue_type: header.issue_type,
-        department: header.department.trim(),
-        user_section: toNullable(header.user_section),
-        sap_reservation_number: toNullable(header.sap_reservation_number),
-        work_order_number: toNullable(header.work_order_number),
-        cost_center: toNullable(header.cost_center),
-        issued_by: header.issued_by.trim(),
-        received_by: header.received_by.trim(),
-        remarks: toNullable(header.remarks),
-        total_materials: totalMaterials,
-        total_locations: totalLocations,
-        total_quantity: totalQuantity,
-      },
-    ])
+    .insert([fullPayload])
     .select()
     .single();
 
-  if (headerError) throw headerError;
+  if (res.error) {
+    // If reservation columns are not yet in the DB table (error 42703),
+    // retry with core columns while preserving the values in user_section & remarks
+    if (res.error.code === "42703") {
+      console.warn(
+        "issue_header missing reservation columns; falling back to remarks/user_section embedding:",
+        res.error.message
+      );
+      const fallbackPayload = {
+        issue_type: issueType,
+        department: header.department.trim(),
+        user_section: toNullable(reservationBy || header.user_section || ""),
+        sap_reservation_number: toNullable(header.sap_reservation_number || ""),
+        work_order_number: toNullable(header.work_order_number || ""),
+        cost_center: toNullable(header.cost_center || ""),
+        issued_by: (header.issued_by || reservationBy || "System").trim(),
+        received_by: (header.received_by || header.department || "").trim(),
+        remarks: combinedRemarks,
+        total_materials: totalMaterials,
+        total_locations: totalLocations,
+        total_quantity: totalQuantity,
+      };
 
-  const issue = headerData as IssueHeader;
+      const fallbackRes = await supabase
+        .from("issue_header")
+        .insert([fallbackPayload])
+        .select()
+        .single();
 
-  for (const material of materials) {
-    const materialTotalQty = material.locations.reduce(
-      (sum, l) => sum + l.issueQty,
-      0
-    );
+      if (fallbackRes.error) throw fallbackRes.error;
+      headerData = fallbackRes.data;
+    } else {
+      throw res.error;
+    }
+  } else {
+    headerData = res.data;
+  }
 
-    const { data: itemData, error: itemError } = await supabase
-      .from("issue_items")
-      .insert([
-        {
-          issue_id: issue.id,
-          material_code: material.material_code,
-          short_description: material.short_description,
-          uom: material.uom,
-          total_issue_qty: materialTotalQty,
-        },
-      ])
-      .select()
-      .single();
+  const issue = parseIssueRow(headerData);
 
-    if (itemError) throw itemError;
+  // If materials were provided, insert item records and perform stock deduction
+  if (materials.length > 0) {
+    for (const material of materials) {
+      const materialTotalQty = material.locations.reduce(
+        (sum, l) => sum + l.issueQty,
+        0
+      );
 
-    const issueItemId = itemData.id as number;
-
-    for (const loc of material.locations) {
-      // Inventory Engine: decreases material_allocation and logs one
-      // MATERIAL_ISSUE / OUT transaction for this location.
-      await applyStockMovement({
-        materialCode: material.material_code,
-        locationCode: loc.location_code,
-        prevQuantity: loc.availableQty,
-        newQuantity: loc.availableQty - loc.issueQty,
-        allocationId: loc.allocationId,
-        transactionType: "MATERIAL_ISSUE",
-        referenceType: "ISSUE",
-        referenceNumber: issue.issue_number,
-        reason: header.issue_type,
-        remarks: header.remarks || undefined,
-      });
-
-      const { error: locError } = await supabase
-        .from("issue_item_locations")
+      const { data: itemData, error: itemError } = await supabase
+        .from("issue_items")
         .insert([
           {
-            issue_item_id: issueItemId,
-            location_code: loc.location_code,
-            issue_qty: loc.issueQty,
+            issue_id: issue.id,
+            material_code: material.material_code,
+            short_description: material.short_description,
+            uom: material.uom,
+            total_issue_qty: materialTotalQty,
           },
-        ]);
+        ])
+        .select()
+        .single();
 
-      if (locError) throw locError;
+      if (itemError) throw itemError;
+
+      const issueItemId = itemData.id as number;
+
+      for (const loc of material.locations) {
+        // Inventory Engine: decreases material_allocation and logs one
+        // MATERIAL_ISSUE / OUT transaction for this location.
+        await applyStockMovement({
+          materialCode: material.material_code,
+          locationCode: loc.location_code,
+          prevQuantity: loc.availableQty,
+          newQuantity: loc.availableQty - loc.issueQty,
+          allocationId: loc.allocationId,
+          transactionType: "MATERIAL_ISSUE",
+          referenceType: "ISSUE",
+          referenceNumber: issue.issue_number,
+          reason: issueType,
+          remarks: header.remarks || undefined,
+        });
+
+        const { error: locError } = await supabase
+          .from("issue_item_locations")
+          .insert([
+            {
+              issue_item_id: issueItemId,
+              location_code: loc.location_code,
+              issue_qty: loc.issueQty,
+            },
+          ]);
+
+        if (locError) throw locError;
+      }
     }
   }
 
@@ -301,6 +433,5 @@ export async function getIssuesToday(): Promise<IssueHeader[]> {
     return [];
   }
 
-  return (data ?? []) as IssueHeader[];
+  return ((data ?? []) as any[]).map(parseIssueRow);
 }
-
