@@ -15,6 +15,7 @@ import Settings from "./pages/Settings";
 import SapStock from "./pages/SapStock";
 import SapHistory from "./pages/SapHistory";
 import RfidTags from "./pages/RfidTags";
+import StoreChat from "./pages/StoreChat";
 
 export default function App() {
   return (
@@ -34,6 +35,8 @@ export default function App() {
           <Route path="material-receipt" element={<MaterialReceipt />} />
 
           <Route path="material-issue" element={<MaterialIssue />} />
+
+          <Route path="store-chat" element={<StoreChat />} />
 
           <Route path="rfid-tags" element={<RfidTags />} />
 

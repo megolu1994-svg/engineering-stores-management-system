@@ -37,6 +37,7 @@ import ContentPasteSearchIcon from "@mui/icons-material/ContentPasteSearch";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import HistoryIcon from "@mui/icons-material/History";
 import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
+import ForumIcon from "@mui/icons-material/Forum";
 
 import { useTheme } from "@mui/material/styles";
 
@@ -100,6 +101,7 @@ const menuItems = [
   { text: "Inventory", path: "/allocation", icon: <FactCheckIcon /> },
   { text: "Material Receipt", path: "/material-receipt", icon: <LocalShippingIcon /> },
   { text: "Material Issue", path: "/material-issue", icon: <OutputIcon /> },
+  { text: "Store Chat", path: "/store-chat", icon: <ForumIcon /> },
   { text: "RFID Tags", path: "/rfid-tags", icon: <QrCodeScannerIcon /> },
   { text: "SAP Stock", path: "/sap-stock", icon: <AccountTreeIcon /> },
   { text: "SAP History", path: "/sap-history", icon: <HistoryIcon /> },
@@ -425,6 +427,22 @@ export default function AppLayout() {
               </Box>
             )}
 
+            {mobile && (
+              <Box sx={{ ml: "auto", zIndex: 1 }}>
+                <IconButton
+                  color="inherit"
+                  size="small"
+                  aria-label="Store Chat"
+                  onClick={() => navigate("/store-chat")}
+                  sx={{
+                    bgcolor: location.pathname === "/store-chat" ? "rgba(255,255,255,0.2)" : "transparent",
+                  }}
+                >
+                  <ForumIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            )}
+
             {/* Desktop-only: brand block sized to the sidebar width so its
                 right edge lines up with the sidebar/content seam below,
                 keeping the header on the same grid as the rest of the page. */}
@@ -501,6 +519,21 @@ export default function AppLayout() {
                 mobile at all. */}
             {!mobile && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, ml: 2, flexShrink: 0 }}>
+                <Tooltip title="Store Chat & Activity Log">
+                  <IconButton
+                    size="small"
+                    aria-label="Store Chat"
+                    onClick={() => navigate("/store-chat")}
+                    sx={{
+                      color: "#FFFFFF",
+                      bgcolor: location.pathname === "/store-chat" ? "rgba(255,255,255,0.2)" : "transparent",
+                      "&:hover": { bgcolor: "rgba(255,255,255,0.15)" },
+                    }}
+                  >
+                    <ForumIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+
                 <IconButton
                   key={ringKey}
                   size="small"
