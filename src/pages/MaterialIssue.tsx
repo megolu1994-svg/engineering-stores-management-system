@@ -9,6 +9,7 @@ import {
   Chip,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
@@ -57,6 +58,7 @@ import PhotoViewerDialog from "../components/PhotoViewerDialog";
 
 import {
   createIssue,
+  reconcileIssueStock,
   getIssues,
   getIssueWithItems,
   getMaterialStockLocations,
@@ -181,6 +183,201 @@ export default function MaterialIssue() {
 
   const [detailsModalIssue, setDetailsModalIssue] = useState<IssueWithItems | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Reconciliation Modal state
+  const [reconcileTargetIssue, setReconcileTargetIssue] = useState<IssueHeader | null>(null);
+  const [reconcileMaterials, setReconcileMaterials] = useState<MaterialRowState[]>([]);
+  const [reconcileRemarks, setReconcileRemarks] = useState("");
+  const [savingReconciliation, setSavingReconciliation] = useState(false);
+
+  function openReconcileModal(issue: IssueHeader) {
+    setReconcileTargetIssue(issue);
+    setReconcileMaterials([emptyMaterialRow()]);
+    setReconcileRemarks("");
+
+    // Automatically float the reservation slip photo if present so the user can see it!
+    if (issue.reservation_photo_url) {
+      setSelectedPhotoModal({
+        url: issue.reservation_photo_url,
+        title: issue.issue_number,
+        reservationNo: issue.sap_reservation_number,
+        createdBy: issue.reservation_created_by,
+        department: issue.department,
+        date: formatIssueDate(issue.issue_datetime),
+      });
+    }
+  }
+
+  function closeReconcileModal() {
+    setReconcileTargetIssue(null);
+    setReconcileMaterials([]);
+    setReconcileRemarks("");
+  }
+
+  function addReconcileMaterialRow() {
+    setReconcileMaterials((prev) => [...prev, emptyMaterialRow()]);
+  }
+
+  function removeReconcileMaterialRow(rowKey: string) {
+    setReconcileMaterials((prev) => prev.filter((r) => r.rowKey !== rowKey));
+  }
+
+  async function handleReconcileMaterialSelect(rowKey: string, material: Material | null) {
+    setReconcileMaterials((prev) =>
+      prev.map((row) =>
+        row.rowKey === rowKey
+          ? {
+              ...row,
+              material,
+              stockLocations: [],
+              totalAvailableQty: 0,
+              locations: [],
+              loadingStock: !!material,
+            }
+          : row
+      )
+    );
+
+    if (!material) return;
+
+    try {
+      const allocations = await getMaterialStockLocations(material.material_code);
+      const activeAllocations = allocations.filter((a) => a.quantity > 0);
+      const totalAvailableQty = activeAllocations.reduce(
+        (sum, a) => sum + Number(a.quantity),
+        0
+      );
+
+      setReconcileMaterials((prev) =>
+        prev.map((row) =>
+          row.rowKey === rowKey
+            ? {
+                ...row,
+                stockLocations: activeAllocations,
+                totalAvailableQty,
+                loadingStock: false,
+              }
+            : row
+        )
+      );
+    } catch {
+      showSnackbar("Failed to load stock locations for this material.", "error");
+      setReconcileMaterials((prev) =>
+        prev.map((row) =>
+          row.rowKey === rowKey ? { ...row, loadingStock: false } : row
+        )
+      );
+    }
+  }
+
+  function addReconcileLocationRow(materialRowKey: string, allocation: MaterialAllocation) {
+    setReconcileMaterials((prev) =>
+      prev.map((row) =>
+        row.rowKey === materialRowKey
+          ? {
+              ...row,
+              locations: [
+                ...row.locations,
+                {
+                  rowKey: makeKey(),
+                  location_code: allocation.location_code,
+                  availableQty: Number(allocation.quantity),
+                  allocationId: allocation.id as number,
+                  issueQty: "",
+                },
+              ],
+            }
+          : row
+      )
+    );
+  }
+
+  function removeReconcileLocationRow(materialRowKey: string, locationRowKey: string) {
+    setReconcileMaterials((prev) =>
+      prev.map((row) =>
+        row.rowKey === materialRowKey
+          ? {
+              ...row,
+              locations: row.locations.filter((l) => l.rowKey !== locationRowKey),
+            }
+          : row
+      )
+    );
+  }
+
+  function updateReconcileIssueQty(
+    materialRowKey: string,
+    locationRowKey: string,
+    value: string
+  ) {
+    setReconcileMaterials((prev) =>
+      prev.map((row) =>
+        row.rowKey === materialRowKey
+          ? {
+              ...row,
+              locations: row.locations.map((l) =>
+                l.rowKey === locationRowKey ? { ...l, issueQty: value } : l
+              ),
+            }
+          : row
+      )
+    );
+  }
+
+  function buildReconcileMaterialInputs(): IssueMaterialInput[] {
+    return reconcileMaterials
+      .filter((row) => row.material)
+      .map((row) => ({
+        material_code: row.material!.material_code,
+        short_description: row.material!.short_description,
+        uom: row.material!.uom,
+        locations: row.locations.map((l): IssueLocationInput => ({
+          location_code: l.location_code,
+          availableQty: l.availableQty,
+          allocationId: l.allocationId,
+          issueQty: Number(l.issueQty) || 0,
+        })),
+      }));
+  }
+
+  async function handleSaveReconciliation() {
+    if (!reconcileTargetIssue) return;
+    const inputs = buildReconcileMaterialInputs();
+    if (inputs.length === 0) {
+      showSnackbar("Please add at least one material to complete reconciliation.", "warning");
+      return;
+    }
+
+    const validation = validateIssue(inputs);
+    if (!validation.valid) {
+      showSnackbar(validation.error ?? "Please review material details.", "warning");
+      return;
+    }
+
+    setSavingReconciliation(true);
+    try {
+      const updatedIssue = await reconcileIssueStock(
+        reconcileTargetIssue.id,
+        inputs,
+        reconcileTargetIssue.reservation_created_by || undefined,
+        reconcileRemarks
+      );
+      showSnackbar(
+        `Issue ${updatedIssue.issue_number} reconciled! Stock adjusted for ${inputs.length} material(s).`,
+        "success"
+      );
+      closeReconcileModal();
+      loadHistory();
+      if (detailsModalIssue && detailsModalIssue.id === updatedIssue.id) {
+        openIssueDetails(updatedIssue);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.message || "Failed to complete stock reconciliation.", "error");
+    } finally {
+      setSavingReconciliation(false);
+    }
+  }
 
   function showSnackbar(message: string, severity: SnackbarSeverity) {
     setSnackbar({ open: true, message, severity });
@@ -1364,10 +1561,37 @@ export default function MaterialIssue() {
                         {issue.department}
                       </Typography>
                     </Grid>
+
+                    <Grid size={12}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.7rem" }}>
+                        Stock Status
+                      </Typography>
+                      {issue.total_materials > 0 ? (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: "success.main" }}>
+                            {issue.total_quantity} Qty Issued
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            ({issue.total_materials} {issue.total_materials === 1 ? "item" : "items"})
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.25 }}>
+                          <Chip
+                            size="small"
+                            label="Reconciliation Pending"
+                            color="warning"
+                            variant="outlined"
+                            onClick={() => openReconcileModal(issue)}
+                            sx={{ fontWeight: 700, fontSize: "0.7rem", height: 22, cursor: "pointer" }}
+                          />
+                        </Box>
+                      )}
+                    </Grid>
                   </Grid>
 
                   {/* Photograph Banner / Thumbnail */}
-                  <Box sx={{ mt: 1.5, pt: 1, borderTop: "1px dashed", borderColor: "divider", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <Box sx={{ mt: 1.5, pt: 1, borderTop: "1px dashed", borderColor: "divider", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
                     {issue.reservation_photo_url ? (
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                         <Box
@@ -1419,13 +1643,27 @@ export default function MaterialIssue() {
                       </Typography>
                     )}
 
-                    <Button
-                      size="small"
-                      onClick={() => openIssueDetails(issue)}
-                      sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 700 }}
-                    >
-                      Details
-                    </Button>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, ml: "auto" }}>
+                      {issue.total_materials === 0 && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="warning"
+                          startIcon={<Inventory2OutlinedIcon sx={{ fontSize: 14 }} />}
+                          onClick={() => openReconcileModal(issue)}
+                          sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 700, borderRadius: 1.5, height: 30 }}
+                        >
+                          Reconcile
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        onClick={() => openIssueDetails(issue)}
+                        sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 700, height: 30 }}
+                      >
+                        Details
+                      </Button>
+                    </Box>
                   </Box>
                 </Card>
               ))}
@@ -1577,33 +1815,51 @@ export default function MaterialIssue() {
                             </Typography>
                           </Box>
                         ) : (
-                          <Tooltip title="Stock reconciliation can be done later in app">
-                            <Chip
-                              size="small"
-                              label="Reconciliation Pending"
-                              color="warning"
-                              variant="outlined"
-                              sx={{ fontWeight: 600, fontSize: "0.72rem" }}
-                            />
-                          </Tooltip>
+                          <Chip
+                            size="small"
+                            label="Reconciliation Pending"
+                            color="warning"
+                            variant="outlined"
+                            sx={{ fontWeight: 600, fontSize: "0.72rem" }}
+                          />
                         )}
                       </TableCell>
 
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant="body2" noWrap>
                           {formatIssueDate(issue.issue_datetime).split(",")[0]}
                         </Typography>
                       </TableCell>
 
-                      <TableCell align="right">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => openIssueDetails(issue)}
-                          sx={{ borderRadius: 1.5, textTransform: "none", fontWeight: 600 }}
-                        >
-                          Details
-                        </Button>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end", alignItems: "center" }}>
+                          {issue.total_materials === 0 && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="warning"
+                              onClick={() => openReconcileModal(issue)}
+                              startIcon={<Inventory2OutlinedIcon sx={{ fontSize: 14 }} />}
+                              sx={{
+                                borderRadius: 1.5,
+                                textTransform: "none",
+                                fontWeight: 700,
+                                fontSize: "0.75rem",
+                                boxShadow: "none",
+                              }}
+                            >
+                              Reconcile
+                            </Button>
+                          )}
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => openIssueDetails(issue)}
+                            sx={{ borderRadius: 1.5, textTransform: "none", fontWeight: 600, fontSize: "0.75rem" }}
+                          >
+                            Details
+                          </Button>
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1806,14 +2062,532 @@ export default function MaterialIssue() {
                   </Table>
                 </TableContainer>
               ) : (
-                <Alert severity="info" variant="outlined" sx={{ borderRadius: 1.5 }}>
-                  No materials were linked at time of issue. Stock reconciliation against this SAP reservation photograph can be completed later.
-                </Alert>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    p: 2.5,
+                    borderRadius: 2,
+                    bgcolor: "warning.50",
+                    borderColor: "warning.300",
+                    display: "flex",
+                    flexDirection: { xs: "column", sm: "row" },
+                    alignItems: { xs: "stretch", sm: "center" },
+                    justifyContent: "space-between",
+                    gap: 2,
+                  }}
+                >
+                  <Box>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                      <Chip
+                        size="small"
+                        label="Reconciliation Pending"
+                        color="warning"
+                        sx={{ fontWeight: 800, fontSize: "0.75rem" }}
+                      />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "warning.dark" }}>
+                        No Stock Deducted Yet
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      This issue was created with the SAP reservation photograph. You can reconcile stock now to select actual materials, storage locations, and deduct inventory directly.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    size="medium"
+                    startIcon={<Inventory2OutlinedIcon />}
+                    onClick={() => {
+                      const target = detailsModalIssue;
+                      setDetailsModalIssue(null);
+                      openReconcileModal(target);
+                    }}
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: "none",
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 4px 14px rgba(237, 108, 2, 0.35)",
+                      px: 2.5,
+                      py: 1,
+                    }}
+                  >
+                    Reconcile Stock Now
+                  </Button>
+                </Card>
               )}
             </Box>
           </Stack>
         ) : null}
       </DialogContent>
+      <DialogActions sx={{ p: 2, borderTop: "1px solid", borderColor: "divider", justifyContent: "space-between" }}>
+        <Box>
+          {detailsModalIssue?.reservation_photo_url && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<PhotoCameraIcon fontSize="small" />}
+              onClick={() => {
+                if (detailsModalIssue) {
+                  setSelectedPhotoModal({
+                    url: detailsModalIssue.reservation_photo_url!,
+                    title: detailsModalIssue.issue_number,
+                    reservationNo: detailsModalIssue.sap_reservation_number,
+                    createdBy: detailsModalIssue.reservation_created_by,
+                    department: detailsModalIssue.department,
+                    date: formatIssueDate(detailsModalIssue.issue_datetime),
+                  });
+                }
+              }}
+              sx={{ textTransform: "none", borderRadius: 1.5, fontWeight: 600 }}
+            >
+              View Reservation Photo
+            </Button>
+          )}
+        </Box>
+        <Stack direction="row" spacing={1}>
+          {detailsModalIssue?.total_materials === 0 && (
+            <Button
+              variant="contained"
+              color="warning"
+              startIcon={<Inventory2OutlinedIcon fontSize="small" />}
+              onClick={() => {
+                const target = detailsModalIssue;
+                setDetailsModalIssue(null);
+                openReconcileModal(target);
+              }}
+              sx={{ fontWeight: 800, textTransform: "none", borderRadius: 1.5 }}
+            >
+              Reconcile Stock
+            </Button>
+          )}
+          <Button
+            variant="outlined"
+            onClick={() => setDetailsModalIssue(null)}
+            sx={{ textTransform: "none", borderRadius: 1.5 }}
+          >
+            Close
+          </Button>
+        </Stack>
+      </DialogActions>
+    </Dialog>
+
+    {/* Complete Stock Reconciliation Modal */}
+    <Dialog
+      open={!!reconcileTargetIssue}
+      onClose={closeReconcileModal}
+      maxWidth="md"
+      fullWidth
+      sx={{
+        "& .MuiBackdrop-root": {
+          bgcolor: "rgba(15, 23, 42, 0.45)",
+        },
+      }}
+    >
+      <DialogTitle
+        sx={{
+          m: 0,
+          p: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Inventory2OutlinedIcon color="warning" />
+            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+              Stock Reconciliation - {reconcileTargetIssue?.issue_number}
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            Reservation: <strong>{reconcileTargetIssue?.sap_reservation_number || "None"}</strong> | Dept: <strong>{reconcileTargetIssue?.department}</strong> | Created By: <strong>{reconcileTargetIssue?.reservation_created_by || "-"}</strong>
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={closeReconcileModal}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 2.5, display: "flex", flexDirection: "column", gap: 2.5 }}>
+        {/* Banner with slip photo action */}
+        <Card
+          variant="outlined"
+          sx={{
+            p: 1.5,
+            borderRadius: 2,
+            bgcolor: "primary.50",
+            borderColor: "primary.200",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 1.5,
+          }}
+        >
+          <Box sx={{ minWidth: 240, flex: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "primary.dark" }}>
+              Matching against Reservation Slip
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              The reservation photograph is floating on screen. You can drag, resize, rotate, or zoom it while reconciling items below!
+            </Typography>
+          </Box>
+          {reconcileTargetIssue?.reservation_photo_url && (
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              startIcon={<PhotoCameraIcon sx={{ fontSize: 16 }} />}
+              onClick={() => {
+                setSelectedPhotoModal({
+                  url: reconcileTargetIssue.reservation_photo_url!,
+                  title: reconcileTargetIssue.issue_number,
+                  reservationNo: reconcileTargetIssue.sap_reservation_number,
+                  createdBy: reconcileTargetIssue.reservation_created_by,
+                  department: reconcileTargetIssue.department,
+                  date: formatIssueDate(reconcileTargetIssue.issue_datetime),
+                });
+              }}
+              sx={{ textTransform: "none", fontWeight: 700, borderRadius: 1.5 }}
+            >
+              Show / Focus Slip Photo
+            </Button>
+          )}
+        </Card>
+
+        {/* Materials List */}
+        <Box>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Materials to Deduct from Warehouse Stock
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={addReconcileMaterialRow}
+              sx={{ textTransform: "none", fontWeight: 700, borderRadius: 1.5 }}
+            >
+              Add Material
+            </Button>
+          </Box>
+
+          {reconcileMaterials.length === 0 ? (
+            <Card
+              variant="outlined"
+              sx={{
+                p: 4,
+                textAlign: "center",
+                borderRadius: 2,
+                borderStyle: "dashed",
+                bgcolor: "background.default",
+              }}
+            >
+              <Inventory2OutlinedIcon sx={{ fontSize: 36, color: "text.disabled", mb: 1 }} />
+              <Typography variant="body2" sx={{ fontWeight: 600, color: "text.secondary" }}>
+                No materials added yet for this reservation.
+              </Typography>
+              <Typography variant="caption" color="text.disabled" sx={{ display: "block", mb: 2 }}>
+                Click below to add materials from your warehouse inventory.
+              </Typography>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={addReconcileMaterialRow}
+                sx={{ textTransform: "none", fontWeight: 700, borderRadius: 1.5 }}
+              >
+                Add First Material
+              </Button>
+            </Card>
+          ) : (
+            <Stack spacing={2}>
+              {reconcileMaterials.map((matRow, mIdx) => (
+                <Card
+                  key={matRow.rowKey}
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    borderColor: "divider",
+                    bgcolor: "background.paper",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary", textTransform: "uppercase" }}>
+                      Item #{mIdx + 1}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeReconcileMaterialRow(matRow.rowKey)}
+                      title="Remove this material"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+
+                  {/* Material Search Field */}
+                  <MaterialSearch
+                    value={matRow.material}
+                    onChange={(m) => handleReconcileMaterialSelect(matRow.rowKey, m)}
+                    label="Search Material by code or description"
+                  />
+
+                  {/* Loading Stock indicator */}
+                  {matRow.loadingStock && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1.5 }}>
+                      <CircularProgress size={16} />
+                      <Typography variant="caption" color="text.secondary">
+                        Checking available stock locations in warehouse...
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Material Selected Info */}
+                  {matRow.material && !matRow.loadingStock && (
+                    <Box sx={{ mt: 2 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          p: 1.25,
+                          borderRadius: 1.5,
+                          bgcolor: matRow.totalAvailableQty > 0 ? "success.50" : "error.50",
+                          border: "1px solid",
+                          borderColor: matRow.totalAvailableQty > 0 ? "success.200" : "error.200",
+                          mb: 1.5,
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            {matRow.material.material_code} - {matRow.material.short_description}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Unit of Measure: <strong>{matRow.material.uom || "EA"}</strong>
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          color={matRow.totalAvailableQty > 0 ? "success" : "error"}
+                          label={`Available Stock: ${matRow.totalAvailableQty} ${matRow.material.uom || ""}`}
+                          sx={{ fontWeight: 700, fontSize: "0.75rem" }}
+                        />
+                      </Box>
+
+                      {/* Locations & Quantities */}
+                      {matRow.stockLocations.length === 0 ? (
+                        <Alert severity="warning" variant="outlined" sx={{ borderRadius: 1.5, mt: 1 }}>
+                          Zero stock available in warehouse for this material code.
+                        </Alert>
+                      ) : (
+                        <Box>
+                          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>
+                              Deduct from Warehouse Location(s)
+                            </Typography>
+                            {/* Quick Add from Available Locations */}
+                            {matRow.locations.length < matRow.stockLocations.length && (
+                              <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+                                {matRow.stockLocations
+                                  .filter((loc) => !matRow.locations.some((l) => l.allocationId === loc.id))
+                                  .map((alloc) => (
+                                    <Button
+                                      key={alloc.id}
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<PlaceIcon sx={{ fontSize: 13 }} />}
+                                      onClick={() => addReconcileLocationRow(matRow.rowKey, alloc)}
+                                      sx={{
+                                        textTransform: "none",
+                                        fontSize: "0.72rem",
+                                        py: 0.2,
+                                        px: 1,
+                                        borderRadius: 1.5,
+                                      }}
+                                    >
+                                      + {alloc.location_code} ({alloc.quantity})
+                                    </Button>
+                                  ))}
+                              </Box>
+                            )}
+                          </Box>
+
+                          {matRow.locations.length === 0 ? (
+                            <Box sx={{ p: 1.5, bgcolor: "action.hover", borderRadius: 1.5, textAlign: "center" }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Click one of the location buttons above to select where stock was picked from.
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Stack spacing={1}>
+                              {matRow.locations.map((locRow) => {
+                                const issueNum = Number(locRow.issueQty) || 0;
+                                const isOver = issueNum > locRow.availableQty;
+                                return (
+                                  <Box
+                                    key={locRow.rowKey}
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 1.5,
+                                      p: 1,
+                                      borderRadius: 1.5,
+                                      bgcolor: isOver ? "error.50" : "background.default",
+                                      border: "1px solid",
+                                      borderColor: isOver ? "error.300" : "divider",
+                                    }}
+                                  >
+                                    <Chip
+                                      icon={<PlaceIcon sx={{ fontSize: 14 }} />}
+                                      label={locRow.location_code}
+                                      size="small"
+                                      sx={{ fontWeight: 700, bgcolor: "primary.100", color: "primary.dark" }}
+                                    />
+                                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 100 }}>
+                                      Avail: <strong>{locRow.availableQty}</strong>
+                                    </Typography>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      label="Issue Qty"
+                                      value={locRow.issueQty}
+                                      onChange={(e) =>
+                                        updateReconcileIssueQty(
+                                          matRow.rowKey,
+                                          locRow.rowKey,
+                                          e.target.value
+                                        )
+                                      }
+                                      error={isOver}
+                                      helperText={isOver ? `Max ${locRow.availableQty}` : undefined}
+                                      sx={{ width: 130 }}
+                                      slotProps={{
+                                        htmlInput: { min: 1, max: locRow.availableQty, step: 1 },
+                                      }}
+                                    />
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() =>
+                                        removeReconcileLocationRow(matRow.rowKey, locRow.rowKey)
+                                      }
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
+                                );
+                              })}
+                            </Stack>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Card>
+              ))}
+            </Stack>
+          )}
+        </Box>
+
+        {/* Remarks */}
+        <TextField
+          fullWidth
+          size="small"
+          label="Reconciliation Remarks / Notes"
+          placeholder="e.g. Verified against physical reservation slip signed by user."
+          value={reconcileRemarks}
+          onChange={(e) => setReconcileRemarks(e.target.value)}
+        />
+
+        {/* Live Reconciliation Summary Card */}
+        {(() => {
+          const inputs = buildReconcileMaterialInputs();
+          const summary = summarizeIssue(inputs);
+          return (
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: "grey.50",
+                display: "flex",
+                justifyContent: "space-around",
+                alignItems: "center",
+                textAlign: "center",
+              }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: "primary.main" }}>
+                  {summary.totalMaterials}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Materials
+                </Typography>
+              </Box>
+              <Divider orientation="vertical" flexItem />
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: "primary.main" }}>
+                  {summary.totalLocations}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Locations
+                </Typography>
+              </Box>
+              <Divider orientation="vertical" flexItem />
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: "primary.main" }}>
+                  {summary.totalQuantity}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Total Quantity Deducted
+                </Typography>
+              </Box>
+            </Paper>
+          );
+        })()}
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, borderTop: "1px solid", borderColor: "divider" }}>
+        <Button
+          onClick={closeReconcileModal}
+          disabled={savingReconciliation}
+          sx={{ textTransform: "none", borderRadius: 1.5 }}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          color="warning"
+          onClick={handleSaveReconciliation}
+          disabled={
+            savingReconciliation ||
+            reconcileMaterials.length === 0 ||
+            !reconcileMaterials.some((m) => m.material && m.locations.some((l) => Number(l.issueQty) > 0))
+          }
+          startIcon={
+            savingReconciliation ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <Inventory2OutlinedIcon />
+            )
+          }
+          sx={{
+            fontWeight: 800,
+            textTransform: "none",
+            borderRadius: 1.5,
+            px: 2.5,
+            py: 0.8,
+            boxShadow: "0 4px 12px rgba(237, 108, 2, 0.3)",
+          }}
+        >
+          {savingReconciliation ? "Deducting Stock..." : "Complete Stock Reconciliation"}
+        </Button>
+      </DialogActions>
     </Dialog>
 
     <Snackbar

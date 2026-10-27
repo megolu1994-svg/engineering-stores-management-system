@@ -410,6 +410,130 @@ export async function createIssue(
   return issue;
 }
 
+/**
+ * Reconciles stock for a previously saved Material Issue (e.g. one created
+ * offline with just a reservation slip photograph):
+ * Inserts issue_items & issue_item_locations, decreases material_allocation
+ * via applyStockMovement, and updates the issue_header with total quantities
+ * and reconciliation remarks.
+ */
+export async function reconcileIssueStock(
+  issueId: number,
+  materials: IssueMaterialInput[],
+  reconciledBy?: string,
+  remarks?: string
+): Promise<IssueHeader> {
+  if (!materials || materials.length === 0) {
+    throw new Error("Please add at least one material to complete stock reconciliation.");
+  }
+
+  const validation = validateIssue(materials);
+  if (!validation.valid) {
+    throw new Error(validation.error ?? "Invalid material issue reconciliation data.");
+  }
+
+  // Ensure none of the materials are blocked
+  for (const material of materials) {
+    await assertMaterialNotBlocked(material.material_code);
+  }
+
+  // Fetch current issue header
+  const { data: currentHeader, error: fetchErr } = await supabase
+    .from("issue_header")
+    .select("*")
+    .eq("id", issueId)
+    .single();
+
+  if (fetchErr || !currentHeader) {
+    throw new Error("Could not find the material issue record to reconcile.");
+  }
+
+  const issue = parseIssueRow(currentHeader);
+  const newSummary = summarizeIssue(materials);
+
+  // Insert items and adjust stock
+  for (const material of materials) {
+    const materialTotalQty = material.locations.reduce(
+      (sum, l) => sum + l.issueQty,
+      0
+    );
+
+    const { data: itemData, error: itemError } = await supabase
+      .from("issue_items")
+      .insert([
+        {
+          issue_id: issue.id,
+          material_code: material.material_code,
+          short_description: material.short_description,
+          uom: material.uom,
+          total_issue_qty: materialTotalQty,
+        },
+      ])
+      .select()
+      .single();
+
+    if (itemError) throw itemError;
+
+    const issueItemId = itemData.id as number;
+
+    for (const loc of material.locations) {
+      await applyStockMovement({
+        materialCode: material.material_code,
+        locationCode: loc.location_code,
+        prevQuantity: loc.availableQty,
+        newQuantity: loc.availableQty - loc.issueQty,
+        allocationId: loc.allocationId,
+        transactionType: "MATERIAL_ISSUE",
+        referenceType: "ISSUE",
+        referenceNumber: issue.issue_number,
+        reason: issue.issue_type || "Normal",
+        remarks: remarks || `Stock reconciled against reservation ${issue.sap_reservation_number || ""}`,
+      });
+
+      const { error: locError } = await supabase
+        .from("issue_item_locations")
+        .insert([
+          {
+            issue_item_id: issueItemId,
+            location_code: loc.location_code,
+            issue_qty: loc.issueQty,
+          },
+        ]);
+
+      if (locError) throw locError;
+    }
+  }
+
+  // Update header totals and remarks
+  const updatedTotalMaterials = (currentHeader.total_materials || 0) + newSummary.totalMaterials;
+  const updatedTotalLocations = (currentHeader.total_locations || 0) + newSummary.totalLocations;
+  const updatedTotalQuantity = Number((currentHeader.total_quantity || 0) + newSummary.totalQuantity);
+
+  let updatedRemarks = currentHeader.remarks || "";
+  const reconNote = `[Stock Reconciled: ${new Date().toLocaleDateString("en-IN")}${reconciledBy ? ` by ${reconciledBy}` : ""}]`;
+  if (remarks?.trim()) {
+    updatedRemarks = updatedRemarks ? `${updatedRemarks} | ${reconNote} ${remarks.trim()}` : `${reconNote} ${remarks.trim()}`;
+  } else {
+    updatedRemarks = updatedRemarks ? `${updatedRemarks} | ${reconNote}` : reconNote;
+  }
+
+  const { data: updatedHeaderData, error: updateErr } = await supabase
+    .from("issue_header")
+    .update({
+      total_materials: updatedTotalMaterials,
+      total_locations: updatedTotalLocations,
+      total_quantity: updatedTotalQuantity,
+      remarks: updatedRemarks,
+    })
+    .eq("id", issueId)
+    .select()
+    .single();
+
+  if (updateErr) throw updateErr;
+
+  return parseIssueRow(updatedHeaderData);
+}
+
 /* =========================================================================
  * Reports
  * ========================================================================= */
