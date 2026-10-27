@@ -11,9 +11,13 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   Grid,
+  IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
@@ -29,6 +33,7 @@ import {
   TableRow,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -47,6 +52,9 @@ import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import OutputIcon from "@mui/icons-material/Output";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DescriptionIcon from "@mui/icons-material/Description";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import CloseIcon from "@mui/icons-material/Close";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 
 import MaterialSearch from "../components/MaterialSearch";
 import PaginationControls from "../components/PaginationControls";
@@ -581,6 +589,11 @@ interface IssueHistoryRow {
   issue_number: string;
   department: string;
   total_quantity: number;
+  total_materials?: number;
+  sap_reservation_number?: string | null;
+  reservation_created_by?: string | null;
+  reservation_photo_url?: string | null;
+  remarks?: string | null;
   issue_datetime: string;
 }
 
@@ -1291,6 +1304,13 @@ export default function Reports() {
   const [issuePage, setIssuePage] = useState(0);
   const [issuePageSize, setIssuePageSize] = useState(25);
   const [issueTotalCount, setIssueTotalCount] = useState(0);
+  const [issueSearch, setIssueSearch] = useState("");
+  const [selectedIssuePhoto, setSelectedIssuePhoto] = useState<{
+    url: string;
+    title: string;
+    reservationNo?: string;
+    department?: string;
+  } | null>(null);
 
   function handleIssuePageSizeChange(newPageSize: number) {
     setIssuePageSize(newPageSize);
@@ -1308,20 +1328,67 @@ export default function Reports() {
         const from = issuePage * issuePageSize;
         const to = from + issuePageSize - 1;
 
+        let query = supabase
+          .from("issue_header")
+          .select(
+            "id, issue_number, department, total_quantity, total_materials, sap_reservation_number, reservation_created_by, reservation_photo_url, remarks, user_section, issue_datetime"
+          );
+
+        if (issueSearch.trim()) {
+          const t = issueSearch.trim();
+          query = query.or(
+            `issue_number.ilike.%${t}%,sap_reservation_number.ilike.%${t}%,reservation_created_by.ilike.%${t}%,department.ilike.%${t}%,user_section.ilike.%${t}%,remarks.ilike.%${t}%`
+          );
+        }
+
+        let countQuery = supabase
+          .from("issue_header")
+          .select("id", { count: "exact", head: true });
+
+        if (issueSearch.trim()) {
+          const t = issueSearch.trim();
+          countQuery = countQuery.or(
+            `issue_number.ilike.%${t}%,sap_reservation_number.ilike.%${t}%,reservation_created_by.ilike.%${t}%,department.ilike.%${t}%,user_section.ilike.%${t}%,remarks.ilike.%${t}%`
+          );
+        }
+
         const [{ data, error }, { count, error: countError }] = await Promise.all([
-          supabase
-            .from("issue_header")
-            .select("id, issue_number, department, total_quantity, issue_datetime")
-            .order("issue_datetime", { ascending: false })
-            .range(from, to),
-          supabase.from("issue_header").select("id", { count: "exact", head: true }),
+          query.order("issue_datetime", { ascending: false }).range(from, to),
+          countQuery,
         ]);
 
         if (error) throw error;
         if (countError) throw countError;
 
+        const parsedRows: IssueHistoryRow[] = ((data ?? []) as any[]).map((r) => {
+          let photo = r.reservation_photo_url;
+          let resBy = r.reservation_created_by || r.user_section;
+          if (r.remarks) {
+            if (!photo) {
+              const m = r.remarks.match(/Reservation Photo:\s*([^\s|]+)/i);
+              if (m) photo = m[1];
+            }
+            if (!resBy) {
+              const m = r.remarks.match(/Reservation By:\s*([^|]+)/i);
+              if (m) resBy = m[1].trim();
+            }
+          }
+          return {
+            id: r.id,
+            issue_number: r.issue_number,
+            department: r.department,
+            total_quantity: r.total_quantity,
+            total_materials: r.total_materials,
+            sap_reservation_number: r.sap_reservation_number,
+            reservation_created_by: resBy,
+            reservation_photo_url: photo,
+            remarks: r.remarks,
+            issue_datetime: r.issue_datetime,
+          };
+        });
+
         if (!cancelled) {
-          setIssueRows((data ?? []) as IssueHistoryRow[]);
+          setIssueRows(parsedRows);
           setIssueTotalCount(count ?? 0);
         }
       } catch (err) {
@@ -1340,15 +1407,28 @@ export default function Reports() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, issuePage, issuePageSize]);
+  }, [activeTab, issuePage, issuePageSize, issueSearch]);
 
   function handleExportIssues() {
     downloadWorkbook(
-      ["Issue No", "Department", "Qty", "Date"],
+      [
+        "Issue No",
+        "SAP Reservation No",
+        "Reservation By",
+        "Department",
+        "Materials",
+        "Total Qty",
+        "Has Photo",
+        "Date",
+      ],
       issueRows.map((r) => [
         r.issue_number,
+        safeText(r.sap_reservation_number),
+        safeText(r.reservation_created_by),
         r.department,
+        safeNumber(r.total_materials),
         safeNumber(r.total_quantity),
+        r.reservation_photo_url ? "YES" : "NO",
         formatReportDate(r.issue_datetime),
       ]),
       "Issue_History.xlsx",
@@ -2150,7 +2230,28 @@ export default function Reports() {
 
       {activeTab === TAB_ISSUE_HISTORY && (
         <>
-          <ExportPrintBar onExportExcel={handleExportIssues} onPrint={handlePrint} />
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, mb: 2, alignItems: { sm: "center" }, justifyContent: "space-between" }}>
+            <ExportPrintBar onExportExcel={handleExportIssues} onPrint={handlePrint} />
+            <TextField
+              size="small"
+              placeholder="Search Issue No, Reservation No, Created By, Dept..."
+              value={issueSearch}
+              onChange={(e) => {
+                setIssueSearch(e.target.value);
+                setIssuePage(0);
+              }}
+              sx={{ minWidth: { xs: "100%", sm: 300 } }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+          </Box>
 
           {loadingIssues ? (
             <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -2159,16 +2260,16 @@ export default function Reports() {
           ) : issueRows.length === 0 ? (
             <Card variant="outlined" sx={{ p: 3, textAlign: "center", borderRadius: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                No issues found.
+                {issueSearch ? "No issues match your search." : "No issues found."}
               </Typography>
             </Card>
           ) : (
             <>
-              {/* ---- Mobile/tablet: card list (unchanged) ---- */}
+              {/* ---- Mobile/tablet: card list ---- */}
               <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1 }}>
                 {issueRows.map((row) => (
                   <Card key={row.id} variant="outlined" sx={{ borderRadius: 2.5, px: 1.5, py: 1.25 }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
                       <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }} noWrap>
                           {row.issue_number}
@@ -2177,14 +2278,69 @@ export default function Reports() {
                           {row.department}
                         </Typography>
                       </Box>
-                      <Typography sx={{ fontWeight: 800, flexShrink: 0 }}>
-                        {safeNumber(row.total_quantity)}
-                      </Typography>
+                      <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+                        <Typography sx={{ fontWeight: 800 }}>
+                          {safeNumber(row.total_quantity)} Qty
+                        </Typography>
+                        {row.total_materials === 0 && (
+                          <Chip size="small" label="Pending Recon" color="warning" sx={{ height: 20, fontSize: "0.65rem" }} />
+                        )}
+                      </Box>
                     </Box>
 
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                      {formatReportDate(row.issue_datetime)}
-                    </Typography>
+                    <Grid container spacing={0.5} sx={{ mt: 0.75 }}>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          SAP Reservation
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                          {row.sap_reservation_number || "-"}
+                        </Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Created By
+                        </Typography>
+                        <Typography variant="body2" noWrap>
+                          {row.reservation_created_by || "-"}
+                        </Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Date
+                        </Typography>
+                        <Typography variant="body2" noWrap>
+                          {formatReportDate(row.issue_datetime)}
+                        </Typography>
+                      </Grid>
+                      <Grid size={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.65rem" }}>
+                          Slip Photograph
+                        </Typography>
+                        {row.reservation_photo_url ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<PhotoCameraIcon sx={{ fontSize: 14 }} />}
+                            onClick={() =>
+                              setSelectedIssuePhoto({
+                                url: row.reservation_photo_url!,
+                                title: row.issue_number,
+                                reservationNo: row.sap_reservation_number || undefined,
+                                department: row.department,
+                              })
+                            }
+                            sx={{ height: 26, fontSize: "0.72rem", py: 0, px: 1, textTransform: "none" }}
+                          >
+                            View Photo
+                          </Button>
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">
+                            None
+                          </Typography>
+                        )}
+                      </Grid>
+                    </Grid>
                   </Card>
                 ))}
               </Box>
@@ -2199,7 +2355,10 @@ export default function Reports() {
                   <TableHead>
                     <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
                       <TableCell>Issue No.</TableCell>
+                      <TableCell>SAP Reservation</TableCell>
+                      <TableCell>Created By</TableCell>
                       <TableCell>Department</TableCell>
+                      <TableCell align="center">Reservation Photo</TableCell>
                       <TableCell align="right">Total Qty</TableCell>
                       <TableCell>Date</TableCell>
                     </TableRow>
@@ -2208,8 +2367,71 @@ export default function Reports() {
                     {issueRows.map((row) => (
                       <TableRow key={row.id} hover sx={{ height: 60 }}>
                         <TableCell sx={{ fontWeight: 700 }}>{row.issue_number}</TableCell>
+                        <TableCell>
+                          {row.sap_reservation_number ? (
+                            <Chip
+                              size="small"
+                              label={row.sap_reservation_number}
+                              sx={{ fontWeight: 700, bgcolor: "rgba(59, 130, 246, 0.1)", color: "primary.main" }}
+                            />
+                          ) : (
+                            <Typography variant="body2" color="text.disabled">-</Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>{safeText(row.reservation_created_by)}</TableCell>
                         <TableCell>{row.department}</TableCell>
-                        <TableCell align="right">{safeNumber(row.total_quantity)}</TableCell>
+                        <TableCell align="center">
+                          {row.reservation_photo_url ? (
+                            <Box
+                              sx={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 1,
+                                cursor: "pointer",
+                                p: 0.5,
+                                borderRadius: 1.5,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                transition: "all 0.15s ease",
+                                "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+                              }}
+                              onClick={() =>
+                                setSelectedIssuePhoto({
+                                  url: row.reservation_photo_url!,
+                                  title: row.issue_number,
+                                  reservationNo: row.sap_reservation_number || undefined,
+                                  department: row.department,
+                                })
+                              }
+                            >
+                              <Box
+                                component="img"
+                                src={row.reservation_photo_url}
+                                alt="Reservation slip"
+                                sx={{ width: 34, height: 34, objectFit: "cover", borderRadius: 1 }}
+                              />
+                              <Typography variant="caption" sx={{ fontWeight: 600, color: "primary.main" }}>
+                                View
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.disabled">
+                              No photo
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {safeNumber(row.total_quantity)}
+                            </Typography>
+                            {row.total_materials === 0 && (
+                              <Tooltip title="Stock reconciliation can be done later">
+                                <Chip size="small" label="Pending" color="warning" sx={{ height: 20, fontSize: "0.65rem" }} />
+                              </Tooltip>
+                            )}
+                          </Box>
+                        </TableCell>
                         <TableCell>{formatReportDate(row.issue_datetime)}</TableCell>
                       </TableRow>
                     ))}
@@ -2227,6 +2449,75 @@ export default function Reports() {
               />
             </>
           )}
+
+          {/* Photograph Viewer Modal */}
+          <Dialog
+            open={!!selectedIssuePhoto}
+            onClose={() => setSelectedIssuePhoto(null)}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle
+              sx={{
+                m: 0,
+                p: 2,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                bgcolor: "background.paper",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  SAP Reservation Photograph
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {selectedIssuePhoto?.title}{" "}
+                  {selectedIssuePhoto?.reservationNo ? `| Reservation: ${selectedIssuePhoto.reservationNo}` : ""}{" "}
+                  {selectedIssuePhoto?.department ? `| Dept: ${selectedIssuePhoto.department}` : ""}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                {selectedIssuePhoto?.url && (
+                  <IconButton
+                    size="small"
+                    component="a"
+                    href={selectedIssuePhoto.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open in new window"
+                  >
+                    <OpenInNewIcon fontSize="small" />
+                  </IconButton>
+                )}
+                <IconButton
+                  size="small"
+                  aria-label="close"
+                  onClick={() => setSelectedIssuePhoto(null)}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </DialogTitle>
+            <DialogContent sx={{ p: 2, textAlign: "center", bgcolor: "#0f172a" }}>
+              {selectedIssuePhoto?.url && (
+                <Box
+                  component="img"
+                  src={selectedIssuePhoto.url}
+                  alt="SAP Reservation Photograph"
+                  sx={{
+                    maxWidth: "100%",
+                    maxHeight: "75vh",
+                    objectFit: "contain",
+                    borderRadius: 1,
+                    boxShadow: 3,
+                  }}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
         </>
       )}
 

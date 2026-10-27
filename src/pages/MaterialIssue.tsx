@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   Alert,
@@ -11,10 +11,22 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  Divider,
+  Grid,
   IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
   Snackbar,
+  Stack,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -26,19 +38,27 @@ import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CloseIcon from "@mui/icons-material/Close";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
+import HistoryIcon from "@mui/icons-material/History";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PlaceIcon from "@mui/icons-material/Place";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import SearchIcon from "@mui/icons-material/Search";
 import SendIcon from "@mui/icons-material/Send";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 
 import MaterialSearch from "../components/MaterialSearch";
+import PaginationControls from "../components/PaginationControls";
 
 import {
   createIssue,
+  getIssues,
+  getIssueWithItems,
   getMaterialStockLocations,
   summarizeIssue,
   uploadReservationPhoto,
@@ -46,6 +66,8 @@ import {
   DEPARTMENTS,
   type IssueMaterialInput,
   type IssueLocationInput,
+  type IssueHeader,
+  type IssueWithItems,
 } from "../services/issueService";
 
 import { BOTTOM_NAV_OFFSET, CONTENT_MAX_WIDTH, DRAWER_WIDTH } from "../components/AppLayout";
@@ -76,6 +98,19 @@ interface MaterialRowState {
 
 function makeKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function formatIssueDate(isoString: string | null | undefined): string {
+  if (!isoString) return "-";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function emptyMaterialRow(): MaterialRowState {
@@ -121,8 +156,80 @@ export default function MaterialIssue() {
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Tab state: "create" (form) or "history" (saved issues & reservation photos)
+  const [activeTab, setActiveTab] = useState<"create" | "history">("create");
+
+  // Saved Issues History state
+  const [historyIssues, setHistoryIssues] = useState<IssueHeader[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyPageSize, setHistoryPageSize] = useState(25);
+  const [historyTotalCount, setHistoryTotalCount] = useState(0);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyDepartment, setHistoryDepartment] = useState("ALL");
+  const [historyOnlyWithPhotos, setHistoryOnlyWithPhotos] = useState(false);
+
+  // Modals for History tab
+  const [selectedPhotoModal, setSelectedPhotoModal] = useState<{
+    url: string;
+    title: string;
+    reservationNo?: string | null;
+    createdBy?: string | null;
+    department?: string;
+    date?: string;
+  } | null>(null);
+
+  const [detailsModalIssue, setDetailsModalIssue] = useState<IssueWithItems | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
   function showSnackbar(message: string, severity: SnackbarSeverity) {
     setSnackbar({ open: true, message, severity });
+  }
+
+  function copyToClipboard(text: string) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      showSnackbar(`Copied "${text}" to clipboard.`, "info");
+    }
+  }
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await getIssues({
+        search: historySearch,
+        department: historyDepartment,
+        onlyWithPhotos: historyOnlyWithPhotos,
+        page: historyPage,
+        pageSize: historyPageSize,
+      });
+      setHistoryIssues(res.data);
+      setHistoryTotalCount(res.totalCount);
+    } catch (err) {
+      console.error(err);
+      showSnackbar("Failed to load issue history.", "error");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [historySearch, historyDepartment, historyOnlyWithPhotos, historyPage, historyPageSize]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      loadHistory();
+    }
+  }, [activeTab, loadHistory]);
+
+  async function openIssueDetails(issue: IssueHeader) {
+    setLoadingDetails(true);
+    try {
+      const full = await getIssueWithItems(issue.id);
+      setDetailsModalIssue(full || { ...issue, items: [] });
+    } catch (err) {
+      console.error(err);
+      setDetailsModalIssue({ ...issue, items: [] });
+    } finally {
+      setLoadingDetails(false);
+    }
   }
 
   // ---------------- New Issue form ----------------
@@ -397,24 +504,77 @@ export default function MaterialIssue() {
         onChange={handlePhotoInputChange}
       />
 
-      <Typography
-        sx={{
-          mb: 1.5,
-          fontWeight: 700,
-          fontSize: { xs: "1.05rem", sm: "1.25rem" },
-        }}
-      >
-        Material Issue
-      </Typography>
-
       <Box
         sx={{
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 2,
+          flexWrap: "wrap",
           gap: 1.5,
-          pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
         }}
       >
+        <Typography
+          sx={{
+            fontWeight: 700,
+            fontSize: { xs: "1.1rem", sm: "1.3rem" },
+          }}
+        >
+          Material Issue
+        </Typography>
+
+        <Tabs
+          value={activeTab}
+          onChange={(_, val) => setActiveTab(val)}
+          sx={{
+            minHeight: 40,
+            bgcolor: "background.paper",
+            borderRadius: 2,
+            p: 0.5,
+            border: "1px solid",
+            borderColor: "divider",
+            "& .MuiTab-root": {
+              minHeight: 32,
+              py: 0.5,
+              px: { xs: 1.5, sm: 2 },
+              fontWeight: 700,
+              fontSize: "0.85rem",
+              borderRadius: 1.5,
+              textTransform: "none",
+            },
+            "& .Mui-selected": {
+              bgcolor: "primary.main",
+              color: "#fff !important",
+            },
+            "& .MuiTabs-indicator": {
+              display: "none",
+            },
+          }}
+        >
+          <Tab
+            value="create"
+            label="New Issue"
+            icon={<AddIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+          />
+          <Tab
+            value="history"
+            label="Saved Issues & Photos"
+            icon={<HistoryIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+          />
+        </Tabs>
+      </Box>
+
+      {activeTab === "create" ? (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.5,
+            pb: mobile ? `calc(80px + ${BOTTOM_NAV_OFFSET})` : 10,
+          }}
+        >
         {/* ---- Issue Details ---- */}
         <Card
           elevation={0}
@@ -981,57 +1141,777 @@ export default function MaterialIssue() {
           </Box>
         </Box>
       </Box>
-
-      {/* Full photograph lightbox modal */}
-      <Dialog
-        open={photoPreviewOpen}
-        onClose={() => setPhotoPreviewOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle sx={{ m: 0, p: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Typography sx={{ fontWeight: 700, fontSize: "1rem" }}>
-            Reservation Photograph
-          </Typography>
-          <IconButton
-            aria-label="close"
-            onClick={() => setPhotoPreviewOpen(false)}
-            sx={{ color: (theme) => theme.palette.grey[500] }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 1, display: "flex", justifyContent: "center", bgcolor: "#111" }}>
-          {header.reservation_photo_url && (
-            <Box
-              component="img"
-              src={header.reservation_photo_url}
-              alt="Reservation Slip"
-              sx={{
-                maxWidth: "100%",
-                maxHeight: "75vh",
-                objectFit: "contain",
-                borderRadius: 1,
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity={snackbar.severity}
-          variant="filled"
-          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+    ) : (
+      /* =========================================================================
+       * Saved Issues & Reservation Photos Tab
+       * ========================================================================= */
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pb: 6 }}>
+        {/* Search & Filter Bar */}
+        <Card
+          elevation={0}
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            border: "1px solid",
+            borderColor: "divider",
+            boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+          }}
         >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+          <Grid container spacing={1.5} sx={{ alignItems: "center" }}>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search SAP Reservation No, Created By, Issue No, Remarks..."
+                value={historySearch}
+                onChange={(e) => {
+                  setHistorySearch(e.target.value);
+                  setHistoryPage(0);
+                }}
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                      </InputAdornment>
+                    ),
+                    endAdornment: historySearch ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setHistorySearch("");
+                            setHistoryPage(0);
+                          }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : null,
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <TextField
+                select
+                fullWidth
+                size="small"
+                label="Department"
+                value={historyDepartment}
+                onChange={(e) => {
+                  setHistoryDepartment(e.target.value);
+                  setHistoryPage(0);
+                }}
+              >
+                <MenuItem value="ALL">All Departments</MenuItem>
+                {DEPARTMENTS.map((dept) => (
+                  <MenuItem key={dept} value={dept}>
+                    {dept}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <Button
+                size="small"
+                variant={historyOnlyWithPhotos ? "contained" : "outlined"}
+                color="primary"
+                startIcon={<PhotoCameraIcon fontSize="small" />}
+                onClick={() => {
+                  setHistoryOnlyWithPhotos((prev) => !prev);
+                  setHistoryPage(0);
+                }}
+                sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600, height: 40, flex: 1 }}
+              >
+                {historyOnlyWithPhotos ? "With Photos (Filtered)" : "With Photos Only"}
+              </Button>
+              <IconButton
+                onClick={loadHistory}
+                disabled={loadingHistory}
+                title="Refresh"
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 2,
+                  height: 40,
+                  width: 40,
+                }}
+              >
+                {loadingHistory ? <CircularProgress size={18} /> : <RefreshIcon fontSize="small" />}
+              </IconButton>
+            </Grid>
+          </Grid>
+        </Card>
+
+        {/* Issue List / Table */}
+        {loadingHistory ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : historyIssues.length === 0 ? (
+          <Card
+            variant="outlined"
+            sx={{
+              p: 5,
+              textAlign: "center",
+              borderRadius: 2,
+              bgcolor: "background.paper",
+            }}
+          >
+            <HistoryIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              No Material Issues Found
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
+              {historySearch || historyDepartment !== "ALL" || historyOnlyWithPhotos
+                ? "No issues match your current filters. Try resetting search."
+                : "Saved material issues and reservation photographs will appear here."}
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setActiveTab("create")}
+              sx={{ borderRadius: 2, textTransform: "none", fontWeight: 700 }}
+            >
+              Create New Issue
+            </Button>
+          </Card>
+        ) : (
+          <>
+            {/* Mobile Card List */}
+            <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 1.5 }}>
+              {historyIssues.map((issue) => (
+                <Card
+                  key={issue.id}
+                  variant="outlined"
+                  sx={{
+                    borderRadius: 2,
+                    p: 2,
+                    bgcolor: "background.paper",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                  }}
+                >
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        {issue.issue_number}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatIssueDate(issue.issue_datetime)}
+                      </Typography>
+                    </Box>
+                    {issue.total_materials > 0 ? (
+                      <Chip
+                        size="small"
+                        label={`${issue.total_quantity} Qty (${issue.total_materials} materials)`}
+                        color="success"
+                        variant="outlined"
+                        sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+                      />
+                    ) : (
+                      <Chip
+                        size="small"
+                        label="Pending Reconciliation"
+                        color="warning"
+                        sx={{ fontWeight: 700, fontSize: "0.68rem" }}
+                      />
+                    )}
+                  </Box>
+
+                  <Divider sx={{ my: 1.25 }} />
+
+                  <Grid container spacing={1}>
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.7rem" }}>
+                        SAP Reservation No.
+                      </Typography>
+                      {issue.sap_reservation_number ? (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", color: "primary.main" }}>
+                            {issue.sap_reservation_number}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => copyToClipboard(issue.sap_reservation_number!)}
+                            sx={{ p: 0.25 }}
+                            title="Copy Reservation Number"
+                          >
+                            <ContentCopyIcon sx={{ fontSize: 13 }} />
+                          </IconButton>
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled">-</Typography>
+                      )}
+                    </Grid>
+
+                    <Grid size={6}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.7rem" }}>
+                        Reservation Created By
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                        {issue.reservation_created_by || "-"}
+                      </Typography>
+                    </Grid>
+
+                    <Grid size={12}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontSize: "0.7rem" }}>
+                        Department
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                        {issue.department}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+
+                  {/* Photograph Banner / Thumbnail */}
+                  <Box sx={{ mt: 1.5, pt: 1, borderTop: "1px dashed", borderColor: "divider", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    {issue.reservation_photo_url ? (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Box
+                          component="img"
+                          src={issue.reservation_photo_url}
+                          alt="Reservation slip"
+                          onClick={() =>
+                            setSelectedPhotoModal({
+                              url: issue.reservation_photo_url!,
+                              title: issue.issue_number,
+                              reservationNo: issue.sap_reservation_number,
+                              createdBy: issue.reservation_created_by,
+                              department: issue.department,
+                              date: formatIssueDate(issue.issue_datetime),
+                            })
+                          }
+                          sx={{
+                            width: 44,
+                            height: 44,
+                            objectFit: "cover",
+                            borderRadius: 1.5,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            cursor: "pointer",
+                          }}
+                        />
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<PhotoCameraIcon sx={{ fontSize: 14 }} />}
+                          onClick={() =>
+                            setSelectedPhotoModal({
+                              url: issue.reservation_photo_url!,
+                              title: issue.issue_number,
+                              reservationNo: issue.sap_reservation_number,
+                              createdBy: issue.reservation_created_by,
+                              department: issue.department,
+                              date: formatIssueDate(issue.issue_datetime),
+                            })
+                          }
+                          sx={{ textTransform: "none", fontSize: "0.75rem", borderRadius: 1.5, height: 30 }}
+                        >
+                          View Photo
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.disabled">
+                        No photograph attached
+                      </Typography>
+                    )}
+
+                    <Button
+                      size="small"
+                      onClick={() => openIssueDetails(issue)}
+                      sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 700 }}
+                    >
+                      Details
+                    </Button>
+                  </Box>
+                </Card>
+              ))}
+            </Box>
+
+            {/* Desktop Table */}
+            <TableContainer
+              component={Card}
+              elevation={0}
+              sx={{
+                display: { xs: "none", md: "block" },
+                borderRadius: 2,
+                boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <Table sx={{ "& td, & th": { borderColor: "divider" } }}>
+                <TableHead>
+                  <TableRow sx={{ "& th": { bgcolor: "grey.50", fontWeight: 700, color: "text.secondary" } }}>
+                    <TableCell>Issue Number</TableCell>
+                    <TableCell>SAP Reservation No.</TableCell>
+                    <TableCell>Created By</TableCell>
+                    <TableCell>Department</TableCell>
+                    <TableCell align="center">Reservation Slip Photo</TableCell>
+                    <TableCell align="center">Stock Adjustment</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {historyIssues.map((issue) => (
+                    <TableRow key={issue.id} hover sx={{ height: 64 }}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {issue.issue_number}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatIssueDate(issue.issue_datetime)}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell>
+                        {issue.sap_reservation_number ? (
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Chip
+                              size="small"
+                              label={issue.sap_reservation_number}
+                              sx={{
+                                fontWeight: 700,
+                                bgcolor: "rgba(59, 130, 246, 0.1)",
+                                color: "primary.main",
+                                border: "1px solid rgba(59, 130, 246, 0.2)",
+                              }}
+                            />
+                            <IconButton
+                              size="small"
+                              onClick={() => copyToClipboard(issue.sap_reservation_number!)}
+                              title="Copy Reservation Number"
+                            >
+                              <ContentCopyIcon sx={{ fontSize: 13 }} />
+                            </IconButton>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.disabled">
+                            -
+                          </Typography>
+                        )}
+                      </TableCell>
+
+                      <TableCell>
+                        <Typography variant="body2">
+                          {issue.reservation_created_by || "-"}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell>
+                        <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+                          {issue.department}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell align="center">
+                        {issue.reservation_photo_url ? (
+                          <Box
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 1,
+                              cursor: "pointer",
+                              p: 0.5,
+                              pr: 1.25,
+                              borderRadius: 1.5,
+                              border: "1px solid",
+                              borderColor: "divider",
+                              transition: "all 0.15s ease",
+                              "&:hover": {
+                                borderColor: "primary.main",
+                                bgcolor: "action.hover",
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                              },
+                            }}
+                            onClick={() =>
+                              setSelectedPhotoModal({
+                                url: issue.reservation_photo_url!,
+                                title: issue.issue_number,
+                                reservationNo: issue.sap_reservation_number,
+                                createdBy: issue.reservation_created_by,
+                                department: issue.department,
+                                date: formatIssueDate(issue.issue_datetime),
+                              })
+                            }
+                          >
+                            <Box
+                              component="img"
+                              src={issue.reservation_photo_url}
+                              alt="Slip thumbnail"
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                objectFit: "cover",
+                                borderRadius: 1,
+                              }}
+                            />
+                            <Box sx={{ textAlign: "left" }}>
+                              <Typography variant="caption" sx={{ display: "block", fontWeight: 700, color: "primary.main", lineHeight: 1.1 }}>
+                                View Photo
+                              </Typography>
+                              <Typography variant="caption" sx={{ fontSize: "0.65rem", color: "text.secondary" }}>
+                                Click to enlarge
+                              </Typography>
+                            </Box>
+                          </Box>
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">
+                            No photo
+                          </Typography>
+                        )}
+                      </TableCell>
+
+                      <TableCell align="center">
+                        {issue.total_materials > 0 ? (
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {issue.total_quantity} Qty
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {issue.total_materials} {issue.total_materials === 1 ? "item" : "items"}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Tooltip title="Stock reconciliation can be done later in app">
+                            <Chip
+                              size="small"
+                              label="Reconciliation Pending"
+                              color="warning"
+                              variant="outlined"
+                              sx={{ fontWeight: 600, fontSize: "0.72rem" }}
+                            />
+                          </Tooltip>
+                        )}
+                      </TableCell>
+
+                      <TableCell>
+                        <Typography variant="body2">
+                          {formatIssueDate(issue.issue_datetime).split(",")[0]}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => openIssueDetails(issue)}
+                          sx={{ borderRadius: 1.5, textTransform: "none", fontWeight: 600 }}
+                        >
+                          Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <PaginationControls
+              page={historyPage}
+              pageSize={historyPageSize}
+              totalCount={historyTotalCount}
+              onPageChange={setHistoryPage}
+              onPageSizeChange={(newSize) => {
+                setHistoryPageSize(newSize);
+                setHistoryPage(0);
+              }}
+              itemLabel="issues"
+            />
+          </>
+        )}
+      </Box>
+    )}
+
+    {/* Form photo preview lightbox */}
+    <Dialog
+      open={photoPreviewOpen}
+      onClose={() => setPhotoPreviewOpen(false)}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle sx={{ m: 0, p: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Typography sx={{ fontWeight: 700, fontSize: "1rem" }}>
+          Reservation Photograph Preview
+        </Typography>
+        <IconButton
+          aria-label="close"
+          onClick={() => setPhotoPreviewOpen(false)}
+          sx={{ color: (theme) => theme.palette.grey[500] }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers sx={{ p: 1, display: "flex", justifyContent: "center", bgcolor: "#111" }}>
+        {header.reservation_photo_url && (
+          <Box
+            component="img"
+            src={header.reservation_photo_url}
+            alt="Reservation Slip"
+            sx={{
+              maxWidth: "100%",
+              maxHeight: "75vh",
+              objectFit: "contain",
+              borderRadius: 1,
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+
+    {/* High-resolution Photograph Viewer Modal for Saved Issues */}
+    <Dialog
+      open={!!selectedPhotoModal}
+      onClose={() => setSelectedPhotoModal(null)}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle
+        sx={{
+          m: 0,
+          p: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          bgcolor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            SAP Reservation Photograph
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Issue: {selectedPhotoModal?.title}{" "}
+            {selectedPhotoModal?.reservationNo ? `| Reservation: ${selectedPhotoModal.reservationNo}` : ""}{" "}
+            {selectedPhotoModal?.createdBy ? `| Created By: ${selectedPhotoModal.createdBy}` : ""}{" "}
+            {selectedPhotoModal?.department ? `| Dept: ${selectedPhotoModal.department}` : ""}
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          {selectedPhotoModal?.url && (
+            <IconButton
+              size="small"
+              component="a"
+              href={selectedPhotoModal.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open image in new tab / download"
+            >
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          )}
+          <IconButton
+            size="small"
+            aria-label="close"
+            onClick={() => setSelectedPhotoModal(null)}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      <DialogContent sx={{ p: 2, textAlign: "center", bgcolor: "#0f172a" }}>
+        {selectedPhotoModal?.url && (
+          <Box
+            component="img"
+            src={selectedPhotoModal.url}
+            alt="Reservation Photograph"
+            sx={{
+              maxWidth: "100%",
+              maxHeight: "75vh",
+              objectFit: "contain",
+              borderRadius: 1,
+              boxShadow: 3,
+            }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+
+    {/* Complete Issue Details Modal */}
+    <Dialog
+      open={!!detailsModalIssue}
+      onClose={() => setDetailsModalIssue(null)}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle
+        sx={{
+          m: 0,
+          p: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            Material Issue - {detailsModalIssue?.issue_number}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {formatIssueDate(detailsModalIssue?.issue_datetime)}
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={() => setDetailsModalIssue(null)}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ p: 2.5 }}>
+        {loadingDetails ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : detailsModalIssue ? (
+          <Stack spacing={2.5}>
+            {/* Header Details */}
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">SAP Reservation Number</Typography>
+                <Typography variant="body1" sx={{ fontWeight: 700, color: "primary.main" }}>
+                  {detailsModalIssue.sap_reservation_number || "None"}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">Reservation Created By</Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                  {detailsModalIssue.reservation_created_by || "None"}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">Department</Typography>
+                <Typography variant="body1">
+                  {detailsModalIssue.department}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">Total Quantity Issued</Typography>
+                <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                  {detailsModalIssue.total_quantity}
+                </Typography>
+              </Grid>
+              {detailsModalIssue.remarks && (
+                <Grid size={12}>
+                  <Typography variant="caption" color="text.secondary">Remarks / Notes</Typography>
+                  <Typography variant="body2" sx={{ bgcolor: "action.hover", p: 1, borderRadius: 1 }}>
+                    {detailsModalIssue.remarks}
+                  </Typography>
+                </Grid>
+              )}
+            </Grid>
+
+            {/* Reservation Photograph section */}
+            {detailsModalIssue.reservation_photo_url && (
+              <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                  Reservation Slip Photograph
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    cursor: "pointer",
+                  }}
+                  onClick={() =>
+                    setSelectedPhotoModal({
+                      url: detailsModalIssue.reservation_photo_url!,
+                      title: detailsModalIssue.issue_number,
+                      reservationNo: detailsModalIssue.sap_reservation_number,
+                      createdBy: detailsModalIssue.reservation_created_by,
+                      department: detailsModalIssue.department,
+                      date: formatIssueDate(detailsModalIssue.issue_datetime),
+                    })
+                  }
+                >
+                  <Box
+                    component="img"
+                    src={detailsModalIssue.reservation_photo_url}
+                    alt="Reservation photograph"
+                    sx={{
+                      width: 80,
+                      height: 80,
+                      objectFit: "cover",
+                      borderRadius: 1.5,
+                      border: "1px solid",
+                      borderColor: "divider",
+                    }}
+                  />
+                  <Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PhotoCameraIcon fontSize="small" />}
+                    >
+                      Enlarge Photograph
+                    </Button>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                      Click to view full reservation photograph
+                    </Typography>
+                  </Box>
+                </Box>
+              </Card>
+            )}
+
+            {/* Items Section */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                Issued Materials ({detailsModalIssue.items?.length || 0})
+              </Typography>
+              {detailsModalIssue.items && detailsModalIssue.items.length > 0 ? (
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: "grey.50" }}>
+                        <TableCell sx={{ fontWeight: 700 }}>Material Code</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Description</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>UoM</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Quantity</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {detailsModalIssue.items.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell sx={{ fontWeight: 600 }}>{item.material_code}</TableCell>
+                          <TableCell>{item.short_description || "-"}</TableCell>
+                          <TableCell>{item.uom || "-"}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>{item.total_issue_qty}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Alert severity="info" variant="outlined" sx={{ borderRadius: 1.5 }}>
+                  No materials were linked at time of issue. Stock reconciliation against this SAP reservation photograph can be completed later.
+                </Alert>
+              )}
+            </Box>
+          </Stack>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+
+    <Snackbar
+      open={snackbar.open}
+      autoHideDuration={4000}
+      onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+      anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+    >
+      <Alert
+        severity={snackbar.severity}
+        variant="filled"
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+      >
+        {snackbar.message}
+      </Alert>
+    </Snackbar>
+  </Box>
   );
 }

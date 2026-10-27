@@ -435,3 +435,111 @@ export async function getIssuesToday(): Promise<IssueHeader[]> {
 
   return ((data ?? []) as any[]).map(parseIssueRow);
 }
+
+export interface GetIssuesParams {
+  search?: string;
+  department?: string;
+  onlyWithPhotos?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface IssueWithItems extends IssueHeader {
+  items: Array<
+    IssueItem & {
+      locations: IssueItemLocation[];
+    }
+  >;
+}
+
+/**
+ * Fetches material issues with optional search, department filter, and pagination.
+ * Robustly parses reservation details and photographs.
+ */
+export async function getIssues(params: GetIssuesParams = {}): Promise<{
+  data: IssueHeader[];
+  totalCount: number;
+}> {
+  const page = params.page ?? 0;
+  const pageSize = params.pageSize ?? 25;
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("issue_header")
+    .select("*", { count: "exact" });
+
+  if (params.department && params.department !== "ALL") {
+    query = query.eq("department", params.department);
+  }
+
+  if (params.search && params.search.trim()) {
+    const term = params.search.trim();
+    query = query.or(
+      `issue_number.ilike.%${term}%,sap_reservation_number.ilike.%${term}%,reservation_created_by.ilike.%${term}%,user_section.ilike.%${term}%,remarks.ilike.%${term}%,issued_by.ilike.%${term}%,received_by.ilike.%${term}%`
+    );
+  }
+
+  query = query.order("issue_datetime", { ascending: false }).range(from, to);
+
+  const { data, count, error } = await query;
+  if (error) {
+    console.error("Failed to fetch issues:", error);
+    return { data: [], totalCount: 0 };
+  }
+
+  const parsed = ((data ?? []) as any[]).map(parseIssueRow);
+  const filtered = params.onlyWithPhotos
+    ? parsed.filter((i) => !!i.reservation_photo_url)
+    : parsed;
+
+  return {
+    data: filtered,
+    totalCount: count ?? parsed.length,
+  };
+}
+
+/**
+ * Fetches complete details of an issue, including header, reservation info,
+ * photo URL, and any material line items with their location breakdowns.
+ */
+export async function getIssueWithItems(issueId: number): Promise<IssueWithItems | null> {
+  const { data: headerData, error: headerErr } = await supabase
+    .from("issue_header")
+    .select("*")
+    .eq("id", issueId)
+    .single();
+
+  if (headerErr || !headerData) return null;
+
+  const header = parseIssueRow(headerData);
+
+  const { data: itemsData, error: itemsErr } = await supabase
+    .from("issue_items")
+    .select("*")
+    .eq("issue_id", issueId);
+
+  if (itemsErr) {
+    return { ...header, items: [] };
+  }
+
+  const items: Array<IssueItem & { locations: IssueItemLocation[] }> = [];
+
+  for (const it of (itemsData ?? []) as IssueItem[]) {
+    const { data: locsData } = await supabase
+      .from("issue_item_locations")
+      .select("*")
+      .eq("issue_item_id", it.id);
+
+    items.push({
+      ...it,
+      locations: (locsData ?? []) as IssueItemLocation[],
+    });
+  }
+
+  return {
+    ...header,
+    items,
+  };
+}
+
