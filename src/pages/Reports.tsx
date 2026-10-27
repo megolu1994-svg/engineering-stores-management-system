@@ -11,13 +11,9 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   Grid,
-  IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
@@ -53,11 +49,10 @@ import OutputIcon from "@mui/icons-material/Output";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DescriptionIcon from "@mui/icons-material/Description";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import CloseIcon from "@mui/icons-material/Close";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 
 import MaterialSearch from "../components/MaterialSearch";
 import PaginationControls from "../components/PaginationControls";
+import PhotoViewerDialog from "../components/PhotoViewerDialog";
 import { useSwipeTabs } from "../hooks/useSwipeTabs";
 import SwipeableTabPanel from "../components/SwipeableTabPanel";
 
@@ -2450,74 +2445,16 @@ export default function Reports() {
             </>
           )}
 
-          {/* Photograph Viewer Modal */}
-          <Dialog
+          {/* Photograph Viewer Modal with rotate, zoom & pan */}
+          <PhotoViewerDialog
             open={!!selectedIssuePhoto}
             onClose={() => setSelectedIssuePhoto(null)}
-            maxWidth="md"
-            fullWidth
-          >
-            <DialogTitle
-              sx={{
-                m: 0,
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                bgcolor: "background.paper",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  SAP Reservation Photograph
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {selectedIssuePhoto?.title}{" "}
-                  {selectedIssuePhoto?.reservationNo ? `| Reservation: ${selectedIssuePhoto.reservationNo}` : ""}{" "}
-                  {selectedIssuePhoto?.department ? `| Dept: ${selectedIssuePhoto.department}` : ""}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                {selectedIssuePhoto?.url && (
-                  <IconButton
-                    size="small"
-                    component="a"
-                    href={selectedIssuePhoto.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open in new window"
-                  >
-                    <OpenInNewIcon fontSize="small" />
-                  </IconButton>
-                )}
-                <IconButton
-                  size="small"
-                  aria-label="close"
-                  onClick={() => setSelectedIssuePhoto(null)}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            </DialogTitle>
-            <DialogContent sx={{ p: 2, textAlign: "center", bgcolor: "#0f172a" }}>
-              {selectedIssuePhoto?.url && (
-                <Box
-                  component="img"
-                  src={selectedIssuePhoto.url}
-                  alt="SAP Reservation Photograph"
-                  sx={{
-                    maxWidth: "100%",
-                    maxHeight: "75vh",
-                    objectFit: "contain",
-                    borderRadius: 1,
-                    boxShadow: 3,
-                  }}
-                />
-              )}
-            </DialogContent>
-          </Dialog>
+            imageUrl={selectedIssuePhoto?.url}
+            title="SAP Reservation Photograph"
+            subtitle={selectedIssuePhoto?.title ? `Issue: ${selectedIssuePhoto.title}` : undefined}
+            reservationNo={selectedIssuePhoto?.reservationNo}
+            department={selectedIssuePhoto?.department}
+          />
         </>
       )}
 

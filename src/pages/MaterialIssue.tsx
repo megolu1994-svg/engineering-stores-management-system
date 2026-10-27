@@ -42,7 +42,6 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import HistoryIcon from "@mui/icons-material/History";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PlaceIcon from "@mui/icons-material/Place";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -54,6 +53,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 
 import MaterialSearch from "../components/MaterialSearch";
 import PaginationControls from "../components/PaginationControls";
+import PhotoViewerDialog from "../components/PhotoViewerDialog";
 
 import {
   createIssue,
@@ -1627,111 +1627,29 @@ export default function MaterialIssue() {
       </Box>
     )}
 
-    {/* Form photo preview lightbox */}
-    <Dialog
+    {/* Form photo preview lightbox with rotate, zoom & pan */}
+    <PhotoViewerDialog
       open={photoPreviewOpen}
       onClose={() => setPhotoPreviewOpen(false)}
-      maxWidth="md"
-      fullWidth
-    >
-      <DialogTitle sx={{ m: 0, p: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Typography sx={{ fontWeight: 700, fontSize: "1rem" }}>
-          Reservation Photograph Preview
-        </Typography>
-        <IconButton
-          aria-label="close"
-          onClick={() => setPhotoPreviewOpen(false)}
-          sx={{ color: (theme) => theme.palette.grey[500] }}
-        >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent dividers sx={{ p: 1, display: "flex", justifyContent: "center", bgcolor: "#111" }}>
-        {header.reservation_photo_url && (
-          <Box
-            component="img"
-            src={header.reservation_photo_url}
-            alt="Reservation Slip"
-            sx={{
-              maxWidth: "100%",
-              maxHeight: "75vh",
-              objectFit: "contain",
-              borderRadius: 1,
-            }}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+      imageUrl={header.reservation_photo_url}
+      title="Reservation Photograph Preview"
+      reservationNo={header.sap_reservation_number}
+      createdBy={header.reservation_created_by}
+      department={header.department}
+    />
 
-    {/* High-resolution Photograph Viewer Modal for Saved Issues */}
-    <Dialog
+    {/* High-resolution Photograph Viewer Modal for Saved Issues with rotate, zoom & pan */}
+    <PhotoViewerDialog
       open={!!selectedPhotoModal}
       onClose={() => setSelectedPhotoModal(null)}
-      maxWidth="md"
-      fullWidth
-    >
-      <DialogTitle
-        sx={{
-          m: 0,
-          p: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          bgcolor: "background.paper",
-          borderBottom: "1px solid",
-          borderColor: "divider",
-        }}
-      >
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            SAP Reservation Photograph
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Issue: {selectedPhotoModal?.title}{" "}
-            {selectedPhotoModal?.reservationNo ? `| Reservation: ${selectedPhotoModal.reservationNo}` : ""}{" "}
-            {selectedPhotoModal?.createdBy ? `| Created By: ${selectedPhotoModal.createdBy}` : ""}{" "}
-            {selectedPhotoModal?.department ? `| Dept: ${selectedPhotoModal.department}` : ""}
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          {selectedPhotoModal?.url && (
-            <IconButton
-              size="small"
-              component="a"
-              href={selectedPhotoModal.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Open image in new tab / download"
-            >
-              <OpenInNewIcon fontSize="small" />
-            </IconButton>
-          )}
-          <IconButton
-            size="small"
-            aria-label="close"
-            onClick={() => setSelectedPhotoModal(null)}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-      <DialogContent sx={{ p: 2, textAlign: "center", bgcolor: "#0f172a" }}>
-        {selectedPhotoModal?.url && (
-          <Box
-            component="img"
-            src={selectedPhotoModal.url}
-            alt="Reservation Photograph"
-            sx={{
-              maxWidth: "100%",
-              maxHeight: "75vh",
-              objectFit: "contain",
-              borderRadius: 1,
-              boxShadow: 3,
-            }}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+      imageUrl={selectedPhotoModal?.url}
+      title="SAP Reservation Photograph"
+      subtitle={selectedPhotoModal?.title ? `Issue: ${selectedPhotoModal.title}` : undefined}
+      reservationNo={selectedPhotoModal?.reservationNo}
+      createdBy={selectedPhotoModal?.createdBy}
+      department={selectedPhotoModal?.department}
+      date={selectedPhotoModal?.date}
+    />
 
     {/* Complete Issue Details Modal */}
     <Dialog
