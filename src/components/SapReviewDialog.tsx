@@ -356,15 +356,7 @@ export default function SapReviewDialog({
 
   const openSapHistory = () => {
     if (!review) return;
-    if (fullScreen) {
-      setSapHistoryOpen(true);
-    } else {
-      window.open(
-        `/sap-history?material=${review.material_code}`,
-        "_blank",
-        "noopener,noreferrer"
-      );
-    }
+    setSapHistoryOpen(true);
   };
 
   const isBusy = saving || savingAndNext || dismissing;
@@ -402,12 +394,18 @@ export default function SapReviewDialog({
             )}
           </Box>
           <Button
-            variant="outlined"
+            variant="contained"
+            color="primary"
             size="small"
             startIcon={<HistoryIcon />}
             disabled={!review || isBusy}
             onClick={openSapHistory}
-            sx={{ borderRadius: 2, fontWeight: 600 }}
+            sx={{
+              borderRadius: 2,
+              fontWeight: 700,
+              textTransform: "none",
+              boxShadow: "none",
+            }}
           >
             SAP History
           </Button>
@@ -449,7 +447,7 @@ export default function SapReviewDialog({
                   "& .MuiAlert-message": { width: "100%" },
                 }}
               >
-                <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
                   <span>
                     SAP total: <strong>{review.sap_total}</strong> · App total:{" "}
                     <strong>{review.app_total}</strong>
@@ -460,6 +458,25 @@ export default function SapReviewDialog({
                   </span>
                 </Box>
               </Alert>
+
+              <Button
+                size="small"
+                variant="outlined"
+                color="primary"
+                startIcon={<HistoryIcon sx={{ fontSize: 16 }} />}
+                onClick={openSapHistory}
+                sx={{
+                  alignSelf: "flex-start",
+                  textTransform: "none",
+                  fontWeight: 700,
+                  borderRadius: 1.5,
+                  py: 0.5,
+                  px: 1.5,
+                  mt: -0.75,
+                }}
+              >
+                Inspect SAP History (MB51 Postings) for {review.material_code}
+              </Button>
 
               {breakdown.length > 0 && (
                 <Box
@@ -686,11 +703,12 @@ export default function SapReviewDialog({
         </DialogActions>
       </Dialog>
 
-      {/* Mobile-only SAP History popup */}
+      {/* In-app SAP History popup with return to review */}
       <SapMaterialHistoryPopup
         open={sapHistoryOpen}
         onClose={() => setSapHistoryOpen(false)}
         materialCode={review?.material_code ?? ""}
+        returnToReviewId={review?.id}
       />
     </>
   );

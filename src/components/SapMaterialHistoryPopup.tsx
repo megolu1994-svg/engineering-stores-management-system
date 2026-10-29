@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 
 import {
+  Button,
   CircularProgress,
   IconButton,
   Typography,
-  useTheme,
 } from "@mui/material";
 
 import CloseIcon from "@mui/icons-material/Close";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
@@ -134,6 +137,8 @@ function SectionCard({
   );
 }
 
+const OXO_STOREKEEPER_IDS = new Set(["00511044", "00058806"]);
+
 /* -- Single expandable history card -- */
 
 function HistoryCard({
@@ -155,6 +160,7 @@ function HistoryCard({
       ? `${row.material_document} / ${row.material_doc_item}`
       : row.material_document
     : "";
+  const isOxoStorekeeper = Boolean(row.user_name && OXO_STOREKEEPER_IDS.has(row.user_name.trim()));
 
   return (
     <div
@@ -170,7 +176,7 @@ function HistoryCard({
       }}
       style={{
         borderRadius: "12px",
-        border: `1px solid ${C.border}`,
+        border: isOxoStorekeeper ? `1.5px solid #86EFAC` : `1px solid ${C.border}`,
         boxShadow: expanded ? "0 2px 8px rgba(0,0,0,0.06)" : "0 1px 3px rgba(0,0,0,0.04)",
         cursor: "pointer",
         width: "100%",
@@ -182,11 +188,28 @@ function HistoryCard({
       <div style={{ padding: expanded ? "10px 10px 10px 10px" : "10px 10px 12px 10px" }}>
         {/* Row 1: date + expand arrow */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <CalendarMonthOutlinedIcon sx={{ fontSize: 15, color: C.slate }} />
             <span style={{ fontSize: "12.5px", fontWeight: 600, color: C.slate }}>
               {formatCardDate(row.posting_date)}
             </span>
+            {isOxoStorekeeper && (
+              <span
+                style={{
+                  backgroundColor: "#DCFCE7",
+                  color: "#166534",
+                  borderRadius: "6px",
+                  paddingLeft: 6,
+                  paddingRight: 6,
+                  paddingTop: 1,
+                  paddingBottom: 1,
+                  fontSize: "11px",
+                  fontWeight: 700,
+                }}
+              >
+                Oxo Storekeeper
+              </span>
+            )}
           </div>
           <ExpandMoreIcon
             sx={{
@@ -292,12 +315,13 @@ function HistoryCard({
             display: "grid",
             gridTemplateColumns: "1fr 1fr 1fr",
             gap: 4,
-            backgroundColor: "#F8FAFC",
+            backgroundColor: isOxoStorekeeper ? "#F0FDF4" : "#F8FAFC",
             borderRadius: "8px",
             paddingLeft: 8,
             paddingRight: 8,
             paddingTop: 6,
             paddingBottom: 6,
+            border: isOxoStorekeeper ? "1px solid #DCFCE7" : "none",
           }}
         >
           <div style={{ minWidth: 0 }}>
@@ -320,10 +344,12 @@ function HistoryCard({
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 2, marginBottom: 1 }}>
-              <PersonOutlinedIcon sx={{ fontSize: 11, color: C.slate }} />
-              <span style={{ fontSize: "10px", color: C.slate, fontWeight: 500, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>User</span>
+              <PersonOutlinedIcon sx={{ fontSize: 11, color: isOxoStorekeeper ? "#16A34A" : C.slate }} />
+              <span style={{ fontSize: "10px", color: isOxoStorekeeper ? "#166534" : C.slate, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
+                User {isOxoStorekeeper ? "(Oxo)" : ""}
+              </span>
             </div>
-            <div title={row.user_name ?? undefined} style={{ fontSize: "12px", color: C.navy, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div title={row.user_name ?? undefined} style={{ fontSize: "12px", color: isOxoStorekeeper ? "#166534" : C.navy, fontWeight: isOxoStorekeeper ? 700 : 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {row.user_name || "—"}
             </div>
           </div>
@@ -403,22 +429,28 @@ interface Props {
   open: boolean;
   onClose: () => void;
   materialCode: string;
+  returnToReviewId?: number;
 }
 
 /**
- * A mobile-friendly popup that shows the SAP Material History (MB51)
- * for a single material without navigating away from the current screen.
- * Uses a Portal-based full-screen overlay to avoid MUI Dialog rendering
- * issues in fullScreen mode.
+ * A popup that shows the SAP Material History (MB51) for a single material
+ * directly on screen, with a clear "Back to Review & Make Changes" action
+ * and Oxo storekeeper analysis so storekeepers can audit before saving stock changes.
  */
-export default function SapMaterialHistoryPopup({ open, onClose, materialCode }: Props) {
-  const theme = useTheme();
+export default function SapMaterialHistoryPopup({
+  open,
+  onClose,
+  materialCode,
+  returnToReviewId,
+}: Props) {
+  const navigate = useNavigate();
 
   const [docs, setDocs] = useState<SapDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [filterOxoOnly, setFilterOxoOnly] = useState(false);
 
   useEffect(() => {
     if (!open || !materialCode) return;
@@ -429,7 +461,7 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
       setError(null);
       setExpandedId(null);
       try {
-        const result = await getSapHistoryPage({ materialCode, page: 0, pageSize: 100 });
+        const result = await getSapHistoryPage({ materialCode, page: 0, pageSize: 150 });
         if (cancelled) return;
         setDocs(result.docs);
         setTotal(result.total);
@@ -443,12 +475,40 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, materialCode]);
 
   const handleToggle = useCallback((id: number) => {
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
+
+  // Oxo Unit calculations from MB51 transactions
+  const oxoDocs = useMemo(() => {
+    return docs.filter((d) => d.user_name && OXO_STOREKEEPER_IDS.has(d.user_name.trim()));
+  }, [docs]);
+
+  const oxoNetQty = useMemo(() => {
+    const sum = oxoDocs.reduce((acc, d) => acc + (Number(d.quantity) || 0), 0);
+    return Math.round(sum * 1000) / 1000;
+  }, [oxoDocs]);
+
+  const oxoInward = useMemo(() => {
+    const sum = oxoDocs
+      .filter((d) => (Number(d.quantity) || 0) > 0)
+      .reduce((acc, d) => acc + (Number(d.quantity) || 0), 0);
+    return Math.round(sum * 1000) / 1000;
+  }, [oxoDocs]);
+
+  const oxoOutward = useMemo(() => {
+    const sum = oxoDocs
+      .filter((d) => (Number(d.quantity) || 0) < 0)
+      .reduce((acc, d) => acc + Math.abs(Number(d.quantity) || 0), 0);
+    return Math.round(sum * 1000) / 1000;
+  }, [oxoDocs]);
+
+  const displayDocs = filterOxoOnly ? oxoDocs : docs;
 
   // Close on Escape key
   useEffect(() => {
@@ -467,13 +527,14 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: theme.zIndex.modal,
+        zIndex: 1500, // Higher than MUI Dialog (1300) so it cleanly overlays over the review screen
         backgroundColor: "#FFFFFF",
         display: "flex",
         flexDirection: "column",
+        boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
       }}
     >
-      {/* Header */}
+      {/* Header with Navigation and Return button */}
       <div
         style={{
           display: "flex",
@@ -486,20 +547,131 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
           borderBottom: `1px solid ${C.border}`,
           backgroundColor: "#F8FAFC",
           flexShrink: 0,
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
-        <div>
-          <Typography sx={{ fontWeight: 700, fontSize: "16px", color: C.navy }}>
-            SAP Material History
-          </Typography>
-          <Typography sx={{ fontSize: "12px", color: C.slate, mt: 0.25 }}>
-            {materialCode} · {total} record{total !== 1 ? "s" : ""}
-          </Typography>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flexWrap: "wrap" }}>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<ArrowBackIcon />}
+            onClick={onClose}
+            sx={{
+              fontWeight: 800,
+              borderRadius: 2,
+              textTransform: "none",
+              fontSize: "13px",
+              bgcolor: "#2563EB",
+              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+              "&:hover": { bgcolor: "#1D4ED8" },
+              whiteSpace: "nowrap",
+            }}
+          >
+            ← Back to Review & Make Changes
+          </Button>
+
+          <div>
+            <Typography sx={{ fontWeight: 800, fontSize: "16px", color: C.navy }}>
+              SAP Material History · {materialCode}
+            </Typography>
+            <Typography sx={{ fontSize: "12px", color: C.slate }}>
+              {total} total records in MB51 {oxoDocs.length > 0 ? `· ${oxoDocs.length} by Oxo Unit` : ""}
+            </Typography>
+          </div>
         </div>
-        <IconButton onClick={onClose} size="small" sx={{ color: C.slate }}>
-          <CloseIcon fontSize="small" />
-        </IconButton>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {returnToReviewId && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<OpenInNewIcon sx={{ fontSize: 15 }} />}
+              onClick={() => {
+                onClose();
+                navigate(`/sap-history?material=${materialCode}&returnToReview=${returnToReviewId}`);
+              }}
+              sx={{
+                fontWeight: 600,
+                borderRadius: 2,
+                textTransform: "none",
+                fontSize: "12px",
+                color: C.navy,
+                borderColor: C.border,
+                display: { xs: "none", sm: "inline-flex" },
+                "&:hover": { bgcolor: "#F1F5F9" },
+              }}
+            >
+              Open Full Page
+            </Button>
+          )}
+
+          <IconButton onClick={onClose} size="small" sx={{ color: C.slate }} title="Close and return to review">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </div>
       </div>
+
+      {/* Oxo Unit Summary Banner */}
+      {docs.length > 0 && (
+        <div
+          style={{
+            padding: "10px 16px",
+            backgroundColor: "#F0FDF4",
+            borderBottom: "1px solid #DCFCE7",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534" }}>
+              Oxo Unit History (IDs: 00511044 & 00058806):
+            </span>
+            <span style={{ fontSize: "13px", color: "#15803D" }}>
+              Net Stock from MB51: <strong style={{ fontSize: "14px", color: "#166534" }}>{oxoNetQty} Qty</strong> (Inward: +{oxoInward} · Outward: -{oxoOutward})
+            </span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setFilterOxoOnly(false)}
+              style={{
+                border: "none",
+                borderRadius: 6,
+                padding: "4px 10px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                backgroundColor: !filterOxoOnly ? "#2563EB" : "#E2E8F0",
+                color: !filterOxoOnly ? "#FFFFFF" : "#475569",
+              }}
+            >
+              All Records ({docs.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterOxoOnly(true)}
+              style={{
+                border: "none",
+                borderRadius: 6,
+                padding: "4px 10px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                backgroundColor: filterOxoOnly ? "#16A34A" : "#E2E8F0",
+                color: filterOxoOnly ? "#FFFFFF" : "#475569",
+              }}
+            >
+              Oxo Unit Only ({oxoDocs.length})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Scrollable body */}
       <div
@@ -518,15 +690,27 @@ export default function SapMaterialHistoryPopup({ open, onClose, materialCode }:
           <div style={{ padding: 24 }}>
             <span style={{ color: C.red, fontSize: "13px" }}>{error}</span>
           </div>
-        ) : docs.length === 0 ? (
-          <div style={{ padding: 24, textAlign: "center" }}>
-            <span style={{ color: C.slate, fontSize: "13px" }}>
-              No SAP history records found for this material.
-            </span>
+        ) : displayDocs.length === 0 ? (
+          <div style={{ padding: 36, textAlign: "center" }}>
+            <Typography variant="body2" sx={{ color: C.slate, fontWeight: 600 }}>
+              {filterOxoOnly
+                ? "No MB51 transactions found for Oxo Unit storekeepers (00511044 / 00058806)."
+                : "No SAP history records found for this material."}
+            </Typography>
+            {filterOxoOnly && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setFilterOxoOnly(false)}
+                sx={{ mt: 1.5, textTransform: "none", borderRadius: 2 }}
+              >
+                View all Plant 9035 postings ({docs.length})
+              </Button>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {docs.map((doc) => (
+            {displayDocs.map((doc) => (
               <HistoryCard
                 key={doc.id}
                 row={doc}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   Alert,
@@ -30,9 +31,11 @@ import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import BalanceIcon from "@mui/icons-material/Balance";
 import UndoIcon from "@mui/icons-material/Undo";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import HistoryIcon from "@mui/icons-material/History";
 
 import MaterialSearch from "./MaterialSearch";
 import LocationSearch from "./LocationSearch";
+import SapMaterialHistoryPopup from "./SapMaterialHistoryPopup";
 
 import { usePersistentState } from "../hooks/usePersistentState";
 
@@ -111,6 +114,22 @@ export default function AdjustmentTab() {
   const [activeReview, setActiveReview] = useState<
     (SapStockReview & { material_code: string }) | null
   >(null);
+
+  const [searchParams] = useSearchParams();
+  const [historyPopupMaterial, setHistoryPopupMaterial] = useState<string | null>(null);
+  const [historyPopupReviewId, setHistoryPopupReviewId] = useState<number | undefined>(undefined);
+
+  // Auto-open review dialog if redirected back from SAP History (?reviewId=...)
+  useEffect(() => {
+    const reviewIdParam = searchParams.get("reviewId");
+    if (reviewIdParam && reviews && reviews.length > 0) {
+      const idNum = Number(reviewIdParam);
+      const found = reviews.find((r) => r.id === idNum);
+      if (found) {
+        setActiveReview(found);
+      }
+    }
+  }, [reviews, searchParams]);
 
   // Strategy 4 state
   const [classifications, setClassifications] = useState<
@@ -860,6 +879,27 @@ export default function AdjustmentTab() {
                       )}
                       <Button
                         size="small"
+                        variant="outlined"
+                        color="inherit"
+                        startIcon={<HistoryIcon sx={{ fontSize: 15 }} />}
+                        onClick={() => {
+                          setHistoryPopupMaterial(review.material_code);
+                          setHistoryPopupReviewId(review.id);
+                        }}
+                        disabled={bulkReconciling || actionBusy}
+                        sx={{
+                          borderRadius: 2,
+                          fontWeight: 700,
+                          textTransform: "none",
+                          fontSize: "0.75rem",
+                          color: "primary.main",
+                          borderColor: "divider",
+                        }}
+                      >
+                        SAP History
+                      </Button>
+                      <Button
+                        size="small"
                         variant="contained"
                         onClick={() => setActiveReview(review)}
                         disabled={bulkReconciling || actionBusy}
@@ -1027,6 +1067,17 @@ export default function AdjustmentTab() {
         }
         reviewIndex={activeReviewIndex >= 0 ? activeReviewIndex : undefined}
         totalOpenReviews={filteredReviews.length}
+      />
+
+      {/* SAP Material History popup for cards in the review list */}
+      <SapMaterialHistoryPopup
+        open={!!historyPopupMaterial}
+        onClose={() => {
+          setHistoryPopupMaterial(null);
+          setHistoryPopupReviewId(undefined);
+        }}
+        materialCode={historyPopupMaterial ?? ""}
+        returnToReviewId={historyPopupReviewId}
       />
 
       {/* Auto-Reconcile Multi-Bin Surplus Confirmation Dialog */}

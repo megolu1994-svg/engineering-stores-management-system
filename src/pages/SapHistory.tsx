@@ -47,11 +47,12 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SearchIcon from "@mui/icons-material/Search";
 import ReplayOutlinedIcon from "@mui/icons-material/ReplayOutlined";
 import FirstPageIcon from "@mui/icons-material/FirstPage";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import KeyboardArrowLeftIcon from "@mui/icons-material/KeyboardArrowLeft";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import LastPageIcon from "@mui/icons-material/LastPage";
 
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   getSapDistinctValues,
@@ -703,8 +704,10 @@ function persistWidths(next: Record<string, number>): void {
 
 export default function SapHistory() {
   const theme = useTheme();
+  const navigate = useNavigate();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [searchParams] = useSearchParams();
+  const returnToReviewId = searchParams.get("returnToReview");
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -964,6 +967,53 @@ export default function SapHistory() {
 
   return (
     <Box sx={{ bgcolor: "#FFFFFF", px: { xs: 1.5, sm: 3 }, py: { xs: 1.5, sm: 2.5 }, pb: 4 }}>
+      {/* Return to Review Screen Banner */}
+      {returnToReviewId && (
+        <Alert
+          severity="info"
+          variant="filled"
+          action={
+            <Button
+              color="inherit"
+              size="medium"
+              variant="outlined"
+              startIcon={<ArrowBackIcon />}
+              onClick={() =>
+                navigate(`/inventory?tab=adjustment&reviewId=${returnToReviewId}`)
+              }
+              sx={{
+                fontWeight: 800,
+                bgcolor: "rgba(255,255,255,0.2)",
+                borderColor: "white",
+                textTransform: "none",
+                borderRadius: 2,
+                whiteSpace: "nowrap",
+                px: 2,
+                "&:hover": { bgcolor: "rgba(255,255,255,0.3)" },
+              }}
+            >
+              Back to Review Screen & Make Changes
+            </Button>
+          }
+          sx={{
+            mb: 2.5,
+            borderRadius: 2,
+            alignItems: "center",
+            boxShadow: "0 4px 14px rgba(37, 99, 235, 0.25)",
+            bgcolor: "#2563EB",
+          }}
+        >
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#FFFFFF" }}>
+              Reviewing SAP Movement History for Material: {search || initialCode}
+            </Typography>
+            <Typography variant="caption" sx={{ opacity: 0.9, color: "#FFFFFF" }}>
+              Inspect actual SAP postings (movement types, quantities, storekeeper IDs). When ready, click &ldquo;Back to Review Screen & Make Changes&rdquo; to complete the reconciliation.
+            </Typography>
+          </Box>
+        </Alert>
+      )}
+
       {/* A. Header */}        <Box
         sx={{
           display: "flex",
